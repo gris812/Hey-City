@@ -1,0 +1,25 @@
+---
+description: Core project canon for Sunshine AI Guide
+alwaysApply: true
+---
+
+Sunshine AI Guide is a mobile-first AI city guide.
+
+Core MVP principles:
+- map-first exploration
+- walking and driving modes
+- Drive Discovery Engine
+- adaptive narration
+- saved places
+- simple and reliable user experience
+
+Follow these rules:
+- Read canonical docs in /docs/context first
+- Prefer smallest working MVP slices
+- Do not invent architecture that conflicts with canonical docs
+- Brain/services decide
+- LLM only formulates text from structured inputs
+- Keep the system deterministic where possible
+- Keep all timing and thresholds config-driven
+- Do not hardcode secrets or keys
+- Do not silently expand scope into post-MVP systems

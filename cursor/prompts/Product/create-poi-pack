@@ -1,0 +1,62 @@
+# Create POI Pack (MVP)
+
+Create a structured POI dataset for Sunshine AI Guide.
+
+## Context
+- Mobile-first AI city guide
+- Map-based exploration
+- Walking + driving modes
+- Drive Discovery Engine
+- Short adaptive narration
+
+## Requirements
+
+For each POI include:
+
+- id
+- name
+- lat
+- lng
+- category
+- importanceScore (0–100)
+- themes (array)
+- shortDescription
+- storySeed (1–2 sentences max)
+- priority (main / secondary / transition)
+
+## Rules
+
+- Prefer high-density, well-known urban areas
+- Mix:
+  - iconic landmarks
+  - hidden gems
+  - transitional points
+- Avoid:
+  - generic businesses
+  - low narrative value locations
+- Keep storySeed short and vivid
+
+## Output format
+
+Return JSON array:
+
+[
+  {
+    "id": "...",
+    "name": "...",
+    "lat": ...,
+    "lng": ...,
+    "category": "...",
+    "importanceScore": ...,
+    "themes": ["..."],
+    "shortDescription": "...",
+    "storySeed": "...",
+    "priority": "main"
+  }
+]
+
+## Notes
+
+- Optimize for Drive Discovery pacing
+- POIs should work in sequence along a realistic route
+- Think in terms of narrative flow, not just isolated points

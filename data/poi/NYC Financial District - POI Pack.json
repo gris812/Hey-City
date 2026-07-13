@@ -1,0 +1,101 @@
+[
+  {
+    "id": "poi_wall_street",
+    "name": "Wall Street",
+    "coordinates": { "lat": 40.7075, "lng": -74.0113 },
+    "type": "main",
+    "importanceScore": 10,
+    "tags": ["finance", "history", "global"],
+    "storySeed": "You’re standing on the street that shaped the global financial system. Behind these facades, fortunes were made—and lost—in seconds."
+  },
+  {
+    "id": "poi_nyse",
+    "name": "New York Stock Exchange",
+    "coordinates": { "lat": 40.7069, "lng": -74.0113 },
+    "type": "main",
+    "importanceScore": 10,
+    "tags": ["finance", "markets"],
+    "storySeed": "This is the heart of capitalism. Inside, billions move every second, yet the real power here is invisible—algorithms replacing human voices."
+  },
+  {
+    "id": "poi_federal_hall",
+    "name": "Federal Hall",
+    "coordinates": { "lat": 40.7074, "lng": -74.0104 },
+    "type": "secondary",
+    "importanceScore": 8,
+    "tags": ["history", "government"],
+    "storySeed": "Right here, George Washington took the oath as the first President. This is where American power officially began."
+  },
+  {
+    "id": "poi_trinity_church",
+    "name": "Trinity Church",
+    "coordinates": { "lat": 40.7081, "lng": -74.0122 },
+    "type": "transition",
+    "importanceScore": 7,
+    "tags": ["architecture", "history"],
+    "storySeed": "A quiet contrast to Wall Street—this church has watched over centuries of ambition, collapse, and reinvention."
+  },
+  {
+    "id": "poi_charging_bull",
+    "name": "Charging Bull",
+    "coordinates": { "lat": 40.7055, "lng": -74.0134 },
+    "type": "secondary",
+    "importanceScore": 9,
+    "tags": ["symbol", "finance"],
+    "storySeed": "This bronze bull appeared overnight—and became a symbol of aggressive optimism. Markets rise… until they don’t."
+  },
+  {
+    "id": "poi_fearless_girl",
+    "name": "Fearless Girl",
+    "coordinates": { "lat": 40.7069, "lng": -74.0118 },
+    "type": "hidden",
+    "importanceScore": 6,
+    "tags": ["culture", "modern"],
+    "storySeed": "She stands small, but unshaken. A modern challenge to centuries of male-dominated power on Wall Street."
+  },
+  {
+    "id": "poi_911_memorial",
+    "name": "9/11 Memorial",
+    "coordinates": { "lat": 40.7115, "lng": -74.0134 },
+    "type": "main",
+    "importanceScore": 10,
+    "tags": ["history", "memory"],
+    "storySeed": "Two voids mark where towers once stood. The silence here is intentional—it forces you to remember."
+  },
+  {
+    "id": "poi_one_world_trade",
+    "name": "One World Trade Center",
+    "coordinates": { "lat": 40.7127, "lng": -74.0134 },
+    "type": "main",
+    "importanceScore": 10,
+    "tags": ["architecture", "modern"],
+    "storySeed": "Rising from loss, this tower reflects resilience. Its height isn’t just architectural—it’s symbolic."
+  },
+  {
+    "id": "poi_oculus",
+    "name": "The Oculus",
+    "coordinates": { "lat": 40.7116, "lng": -74.0125 },
+    "type": "transition",
+    "importanceScore": 7,
+    "tags": ["design", "transport"],
+    "storySeed": "This structure looks like a bird taking flight. It’s both a transit hub—and a statement about rebirth."
+  },
+  {
+    "id": "poi_staten_island_ferry",
+    "name": "Staten Island Ferry Terminal",
+    "coordinates": { "lat": 40.7017, "lng": -74.0132 },
+    "type": "secondary",
+    "importanceScore": 8,
+    "tags": ["waterfront", "view"],
+    "storySeed": "From here, the city opens to the harbor. The skyline behind you reminds you how dense—and vertical—New York is."
+  },
+  {
+    "id": "poi_battery_park",
+    "name": "Battery Park",
+    "coordinates": { "lat": 40.7033, "lng": -74.0170 },
+    "type": "main",
+    "importanceScore": 9,
+    "tags": ["nature", "history"],
+    "storySeed": "At the edge of Manhattan, this park once defended the city. Today, it offers one of the calmest views of the harbor."
+  }
+]

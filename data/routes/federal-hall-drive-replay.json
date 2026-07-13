@@ -1,0 +1,52 @@
+{
+  "name": "Federal Hall vehicle replay",
+  "userId": "route_replay_user",
+  "session": {
+    "themeTags": ["government"],
+    "narrationStyle": "documentary",
+    "lengthSec": 40,
+    "leadTimeMin": 2,
+    "voiceId": "artur",
+    "language": "en",
+    "autoplay": true
+  },
+  "events": [
+    {
+      "type": "ping",
+      "atMs": 0,
+      "lat": 40.7074,
+      "lng": -74.0104,
+      "heading": 180,
+      "speedKmh": 5
+    },
+    {
+      "type": "ping",
+      "atMs": 10000,
+      "lat": 40.7074,
+      "lng": -74.0104,
+      "heading": 180,
+      "speedKmh": 35
+    },
+    {
+      "type": "ping",
+      "atMs": 20000,
+      "lat": 40.7073,
+      "lng": -74.0105,
+      "heading": 92,
+      "speedKmh": 35
+    },
+    {
+      "type": "finish_story",
+      "atMs": 55000,
+      "reason": "ended"
+    },
+    {
+      "type": "ping",
+      "atMs": 60000,
+      "lat": 40.7072,
+      "lng": -74.0105,
+      "heading": 176,
+      "speedKmh": 35
+    }
+  ]
+}

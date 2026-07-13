@@ -1,0 +1,26 @@
+---
+description: Backend architecture rules
+globs:
+  - backend/**
+alwaysApply: false
+---
+
+Backend owns:
+- auth
+- sessions
+- Drive Discovery
+- POI selection
+- ETA logic
+- trigger logic
+- narration orchestration
+- privacy/history controls
+
+Rules:
+- TypeScript + Express
+- thin controllers
+- business logic in services
+- explicit DTOs and interfaces
+- config-driven thresholds only
+- no Google keys in mobile-facing logic
+- no LLM decision-making for POI selection or trigger timing
+- add state-machine logic explicitly, do not hide it in ad hoc conditions

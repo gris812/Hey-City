@@ -1,0 +1,23 @@
+---
+description: Mobile architecture rules
+globs:
+  - mobile/**
+alwaysApply: false
+---
+
+Mobile app rules:
+- map is the primary interface
+- mobile uses Maps SDK only
+- Google Places / Matrix / Directions stay on backend
+- support walking and driving modes
+- vehicle mode is minimal UI and audio-first
+- no overloaded controls
+- prefer simple state flows and predictable API integration
+
+Mobile owns:
+- map rendering
+- location tracking
+- ping loop
+- audio playback
+- active POI UI
+- minimal story controls

@@ -1,0 +1,18 @@
+---
+description: Document usage rules
+alwaysApply: false
+---
+
+Before changing API contracts, consult:
+- /docs/context/Hey_City_MVP_API_Specification_v1.md
+
+Before changing trigger logic, consult:
+- /docs/context/Hey_City_Story_Engine_Logic.md
+
+Before changing orchestration rules, consult:
+- /docs/context/AI_Guide_Brain_Unified_Architecture_v2_Canonical.md
+
+Before changing repo/module structure, consult:
+- /docs/context/Development_Plan.md
+
+If canonical docs conflict with older notes, prefer canonical docs and flag the conflict explicitly.

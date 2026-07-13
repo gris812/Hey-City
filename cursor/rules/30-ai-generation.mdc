@@ -1,0 +1,16 @@
+---
+description: AI and narration rules
+globs:
+  - backend/**
+  - shared/**
+alwaysApply: false
+---
+
+AI generation rules:
+- LLM does not choose POI
+- LLM does not choose trigger timing
+- LLM does not decide story eligibility
+- backend services provide a structured NarrativePlan
+- guide style must come from guide profile JSON files
+- output must respect target length, language, theme, and mode
+- driving stories must be shorter and simpler than walking stories

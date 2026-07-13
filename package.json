@@ -1,0 +1,41 @@
+{
+  "name": "sunshine-ai-guide",
+  "version": "1.0.0",
+  "description": "AI-экскурсовод по маршруту и достопримечательностям по местоположению. Режимы: экскурсия по маршруту, Quick Facts и Drive Discovery (рассказы по POI впереди в авто).",
+  "main": "index.js",
+  "workspaces": [
+    "server",
+    "mobile",
+    "shared"
+  ],
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspace shared && npm run typecheck --workspace server && npm run typecheck --workspace mobile",
+    "typecheck:shared": "npm run typecheck --workspace shared",
+    "typecheck:server": "npm run typecheck --workspace server",
+    "typecheck:mobile": "npm run typecheck --workspace mobile",
+    "test": "npm run test --workspace server",
+    "replay:drive": "npm run replay:drive --workspace server",
+    "doctor": "npm run doctor --workspace mobile",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:mobile\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:mobile": "cd mobile && npx expo start --lan -c"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gris812/Sunshine-AI-Guide.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gris812/Sunshine-AI-Guide/issues"
+  },
+  "homepage": "https://github.com/gris812/Sunshine-AI-Guide#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
