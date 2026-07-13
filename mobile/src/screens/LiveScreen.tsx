@@ -68,11 +68,21 @@ export function LiveScreen() {
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef(0);
 
+  const loadDriveProfileSettings = useCallback(async () => {
+    const profile = profileRef.current ?? (await getProfile());
+    profileRef.current = profile;
+    setThemes(profile.driveDiscovery.themeTags.length ? profile.driveDiscovery.themeTags : ['mixed']);
+    setStyle(profile.driveDiscovery.narrationStyle);
+    setLengthSec(profile.driveDiscovery.lengthSec);
+    setLeadTimeMin(profile.driveDiscovery.leadTimeMin);
+    setAutoplay(profile.driveDiscovery.autoplay);
+    return profile;
+  }, []);
+
   const startSession = useCallback(async () => {
     setSessionError(null);
     try {
-      const profile = profileRef.current ?? (await getProfile());
-      profileRef.current = profile;
+      const profile = await loadDriveProfileSettings();
       const { sessionId: id } = await startDriveSession({
         themeTags: themes,
         narrationStyle: style,
@@ -89,7 +99,7 @@ export function LiveScreen() {
       setSessionError((e as Error).message);
       console.error(e);
     }
-  }, [themes, style, lengthSec, leadTimeMin, autoplay]);
+  }, [themes, style, lengthSec, leadTimeMin, autoplay, loadDriveProfileSettings]);
 
   const stopSession = useCallback(async () => {
     if (sessionId) {
@@ -110,15 +120,13 @@ export function LiveScreen() {
   }, [sessionId]);
 
   useEffect(() => {
-    getProfile().then((p) => {
-      profileRef.current = p;
-      setThemes(p.driveDiscovery.themeTags.length ? p.driveDiscovery.themeTags : ['mixed']);
-      setStyle(p.driveDiscovery.narrationStyle);
-      setLengthSec(p.driveDiscovery.lengthSec);
-      setLeadTimeMin(p.driveDiscovery.leadTimeMin);
-      setAutoplay(p.driveDiscovery.autoplay);
+    if (mode !== 'drive_discovery' || profileRef.current) return;
+
+    loadDriveProfileSettings().catch((e) => {
+      setSessionError((e as Error).message);
+      console.error(e);
     });
-  }, []);
+  }, [mode, loadDriveProfileSettings]);
 
   useEffect(() => {
     if (!sessionId || muted) return;
