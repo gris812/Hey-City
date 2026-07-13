@@ -8,6 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test:presentation": "tsc -p tsconfig.presentation-test.json && node .presentation-test-dist/test/mapDriveSessionToPresentation.test.js",
     "doctor": "npx expo-doctor"
   },
   "dependencies": {

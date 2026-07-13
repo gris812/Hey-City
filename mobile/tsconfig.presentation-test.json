@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "outDir": ".presentation-test-dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@heycity/shared": ["../shared/src"]
+    },
+    "noEmit": false
+  },
+  "include": [
+    "src/api/drive.ts",
+    "src/presentation/**/*.ts",
+    "test/**/*.ts",
+    "../shared/src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".presentation-test-dist"
+  ]
+}

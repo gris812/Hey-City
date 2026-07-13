@@ -18,6 +18,14 @@ import {
 } from '../api/drive';
 import { getProfile } from '../api/me';
 import { config } from '../config';
+import { LiveControls } from '../components/live/LiveControls';
+import { LiveStatusPill } from '../components/live/LiveStatusPill';
+import { StoryPanel } from '../components/live/StoryPanel';
+import {
+  mapDriveSessionToPresentation,
+  type PlaybackState,
+} from '../presentation';
+import { colors, radius, spacing, typography } from '../theme';
 
 const THEME_TAGS = [
   'history',
@@ -38,37 +46,13 @@ const STYLES = [
   'mini_lecture',
 ];
 
-function getDiscoveryStatus(result: PingResult | null): string {
-  if (!result?.decision) return 'Ожидание данных маршрута';
-  if (result.decision.type === 'trigger_story') {
-    const eta = result.decision.etaSeconds
-      ? `ETA ${Math.round(result.decision.etaSeconds)} sec`
-      : 'distance trigger';
-    return `Story trigger: ${result.decision.triggerReason} · ${eta}`;
-  }
-
-  const labels: Record<typeof result.decision.reason, string> = {
-    speed_too_low: 'Ожидание движения в авто',
-    cooldown_active: 'Пауза между историями',
-    already_listening: 'История активна',
-    no_candidate: 'Подходящих POI рядом нет',
-    anti_repeat: 'POI уже недавно звучал',
-    bad_gps: 'GPS-данные устарели',
-    budget_guardrail: 'Временно ограничено бюджетным guardrail',
-  };
-  return labels[result.decision.reason];
-}
-
-function getTranscriptPreview(result: PingResult | null): string | null {
-  const text = result?.transcriptText ?? result?.textPreview;
-  if (!text) return null;
-  return text.length > 160 ? `${text.slice(0, 157)}...` : text;
-}
+type LiveMode = 'city_explorer' | 'drive_discovery';
 
 export function LiveScreen() {
-  const [mode, setMode] = useState<'quick_facts' | 'drive_discovery'>('quick_facts');
+  const [mode, setMode] = useState<LiveMode>('city_explorer');
   const [driveDiscoveryOn, setDriveDiscoveryOn] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [themes, setThemes] = useState<string[]>(['mixed']);
   const [style, setStyle] = useState('documentary');
@@ -78,12 +62,14 @@ export function LiveScreen() {
   const [muted, setMuted] = useState(false);
   const [lastResult, setLastResult] = useState<PingResult | null>(null);
   const [playingName, setPlayingName] = useState<string | null>(null);
+  const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
   const [lastMotion, setLastMotion] = useState<{ speedKmh: number; heading: number } | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef(0);
 
   const startSession = useCallback(async () => {
+    setSessionError(null);
     try {
       const profile = profileRef.current ?? (await getProfile());
       profileRef.current = profile;
@@ -98,7 +84,9 @@ export function LiveScreen() {
       });
       setSessionId(id);
       setDriveDiscoveryOn(true);
+      setLocalPlaybackState('idle');
     } catch (e) {
+      setSessionError((e as Error).message);
       console.error(e);
     }
   }, [themes, style, lengthSec, leadTimeMin, autoplay]);
@@ -116,6 +104,8 @@ export function LiveScreen() {
       }
       setLastResult(null);
       setPlayingName(null);
+      setLocalPlaybackState('idle');
+      setSessionError(null);
     }
   }, [sessionId]);
 
@@ -163,11 +153,13 @@ export function LiveScreen() {
         setLastResult(result);
         if (result.nextAction === 'PLAY' && result.poi) {
           setPlayingName(result.poi.name);
+          setLocalPlaybackState((current) => (current === 'paused' ? current : 'playing'));
           if (result.audioUrl) {
             // TODO: play audio with expo-av
           }
         } else if (result.decision?.type !== 'hold' || result.decision.reason !== 'already_listening') {
           setPlayingName(null);
+          setLocalPlaybackState((current) => (current === 'paused' ? current : 'idle'));
         }
       } catch (_) {}
     };
@@ -189,9 +181,11 @@ export function LiveScreen() {
 
   const finishStory = async (reason: StoryFinishReason) => {
     if (!sessionId) return;
+    setSessionError(null);
     try {
       const result = await finishDriveStory(sessionId, reason);
       setPlayingName(null);
+      setLocalPlaybackState(reason === 'paused' ? 'paused' : 'completed');
       setLastResult({
         nextAction: 'NONE',
         decision: {
@@ -200,21 +194,39 @@ export function LiveScreen() {
         },
       });
     } catch (e) {
+      setSessionError((e as Error).message);
       console.error(e);
+    }
+  };
+
+  const presentation = mapDriveSessionToPresentation(lastResult, {
+    sessionActive: Boolean(sessionId),
+    playbackState: localPlaybackState,
+  });
+
+  const pausePlayback = () => {
+    if (localPlaybackState === 'playing' || localPlaybackState === 'loading') {
+      setLocalPlaybackState('paused');
+    }
+  };
+
+  const resumePlayback = () => {
+    if (localPlaybackState === 'paused') {
+      setLocalPlaybackState(playingName ? 'playing' : 'idle');
     }
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.screenTitle}>Режим в авто</Text>
+      <Text style={styles.screenTitle}>Live</Text>
 
       <View style={styles.modeRow}>
         <TouchableOpacity
-          style={[styles.modeChip, mode === 'quick_facts' && styles.modeChipActive]}
-          onPress={() => setMode('quick_facts')}
+          style={[styles.modeChip, mode === 'city_explorer' && styles.modeChipActive]}
+          onPress={() => setMode('city_explorer')}
         >
-          <Text style={[styles.modeChipText, mode === 'quick_facts' && styles.modeChipTextActive]}>
-            Quick Facts
+          <Text style={[styles.modeChipText, mode === 'city_explorer' && styles.modeChipTextActive]}>
+            City Explorer
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -226,6 +238,16 @@ export function LiveScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {mode === 'city_explorer' && (
+        <View style={styles.walkingBox}>
+          <Text style={styles.walkingTitle}>Пешеходный режим</Text>
+          <Text style={styles.walkingText}>
+            City Explorer остается основным режимом MVP. Экран готов для backend-driven
+            DiscoveryTarget и не запускает Drive Discovery сессию.
+          </Text>
+        </View>
+      )}
 
       {mode === 'drive_discovery' && (
         <>
@@ -273,53 +295,52 @@ export function LiveScreen() {
             </View>
           )}
 
+          {sessionError && (
+            <Text style={styles.errorText}>{sessionError}</Text>
+          )}
+
           {!sessionId ? (
-            <TouchableOpacity style={styles.primaryButton} onPress={startSession}>
-              <Text style={styles.primaryButtonText}>Старт Drive Discovery</Text>
-            </TouchableOpacity>
+            <StoryPanel
+              presentation={presentation}
+              actions={
+                <LiveControls
+                  presentation={presentation}
+                  muted={muted}
+                  sessionActive={false}
+                  onStartSession={startSession}
+                  onEndSession={stopSession}
+                  onPausePlayback={pausePlayback}
+                  onResumePlayback={resumePlayback}
+                  onSkipStory={() => void finishStory('skipped')}
+                  onToggleMute={() => setMuted(!muted)}
+                />
+              }
+            />
           ) : (
             <>
-              <View style={styles.controlsRow}>
-                <TouchableOpacity
-                  style={[styles.controlBtn, muted && styles.controlBtnActive]}
-                  onPress={() => setMuted(!muted)}
-                >
-                  <Text style={styles.controlBtnText}>{muted ? 'Unmute' : 'Mute'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.controlBtn}
-                  onPress={() => void finishStory('paused')}
-                >
-                  <Text style={styles.controlBtnText}>Pause</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.controlBtn}
-                  onPress={() => void finishStory('skipped')}
-                >
-                  <Text style={styles.controlBtnText}>Skip</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.controlBtn}>
-                  <Text style={styles.controlBtnText}>Подробнее позже</Text>
-                </TouchableOpacity>
+              <LiveStatusPill presentation={presentation} />
+              <View style={styles.panelWrap}>
+                <StoryPanel
+                  presentation={presentation}
+                  actions={
+                    <LiveControls
+                      presentation={presentation}
+                      muted={muted}
+                      sessionActive
+                      onStartSession={startSession}
+                      onEndSession={stopSession}
+                      onPausePlayback={pausePlayback}
+                      onResumePlayback={resumePlayback}
+                      onSkipStory={() => void finishStory('skipped')}
+                      onToggleMute={() => setMuted(!muted)}
+                    />
+                  }
+                />
               </View>
-              <TouchableOpacity style={styles.stopButton} onPress={stopSession}>
-                <Text style={styles.stopButtonText}>Остановить сессию</Text>
-              </TouchableOpacity>
-              {playingName && (
-                <Text style={styles.playingLabel}>Сейчас: {playingName}</Text>
-              )}
-              {lastResult && (
-                <View style={styles.storyStateBox}>
-                  <Text style={styles.storyStateText}>{getDiscoveryStatus(lastResult)}</Text>
-                  {lastResult.estimatedDurationSec && (
-                    <Text style={styles.storyMetaText}>
-                      {lastResult.estimatedDurationSec} sec · {lastResult.narrativePlan?.guideId ?? 'guide'}
-                    </Text>
-                  )}
-                  {getTranscriptPreview(lastResult) && (
-                    <Text style={styles.transcriptPreview}>{getTranscriptPreview(lastResult)}</Text>
-                  )}
-                </View>
+              {lastResult?.estimatedDurationSec && (
+                <Text style={styles.playingLabel}>
+                  Estimated story length: {lastResult.estimatedDurationSec} sec
+                </Text>
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
@@ -334,51 +355,69 @@ export function LiveScreen() {
         </>
       )}
 
-      {mode === 'quick_facts' && (
-        <Text style={styles.placeholder}>Quick Facts — в разработке</Text>
-      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a2e' },
-  content: { padding: 20, paddingBottom: 40 },
-  screenTitle: { fontSize: 22, fontWeight: '700', color: '#eee', marginBottom: 16 },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: 40 },
+  screenTitle: {
+    ...typography.title,
+    color: colors.foreground,
+    marginBottom: spacing.md,
+  },
   modeRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   modeChip: {
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#16213e',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
   },
-  modeChipActive: { backgroundColor: '#e94560' },
-  modeChipText: { color: '#888', fontSize: 14 },
-  modeChipTextActive: { color: '#fff' },
+  modeChipActive: { backgroundColor: colors.foreground },
+  modeChipText: { color: colors.textMuted, fontSize: 14 },
+  modeChipTextActive: { color: colors.surface },
+  walkingBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  walkingTitle: {
+    ...typography.label,
+    color: colors.foreground,
+    marginBottom: spacing.sm,
+  },
+  walkingText: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
   settingsTrigger: { marginBottom: 12 },
-  settingsTriggerText: { color: '#e94560', fontSize: 14 },
-  settingsBox: { backgroundColor: '#16213e', borderRadius: 12, padding: 16, marginBottom: 20 },
-  settingsLabel: { color: '#aaa', fontSize: 12, marginBottom: 8 },
+  settingsTriggerText: { color: colors.foreground, fontSize: 14 },
+  settingsBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: 20,
+  },
+  settingsLabel: { color: colors.textMuted, fontSize: 12, marginBottom: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#0f3460' },
-  chipActive: { backgroundColor: '#e94560' },
-  chipText: { color: '#888', fontSize: 12 },
-  chipTextActive: { color: '#fff' },
+  chip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+  },
+  chipActive: { backgroundColor: colors.arthur },
+  chipText: { color: colors.textMuted, fontSize: 12 },
+  chipTextActive: { color: colors.surface },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  primaryButton: { backgroundColor: '#e94560', borderRadius: 12, padding: 16, alignItems: 'center' },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  controlsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
-  controlBtn: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, backgroundColor: '#16213e' },
-  controlBtnActive: { backgroundColor: '#0f3460' },
-  controlBtnText: { color: '#eee', fontSize: 14 },
-  stopButton: { paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e94560', alignItems: 'center' },
-  stopButtonText: { color: '#e94560', fontSize: 14 },
-  playingLabel: { marginTop: 12, color: '#aaa', fontSize: 14 },
-  storyStateBox: { marginTop: 12, padding: 12, borderRadius: 8, backgroundColor: '#16213e' },
-  storyStateText: { color: '#eee', fontSize: 13, lineHeight: 18 },
-  storyMetaText: { marginTop: 6, color: '#aaa', fontSize: 12 },
-  transcriptPreview: { marginTop: 8, color: '#bbb', fontSize: 12, lineHeight: 18 },
-  motionLabel: { marginTop: 8, color: '#666', fontSize: 12 },
-  warnText: { marginTop: 8, color: '#f0a030', fontSize: 12 },
-  placeholder: { color: '#666', fontSize: 14 },
+  panelWrap: { marginTop: spacing.md },
+  playingLabel: { marginTop: 12, color: colors.textMuted, fontSize: 14 },
+  motionLabel: { marginTop: 8, color: colors.textMuted, fontSize: 12 },
+  errorText: { marginBottom: spacing.md, color: colors.danger, fontSize: 13 },
+  warnText: { marginTop: 8, color: colors.warning, fontSize: 12 },
 });

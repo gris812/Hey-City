@@ -1,9 +1,13 @@
 import * as SecureStore from 'expo-secure-store';
 import { config } from '../config';
 
+declare const __DEV__: boolean | undefined;
+
 const TOKEN_KEY = 'auth_token';
+const AUTH_DISABLED = process.env.EXPO_PUBLIC_AUTH_DISABLED === 'true';
 
 export async function getToken(): Promise<string | null> {
+  if (AUTH_DISABLED || __DEV__) return 'dev-token';
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
