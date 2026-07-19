@@ -78,7 +78,7 @@ type SessionPingResponse = {
   story?: {
     storyId: string;
     narrativePlanId: string;
-    guideId: "dana" | "artur";
+    guideId: "dana" | "arthur";
     title: string;
     text?: string;
     audioUrl?: string;

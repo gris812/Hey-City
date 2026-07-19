@@ -1,13 +1,28 @@
 import * as SecureStore from 'expo-secure-store';
 import { config } from '../config';
-
-declare const __DEV__: boolean | undefined;
+import {
+  AUTH_SESSION_EXPIRED_MESSAGE,
+  isAuthenticationFailure,
+  toUserSafeRequestMessage,
+} from './authErrors';
 
 const TOKEN_KEY = 'auth_token';
-const AUTH_DISABLED = process.env.EXPO_PUBLIC_AUTH_DISABLED === 'true';
+let authInvalidationHandler: (() => void | Promise<void>) | null = null;
+
+export class AuthSessionExpiredError extends Error {
+  readonly isAuthSessionExpired = true;
+
+  constructor() {
+    super(AUTH_SESSION_EXPIRED_MESSAGE);
+    this.name = 'AuthSessionExpiredError';
+  }
+}
+
+export function setAuthInvalidationHandler(handler: (() => void | Promise<void>) | null): void {
+  authInvalidationHandler = handler;
+}
 
 export async function getToken(): Promise<string | null> {
-  if (AUTH_DISABLED || __DEV__) return 'dev-token';
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
@@ -39,7 +54,15 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+    const backendMessage = (err as { error?: string }).error;
+
+    if (isAuthenticationFailure(res.status, backendMessage)) {
+      await clearToken();
+      await authInvalidationHandler?.();
+      throw new AuthSessionExpiredError();
+    }
+
+    throw new Error(toUserSafeRequestMessage(res.status, backendMessage));
   }
   return res.json() as Promise<T>;
 }

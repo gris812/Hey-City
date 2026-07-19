@@ -26,7 +26,7 @@ flowchart TD
 
     KG[Knowledge Graph] --> C
     KG --> D
-    GP[Guide Profiles: Dana / Artur] --> E
+    GP[Guide Profiles: Dana / Arthur] --> E
     CFG[Config / Safety Rules] --> F
 ```
 
@@ -38,7 +38,7 @@ flowchart TD
 | Session Manager | Tracks active session, active story, cooldown, repeated POIs |
 | Story Selector | Chooses the POI and story angle from candidates |
 | Narrative Planner | Creates structured `NarrativePlan`; no prose |
-| Persona Service | Applies Dana/Artur voice constraints |
+| Persona Service | Applies Dana/Arthur voice constraints |
 | Safety Governor | Enforces Vehicle Mode and frequency/length limits |
 | Narrative Generation Service | Sends structured prompt to LLM or mock generator |
 | Story QA Rules | Checks length, safety, factual anchors, banned patterns |
@@ -63,7 +63,7 @@ The LLM must not:
 
 MVP personas:
 - Dana: lifestyle, hidden gems, aesthetic, low factual overload
-- Artur: history, architecture, cultural context
+- Arthur: history, architecture, cultural context
 
 The system must support:
 - one active guide at a time

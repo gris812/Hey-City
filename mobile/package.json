@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test:presentation": "tsc -p tsconfig.presentation-test.json && node .presentation-test-dist/test/mapDriveSessionToPresentation.test.js",
+    "test:presentation": "tsc -p tsconfig.presentation-test.json && node .presentation-test-dist/test/appIdentity.test.js && node .presentation-test-dist/test/authErrors.test.js && node .presentation-test-dist/test/localizationPreferences.test.js && node .presentation-test-dist/test/onboardingRouting.test.js && node .presentation-test-dist/test/guidedTourDemo.test.js && node .presentation-test-dist/test/locationSimulation.test.js && node .presentation-test-dist/test/mapDriveSessionToPresentation.test.js && node test/citySignalUiContract.test.cjs",
     "doctor": "npx expo-doctor"
   },
   "dependencies": {

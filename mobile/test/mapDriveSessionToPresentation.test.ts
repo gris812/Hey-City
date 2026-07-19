@@ -11,6 +11,14 @@ function assertTruthy(value: unknown, message: string): void {
   if (!value) throw new Error(message);
 }
 
+function assertDeepEqual(actual: unknown, expected: unknown, message: string): void {
+  const actualJson = JSON.stringify(actual);
+  const expectedJson = JSON.stringify(expected);
+  if (actualJson !== expectedJson) {
+    throw new Error(`${message}: expected ${expectedJson}, got ${actualJson}`);
+  }
+}
+
 const playResult: PingResult = {
   nextAction: 'PLAY',
   poi: {
@@ -50,7 +58,12 @@ const playing = mapDriveSessionToPresentation(playResult, {
   sessionActive: true,
   playbackState: 'idle',
 });
+const playingAgain = mapDriveSessionToPresentation(playResult, {
+  sessionActive: true,
+  playbackState: 'idle',
+});
 
+assertDeepEqual(playingAgain, playing, 'same input maps deterministically');
 assertEqual(playing.discoveryPhase, 'target_active', 'PLAY result activates target phase');
 assertEqual(playing.playbackState, 'playing', 'PLAY result maps to playing');
 assertEqual(playing.presentationMode, 'map', 'current backend contract stays map-first');
@@ -66,6 +79,7 @@ const paused = mapDriveSessionToPresentation(playResult, {
 
 assertEqual(paused.playbackState, 'paused', 'local pause overrides backend PLAY rendering');
 assertEqual(paused.audioProgress, 0.35, 'local audio progress is preserved');
+assertEqual(paused.activeGuideId, 'arthur', 'local pause does not alternate guide');
 
 const holding = mapDriveSessionToPresentation(
   {
@@ -90,5 +104,26 @@ const idle = mapDriveSessionToPresentation(null, {
 assertEqual(idle.discoveryPhase, 'idle', 'inactive session maps to idle');
 assertEqual(idle.playbackState, 'idle', 'inactive session clears playback');
 assertTruthy(!idle.activeTarget, 'inactive session has no active target');
+
+const longTranscript = 'a'.repeat(220);
+const truncated = mapDriveSessionToPresentation(
+  {
+    ...playResult,
+    transcriptText: longTranscript,
+  },
+  {
+    sessionActive: true,
+    playbackState: 'idle',
+  }
+);
+
+assertEqual(truncated.transcriptPreview?.length, 180, 'long transcript is safely truncated');
+assertEqual(
+  truncated.transcriptPreview?.endsWith('...'),
+  true,
+  'truncated transcript includes ellipsis'
+);
+assertEqual(truncated.activeTarget?.id, 'poi_federal_hall', 'mapper copies target id');
+assertEqual(truncated.activeTarget?.name, 'Federal Hall', 'mapper copies target name');
 
 console.log('mapDriveSessionToPresentation tests passed');

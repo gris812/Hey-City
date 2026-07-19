@@ -1,57 +1,178 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getToken, setToken, clearToken } from '../api/client';
+import * as SecureStore from 'expo-secure-store';
+import {
+  getToken,
+  setToken,
+  clearToken,
+  setAuthInvalidationHandler,
+} from '../api/client';
+import {
+  AppIdentityState,
+  createGuestId,
+  identityFromStoredToken,
+} from './appIdentity';
+import {
+  getSystemLocale,
+  type GuestPreferences,
+} from '../localization/locales';
+import {
+  createInitialGuestPreferences,
+  sanitizeGuestPreferences,
+} from '../localization/preferences';
 
 type AuthContextType = {
+  identity: AppIdentityState;
+  preferences: GuestPreferences;
   token: string | null;
   loading: boolean;
+  isAuthenticated: boolean;
   login: (token: string) => Promise<void>;
   logout: () => Promise<void>;
+  updatePreferences: (patch: Partial<GuestPreferences>) => Promise<void>;
+  completeOnboarding: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
+const GUEST_ID_KEY = 'guest_id';
+const APP_LANGUAGE_KEY = 'pref_app_language';
+const GUIDE_LANGUAGE_KEY = 'pref_guide_language';
+const PREFERRED_GUIDE_KEY = 'pref_guide_id';
+const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
+const SHOW_ONBOARDING_AT_LAUNCH_KEY = 'show_onboarding_at_launch';
 
-// ✅ флаг для отключения авторизации
-const AUTH_DISABLED = process.env.EXPO_PUBLIC_AUTH_DISABLED === 'true';
+async function getOrCreateGuestId(): Promise<string> {
+  const storedGuestId = await SecureStore.getItemAsync(GUEST_ID_KEY);
+  if (storedGuestId) return storedGuestId;
+
+  const guestId = createGuestId();
+  await SecureStore.setItemAsync(GUEST_ID_KEY, guestId);
+  return guestId;
+}
+
+async function readPreferences(): Promise<GuestPreferences> {
+  const systemLocale = getSystemLocale();
+  const [appLanguage, guideLanguage, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch] =
+    await Promise.all([
+      SecureStore.getItemAsync(APP_LANGUAGE_KEY),
+      SecureStore.getItemAsync(GUIDE_LANGUAGE_KEY),
+      SecureStore.getItemAsync(PREFERRED_GUIDE_KEY),
+      SecureStore.getItemAsync(ONBOARDING_COMPLETED_KEY),
+      SecureStore.getItemAsync(SHOW_ONBOARDING_AT_LAUNCH_KEY),
+    ]);
+
+  const hasStoredPreferences =
+    appLanguage !== null ||
+    guideLanguage !== null ||
+    preferredGuideId !== null ||
+    onboardingCompleted !== null ||
+    showOnboardingAtLaunch !== null;
+
+  if (!hasStoredPreferences) {
+    const initial = createInitialGuestPreferences(systemLocale);
+    await persistPreferences(initial);
+    return initial;
+  }
+
+  return sanitizeGuestPreferences(
+    {
+      appLanguage,
+      guideLanguage,
+      preferredGuideId,
+      onboardingCompleted: onboardingCompleted === 'true',
+      showOnboardingAtLaunch:
+        showOnboardingAtLaunch === null ? null : showOnboardingAtLaunch === 'true',
+    },
+    systemLocale
+  );
+}
+
+async function persistPreferences(preferences: GuestPreferences): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(APP_LANGUAGE_KEY, preferences.appLanguage),
+    SecureStore.setItemAsync(GUIDE_LANGUAGE_KEY, preferences.guideLanguage),
+    SecureStore.setItemAsync(PREFERRED_GUIDE_KEY, preferences.preferredGuideId),
+    SecureStore.setItemAsync(
+      ONBOARDING_COMPLETED_KEY,
+      preferences.onboardingCompleted ? 'true' : 'false'
+    ),
+    SecureStore.setItemAsync(
+      SHOW_ONBOARDING_AT_LAUNCH_KEY,
+      preferences.showOnboardingAtLaunch ? 'true' : 'false'
+    ),
+  ]);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // ✅ если auth отключен — сразу считаем, что токен есть
-  const [token, setTokenState] = useState<string | null>(
-    AUTH_DISABLED || __DEV__ ? 'dev-token' : null
+  const [identity, setIdentity] = useState<AppIdentityState>({ status: 'loading' });
+  const [preferences, setPreferences] = useState<GuestPreferences>(
+    createInitialGuestPreferences(getSystemLocale())
   );
-  const [loading, setLoading] = useState(!(AUTH_DISABLED || __DEV__));
 
   useEffect(() => {
-    // ✅ в bypass режиме вообще не читаем storage и не делаем лишнего
-    if (AUTH_DISABLED || __DEV__) return;
+    let mounted = true;
 
-    getToken().then((t) => {
-      setTokenState(t);
-      setLoading(false);
+    const becomeGuest = async () => {
+      const guestId = await getOrCreateGuestId();
+      if (mounted) setIdentity({ status: 'guest', guestId });
+    };
+
+    setAuthInvalidationHandler(async () => {
+      await becomeGuest();
     });
+
+    Promise.all([getToken(), getOrCreateGuestId(), readPreferences()]).then(([t, guestId, prefs]) => {
+      if (!mounted) return;
+      setPreferences(prefs);
+      setIdentity(identityFromStoredToken(t, guestId));
+    });
+
+    return () => {
+      mounted = false;
+      setAuthInvalidationHandler(null);
+    };
   }, []);
 
   const login = async (t: string) => {
-    // ✅ в bypass режиме можно просто установить токен в стейт
-    if (AUTH_DISABLED || __DEV__) {
-      setTokenState(t || 'dev-token');
-      return;
-    }
     await setToken(t);
-    setTokenState(t);
+    setIdentity({ status: 'authenticated', token: t });
   };
 
   const logout = async () => {
-    // ✅ в bypass режиме не разлогиниваем, чтобы не вернуться на LoginScreen
-    if (AUTH_DISABLED || __DEV__) {
-      setTokenState('dev-token');
-      return;
-    }
     await clearToken();
-    setTokenState(null);
+    const guestId = await getOrCreateGuestId();
+    setIdentity({ status: 'guest', guestId });
   };
 
+  const updatePreferences = async (patch: Partial<GuestPreferences>) => {
+    setPreferences((current) => {
+      const next = { ...current, ...patch };
+      void persistPreferences(next);
+      return next;
+    });
+  };
+
+  const completeOnboarding = async () => {
+    await updatePreferences({ onboardingCompleted: true });
+  };
+
+  const token = identity.status === 'authenticated' ? identity.token : null;
+  const loading = identity.status === 'loading';
+  const isAuthenticated = identity.status === 'authenticated';
+
   return (
-    <AuthContext.Provider value={{ token, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        identity,
+        preferences,
+        token,
+        loading,
+        isAuthenticated,
+        login,
+        logout,
+        updatePreferences,
+        completeOnboarding,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -15,6 +15,14 @@
     "noEmit": false
   },
   "include": [
+    "src/context/appIdentity.ts",
+    "src/localization/preferences.ts",
+    "src/localization/translations.ts",
+    "src/location/types.ts",
+    "src/demo/guidedTour/**/*.ts",
+    "src/demo/tours/**/*.ts",
+    "src/dev/locationSimulation/fixtures.ts",
+    "src/dev/locationSimulation/SimulatedLocationSource.ts",
     "src/api/drive.ts",
     "src/presentation/**/*.ts",
     "test/**/*.ts",

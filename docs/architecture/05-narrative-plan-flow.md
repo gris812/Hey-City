@@ -48,7 +48,7 @@ type NarrativePlan = {
   planId: string;
   sessionId: string;
   poiId: string;
-  guideId: "dana" | "artur";
+  guideId: "dana" | "arthur";
   mode: "walking" | "vehicle" | "explore";
 
   language: string;
@@ -98,7 +98,7 @@ Before LLM integration, `NarrativePlan` should be convertible into deterministic
 Example:
 
 ```text
-[Artur] Federal Hall is just ahead. This site matters because it connects directly to the earliest days of American government. In Vehicle Mode, keep this short: one strong fact, one piece of context, and a clean ending.
+[Arthur] Federal Hall is just ahead. This site matters because it connects directly to the earliest days of American government. In Vehicle Mode, keep this short: one strong fact, one piece of context, and a clean ending.
 ```
 
 ## QA checks

@@ -1,14 +1,19 @@
 export const colors = {
-  background: '#F8F5EE',
-  foreground: '#1C1C1E',
-  surface: '#FFFDF8',
-  surfaceMuted: '#F1ECE3',
-  border: '#DED7CB',
-  textMuted: '#77736D',
+  background: '#F8F6F2',
+  foreground: '#1F1F1F',
+  surface: '#FFFFFF',
+  surfaceMuted: '#F3F0EA',
+  border: '#DADADA',
+  textMuted: '#6E6E73',
+  primaryOrange: '#FF6B2C',
+  primaryOrangePressed: '#E95A20',
+  primaryOrangeLight: '#FFF1E8',
+  locationBlue: '#2F80ED',
+  routeCompleted: '#B8B8B8',
   dana: '#D6C3A3',
   arthur: '#6B8CA3',
-  warning: '#B87926',
-  danger: '#B5413C',
+  warning: '#C6922D',
+  danger: '#EB5757',
 } as const;
 
 export const spacing = {
@@ -29,12 +34,12 @@ export const radius = {
 
 export const typography = {
   title: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: '700',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '600',
   },
   body: {
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 22,
     fontWeight: '400',
   },

@@ -12,7 +12,7 @@ The user opens Hey City, starts walking or driving, and the app safely tells rel
 
 ```mermaid
 flowchart TD
-    A[Open Hey City] --> B[Choose or keep guide: Dana / Artur]
+    A[Open Hey City] --> B[Choose or keep guide: Dana / Arthur]
     B --> C[Grant location permission]
     C --> D[Start walk or drive session]
 
@@ -53,10 +53,10 @@ flowchart TD
 
 MVP guides:
 - Dana — curated city insider, lifestyle, hidden gems, aesthetic experiences
-- Artur — charming historian, history, architecture, context
+- Arthur — charming historian, history, architecture, context
 
 Implementation note:
-- docs and code should use `Artur` unless a final naming correction to `Arthur` is explicitly made
+- docs and code should use `Arthur` unless a final naming correction to `Arthur` is explicitly made
 - persona system must remain extensible
 - do not hardcode business logic to only two guides
 

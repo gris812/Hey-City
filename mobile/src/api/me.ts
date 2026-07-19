@@ -27,6 +27,12 @@ export interface HistoryItem {
   timestamp: string;
   theme?: string;
   style?: string;
+  tourId?: string;
+  visitedTargetIds?: string[];
+  completedAt?: string;
+  guideId?: 'dana' | 'arthur';
+  guideLanguage?: 'en' | 'ru';
+  completionStatus?: 'completed' | 'partial' | 'stopped';
 }
 
 export async function getProfile(): Promise<Profile> {

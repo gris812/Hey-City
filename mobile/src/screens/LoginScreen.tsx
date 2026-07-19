@@ -10,15 +10,19 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { sendOtp, verifyOtp } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
+import { useAppTranslation } from '../localization';
 
 export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, preferences } = useAuth();
+  const { t } = useAppTranslation();
+  const navigation = useNavigation();
 
   const handleSendOtp = async () => {
     const e = email.trim().toLowerCase();
@@ -28,7 +32,7 @@ export function LoginScreen() {
       await sendOtp(e);
       setStep('code');
     } catch (err) {
-      Alert.alert('Ошибка', (err as Error).message);
+      Alert.alert(t('common.error'), (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -41,8 +45,9 @@ export function LoginScreen() {
     try {
       const { token } = await verifyOtp(e, code.trim());
       await login(token);
+      navigation.navigate('Main' as never);
     } catch (err) {
-      Alert.alert('Ошибка', (err as Error).message);
+      Alert.alert(t('common.error'), (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -55,7 +60,7 @@ export function LoginScreen() {
     >
       <View style={styles.box}>
         <Text style={styles.title}>Sunshine AI Guide</Text>
-        <Text style={styles.subtitle}>Войдите по email</Text>
+        <Text style={styles.subtitle}>{t('onboarding.signIn')}</Text>
 
         {step === 'email' ? (
           <>
@@ -77,13 +82,13 @@ export function LoginScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Отправить код</Text>
+                <Text style={styles.buttonText}>{t('onboarding.signIn')}</Text>
               )}
             </TouchableOpacity>
           </>
         ) : (
           <>
-            <Text style={styles.hint}>Код отправлен на {email}</Text>
+            <Text style={styles.hint}>{email}</Text>
             <TextInput
               style={styles.input}
               placeholder="Код из письма"
@@ -101,14 +106,22 @@ export function LoginScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Войти</Text>
+                <Text style={styles.buttonText}>{t('settings.signIn')}</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity style={styles.link} onPress={() => setStep('email')}>
-              <Text style={styles.linkText}>Изменить email</Text>
+              <Text style={styles.linkText}>Email</Text>
             </TouchableOpacity>
           </>
         )}
+        <TouchableOpacity
+          style={styles.link}
+          onPress={() =>
+            navigation.navigate((preferences.onboardingCompleted ? 'Main' : 'Onboarding') as never)
+          }
+        >
+          <Text style={styles.linkText}>{t('onboarding.exploreAsGuest')}</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );

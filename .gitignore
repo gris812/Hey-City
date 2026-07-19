@@ -1,6 +1,7 @@
 .DS_Store
 node_modules/
 dist/
+mobile/.presentation-test-dist/
 .expo/
 .env
 .env.*
@@ -8,4 +9,3 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
