@@ -9,6 +9,7 @@ import {
   ScrollView,
   Image,
   Modal,
+  Linking,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +35,13 @@ import {
   mapDriveSessionToPresentation,
   type PlaybackState,
 } from '../presentation';
+import {
+  createExploreHomeViewModel,
+  openTranscriptOverlay,
+  selectLiveForegroundPhase,
+  shouldSyncPreferencesToTour,
+  type LiveOverlay,
+} from '../presentation/liveForeground';
 import { colors, radius, spacing, typography } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -43,6 +51,11 @@ import {
 import { useAppTranslation } from '../localization';
 import type { GuidePreference, SupportedLocale } from '../localization/preferences';
 import { NarrativeOverlay } from '../components/explore/NarrativeOverlay';
+import { ActiveStoryView } from '../components/explore/ActiveStoryView';
+import { ExploreHomeView } from '../components/explore/ExploreHomeView';
+import { GuidedNavigationView } from '../components/explore/GuidedNavigationView';
+import { TourPreferencesSheet } from '../components/explore/TourPreferencesSheet';
+import { TranscriptSheet } from '../components/explore/TranscriptSheet';
 import { tourB, tourBTargets } from '../demo/tours';
 import {
   analyzeLocationEvent,
@@ -154,10 +167,9 @@ export function LiveScreen() {
   const [tourEventIndex, setTourEventIndex] = useState(0);
   const [narrativeRemainingMs, setNarrativeRemainingMs] = useState<number | null>(null);
   const [routeSaveModal, setRouteSaveModal] = useState<'guest' | 'saved' | null>(null);
-  const [tourPreferencesOpen, setTourPreferencesOpen] = useState(false);
+  const [liveOverlay, setLiveOverlay] = useState<LiveOverlay>(null);
   const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hidden Gems', 'Local Life']);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
   const [sharePreviewState, setSharePreviewState] = useState<SharePreviewState>('ready');
   const [exploreNarrativeTargetId, setExploreNarrativeTargetId] = useState<string | null>(null);
@@ -218,6 +230,35 @@ export function LiveScreen() {
     }),
     []
   );
+  const foregroundPhase = selectLiveForegroundPhase({
+    mode,
+    journeyState: tourState.journeyState,
+    narrativeState: tourState.narrativeState,
+    isPaused: tourState.isPaused,
+    driveSessionActive: Boolean(sessionId),
+    driveDiscoveryOn,
+    overlayKind: liveOverlay?.kind ?? null,
+  });
+  const exploreHomeViewModel = createExploreHomeViewModel({
+    areaName: 'Financial District - Nearby',
+    guideId: preferences.preferredGuideId,
+    guideName: t(`guide.${preferences.preferredGuideId}`),
+    guideLanguage: preferences.guideLanguage,
+    ambientCopy: t(`live.walkNaturally.${preferences.preferredGuideId}`),
+  });
+  const guidedTargetMarkers = tourBTargets.map((target) => ({
+    id: target.id,
+    coordinate: target.coordinates,
+    title: target.narratives[activeGuideId][activeGuideLanguage].title,
+    pinColor: tourState.completedTargetIds.includes(target.id)
+      ? '#34C759'
+      : currentTarget?.id === target.id
+        ? colors.warning
+        : '#8E8E93',
+  }));
+  const openTourPreferences = () => setLiveOverlay({ kind: 'tour_preferences' });
+  const openTranscript = () => setLiveOverlay(openTranscriptOverlay(foregroundPhase));
+  const closeForegroundOverlay = () => setLiveOverlay(null);
 
   const startSession = useCallback(async () => {
     setSessionError(null);
@@ -388,7 +429,7 @@ export function LiveScreen() {
 
   useEffect(() => {
     setTourState((current) => {
-      if (current.journeyState !== 'idle' && current.journeyState !== 'completed') {
+      if (!shouldSyncPreferencesToTour(current.journeyState)) {
         return current;
       }
       return {
@@ -459,8 +500,7 @@ export function LiveScreen() {
     setMode('guided_tour');
     setTourEventIndex(0);
     setNarrativeRemainingMs(null);
-    setTourPreferencesOpen(false);
-    setTranscriptOpen(false);
+    setLiveOverlay(null);
     setTourState(startGuidedTour(createInitialGuidedTourState(preferences.preferredGuideId, preferences.guideLanguage)));
   };
 
@@ -526,6 +566,109 @@ export function LiveScreen() {
     setSharePreviewOpen(true);
   };
 
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    const applyTask002SnapshotPhase = (url?: string | null) => {
+      const phase = url?.match(/[?&]task002Phase=([^&]+)/)?.[1];
+      if (!phase) return;
+
+      const decodedPhase = decodeURIComponent(phase);
+      const baseState = createInitialGuidedTourState(preferences.preferredGuideId, preferences.guideLanguage);
+      const firstTarget = tourBTargets[0];
+      const snapshotLocation = {
+        ...firstTarget.coordinates,
+        heading: 24,
+        speedKmh: 4.2,
+        timestampMs: Date.now(),
+      };
+
+      setLiveOverlay(null);
+      setGuideProfileOpen(null);
+      setSharePreviewOpen(false);
+      setRouteSaveModal(null);
+      setExploreNarrativeTargetId(null);
+      setExploreNarrativePaused(false);
+      setTourEventIndex(0);
+      setNarrativeRemainingMs(null);
+
+      if (decodedPhase === 'explore') {
+        setMode('city_explorer');
+        setTourState(baseState);
+        return;
+      }
+
+      if (decodedPhase === 'preferences') {
+        setMode('city_explorer');
+        setTourState(baseState);
+        setLiveOverlay({ kind: 'tour_preferences' });
+        return;
+      }
+
+      if (decodedPhase === 'russian_dense') {
+        void updatePreferences({ guideLanguage: 'ru', preferredGuideId: 'arthur' });
+        setSelectedInterests(['History', 'Architecture', 'Context']);
+        setMode('city_explorer');
+        setTourState(createInitialGuidedTourState('arthur', 'ru'));
+        setLiveOverlay({ kind: 'tour_preferences' });
+        return;
+      }
+
+      setMode('guided_tour');
+
+      if (decodedPhase === 'navigating') {
+        setTourEventIndex(tourBLocationEvents.length);
+        setTourState({
+          ...startGuidedTour(baseState),
+          location: {
+            ...tourB.startCoordinate,
+            heading: 24,
+            speedKmh: 4.2,
+            timestampMs: Date.now(),
+          },
+          distanceToCurrentTargetMeters: 440,
+        });
+        return;
+      }
+
+      if (decodedPhase === 'active_story' || decodedPhase === 'story_paused' || decodedPhase === 'transcript' || decodedPhase === 'restored') {
+        setTourState({
+          ...baseState,
+          journeyState: decodedPhase === 'story_paused' ? 'paused' : 'narrating',
+          narrativeState: 'arrival',
+          currentTargetId: firstTarget.id,
+          arrivedTargetIds: [firstTarget.id],
+          location: snapshotLocation,
+          distanceToCurrentTargetMeters: 0,
+          isPaused: decodedPhase === 'story_paused',
+        });
+        setNarrativeRemainingMs(decodedPhase === 'story_paused' ? 7000 : 5000);
+        if (decodedPhase === 'transcript') {
+          setLiveOverlay({ kind: 'transcript', returnPhase: 'guided_story_active' });
+        }
+        return;
+      }
+
+      if (decodedPhase === 'story_complete') {
+        setTourState({
+          ...baseState,
+          journeyState: 'waiting_to_continue',
+          narrativeState: 'completed',
+          currentTargetId: firstTarget.id,
+          arrivedTargetIds: [firstTarget.id],
+          narratedTargetIds: [firstTarget.id],
+          location: snapshotLocation,
+          distanceToCurrentTargetMeters: 0,
+          autoContinueRemainingMs: tourB.continueDelaySec * 1000,
+        });
+      }
+    };
+
+    void Linking.getInitialURL().then(applyTask002SnapshotPhase);
+    const subscription = Linking.addEventListener('url', ({ url }) => applyTask002SnapshotPhase(url));
+    return () => subscription.remove();
+  }, [preferences.preferredGuideId, preferences.guideLanguage, updatePreferences]);
+
   return (
     <>
       <ScrollView
@@ -541,70 +684,29 @@ export function LiveScreen() {
           },
         ]}
       >
-      {mode !== 'city_explorer' && (
-        <>
-          <Text style={styles.screenTitle}>Financial District</Text>
-          <View style={styles.modeRow}>
-            {visibleExplorationModes.map((item) => (
-              <TouchableOpacity
-                key={item}
-                style={[styles.modeChip, mode === item && styles.modeChipActive]}
-                onPress={() => setMode(item)}
-              >
-                <Text style={[styles.modeChipText, mode === item && styles.modeChipTextActive]}>
-                  {item === 'city_explorer' ? 'Explore' : t('tour.guidedTour')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </>
-      )}
-
       {mode === 'city_explorer' && (
-        <View style={[styles.exploreStage, { height: Math.max(640, windowHeight - tabBarHeight - insets.top - 8) }]}>
-          <MapView style={StyleSheet.absoluteFillObject} initialRegion={tourRegion} region={tourRegion}>
-            <Marker
-              coordinate={passiveMapUserCoordinate}
-              title={t('tour.you')}
-              pinColor={colors.dana}
-            />
-            {__DEV__ &&
-              tourBTargets.map((target) => (
-                <Marker
-                  key={target.id}
-                  coordinate={target.coordinates}
-                  title={target.narratives[preferences.preferredGuideId][preferences.guideLanguage].title}
-                  pinColor={exploreNarrativeTargetId === target.id ? colors.warning : '#8E8E93'}
-                  onPress={() => triggerExploreNarrative(target.id)}
-                />
-              ))}
-          </MapView>
-          <View style={styles.exploreTopOverlay}>
-            <Text
-              style={styles.areaChip}
-              numberOfLines={1}
-              maxFontSizeMultiplier={1}
-            >
-              Financial District - Nearby
-            </Text>
-            <View style={styles.modeRowCompact}>
-              {visibleExplorationModes.map((item) => (
-                <TouchableOpacity
-                  key={item}
-                  style={[styles.modeChipCompact, mode === item && styles.modeChipCompactActive]}
-                  onPress={() => setMode(item)}
-                >
-                  <Text
-                    style={[styles.modeChipCompactText, mode === item && styles.modeChipCompactTextActive]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1}
-                  >
-                    {item === 'city_explorer' ? 'Explore' : t('tour.guidedTour')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+        <ExploreHomeView
+          height={Math.max(640, windowHeight - tabBarHeight - insets.top - 8)}
+          region={tourRegion}
+          userCoordinate={passiveMapUserCoordinate}
+          markers={
+            __DEV__
+              ? tourBTargets.map((target) => ({
+                  id: target.id,
+                  coordinate: target.coordinates,
+                  title: target.narratives[preferences.preferredGuideId][preferences.guideLanguage].title,
+                  pinColor: exploreNarrativeTargetId === target.id ? colors.warning : '#8E8E93',
+                  onPress: () => triggerExploreNarrative(target.id),
+                }))
+              : []
+          }
+          modes={visibleExplorationModes}
+          activeMode={mode}
+          onSelectMode={setMode}
+          guideImage={guideImages[preferences.preferredGuideId]}
+          viewModel={exploreHomeViewModel}
+          onChooseGuidedWalk={openTourPreferences}
+        >
           {activeExploreNarrative && exploreNarrativeTarget && (
             <NarrativeOverlay
               title={activeExploreNarrative.title}
@@ -621,52 +723,13 @@ export function LiveScreen() {
                 setLocalPlaybackState('playing');
               }}
               onContinue={closeExploreNarrative}
-              onTranscript={() => setTranscriptOpen(true)}
+              onTranscript={openTranscript}
             />
           )}
-          <View style={styles.exploreGuideCapsule}>
-            <View style={styles.capsuleHeaderRow}>
-              <Image source={guideImages[preferences.preferredGuideId]} style={styles.cityExplorerGuide} resizeMode="cover" />
-              <View style={styles.cityExplorerText}>
-                <Text style={styles.capsuleGuideName} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                  {t(`guide.${preferences.preferredGuideId}`)}
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.capsuleSecondaryButton} onPress={() => setTourPreferencesOpen(true)}>
-                <Text
-                  style={styles.capsuleSecondaryText}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={1}
-                >
-                  Preview Route
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <Text
-              style={styles.contextTitle}
-              numberOfLines={2}
-              maxFontSizeMultiplier={1}
-            >
-              Downtown Manhattan Walk
-            </Text>
-            <Text
-              style={styles.capsuleBody}
-              numberOfLines={2}
-              maxFontSizeMultiplier={1}
-            >
-              {t(`live.walkNaturally.${preferences.preferredGuideId}`)}
-            </Text>
-            <Text style={styles.routeMetaText} numberOfLines={1} maxFontSizeMultiplier={1}>
-              4 stops - 2.3 km - 52 min
-            </Text>
-            <TouchableOpacity style={styles.previewButton} onPress={startTour}>
-              <Text style={styles.previewButtonText} maxFontSizeMultiplier={1}>Start Walk</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        </ExploreHomeView>
       )}
 
-      {mode === 'guided_tour' && tourState.journeyState === 'completed' && (
+      {foregroundPhase === 'guided_tour_complete' && (
         <View style={styles.completionScreen}>
           <View style={styles.completionReward}>
             <Text style={styles.completionRewardIcon}>✓</Text>
@@ -718,132 +781,63 @@ export function LiveScreen() {
         </View>
       )}
 
-      {mode === 'guided_tour' && tourState.journeyState !== 'completed' && (
-        <View style={[styles.mapWrap, { height: guidedMapHeight }]}>
-          <MapView style={StyleSheet.absoluteFillObject} initialRegion={tourRegion} region={tourRegion}>
-            {completedRouteCoordinates.length > 1 && (
-              <Polyline coordinates={completedRouteCoordinates} strokeColor={colors.routeCompleted} strokeWidth={5} />
-            )}
-            {upcomingRouteCoordinates.length > 1 && (
-              <Polyline coordinates={upcomingRouteCoordinates} strokeColor={colors.primaryOrange} strokeWidth={5} />
-            )}
-            {tourBTargets.map((target) => (
-              <Marker
-                key={target.id}
-                coordinate={target.coordinates}
-                title={target.narratives[activeGuideId][activeGuideLanguage].title}
-                pinColor={
-                  tourState.completedTargetIds.includes(target.id)
-                    ? '#34C759'
-                    : currentTarget?.id === target.id
-                      ? colors.warning
-                      : '#8E8E93'
-                }
-              />
-            ))}
-            {tourState.location && (
-              <Marker
-                coordinate={tourState.location}
-                title={t('tour.you')}
-                pinColor={colors.dana}
-              />
-            )}
-          </MapView>
-          {(tourState.journeyState === 'narrating' || tourState.journeyState === 'waiting_to_continue') && activeNarrative && narrativeTarget && (
-            <NarrativeOverlay
-              title={activeNarrative.title}
-              guideName={t(`guide.${activeGuideId}`)}
-              text={activeNarrative.arrivalText}
-              playbackState={tourState.isPaused ? 'paused' : tourState.journeyState === 'waiting_to_continue' ? 'completed' : 'playing'}
-              progress={
-                narrativeRemainingMs === null
-                  ? 1
-                  : 1 - narrativeRemainingMs / Math.max(1, activeNarrative.estimatedDurationSec * 1000)
-              }
-              autoContinueRemainingMs={tourState.autoContinueRemainingMs}
-              onPause={pauseTour}
-              onResume={resumeTour}
-              onContinue={continueTour}
-              onTranscript={() => setTranscriptOpen(true)}
-            />
-          )}
-          <View style={styles.guidedTopOverlay}>
-            <Text style={styles.guidedTopChip}>
-              Next: {currentTargetTitle} - 8 min walk
-            </Text>
-            <Text style={styles.guidedStopChip}>
-              Stop {currentTarget?.sequence ?? 1} of {tourBTargets.length}
-            </Text>
-          </View>
-          <View style={styles.mapInfoOverlay}>
-            <View style={styles.tourHeaderRow}>
-              <Image source={guideImages[activeGuideId]} style={styles.guidedGuideAvatar} resizeMode="cover" />
-              <View style={styles.tourInfoText}>
-                <Text style={styles.currentObjectLabel}>{t(`guide.${activeGuideId}`)}</Text>
-                <Text style={styles.contextTitle}>Walking to {currentTargetTitle}</Text>
-                <Text style={styles.motionLabel}>
-                  Next story starts when you arrive.
-                </Text>
-              </View>
-              <TouchableOpacity
-                accessibilityLabel={tourState.isPaused ? t('tour.resume') : t('tour.pause')}
-                style={styles.compactPauseButton}
-                onPress={tourState.isPaused ? resumeTour : pauseTour}
-              >
-                <Text style={styles.compactPauseText}>
-                  {tourState.isPaused ? t('tour.resumeShort') : 'Ⅱ'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                accessibilityLabel="Open transcript"
-                style={styles.compactPauseButton}
-                onPress={() => setTranscriptOpen(true)}
-              >
-                <Text style={styles.compactPauseText}>☰</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                accessibilityLabel="End Tour"
-                style={styles.compactPauseButton}
-                onPress={confirmStopTour}
-              >
-                <Text style={styles.compactPauseText}>×</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.mapMetrics}>
-              <Text style={styles.motionLabel}>
-                {t('tour.state')}: {t(`journey.${tourState.journeyState}`)}
-              </Text>
-              {typeof tourState.distanceToCurrentTargetMeters === 'number' && (
-                <Text style={styles.motionLabel}>
-                  {t('tour.distance')}: {Math.round(tourState.distanceToCurrentTargetMeters)} m
-                </Text>
-              )}
-            </View>
-
-            {approachText && (
-              <View style={styles.approachBox}>
-                <Text style={styles.settingsLabel}>{t('tour.approach')}</Text>
-                <Text style={styles.motionLabel}>{approachText}</Text>
-              </View>
-            )}
-
-            <View style={styles.controlsRow}>
-              <TouchableOpacity style={[styles.controlButton, styles.controlButtonPrimary]} onPress={tourState.isPaused ? resumeTour : pauseTour}>
-                <Text style={[styles.controlButtonText, styles.controlButtonTextPrimary]}>
-                  {tourState.isPaused ? t('tour.resume') : t('tour.pause')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.controlButton} onPress={() => setTranscriptOpen(true)}>
-                <Text style={styles.controlButtonText}>Transcript</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.controlButton} onPress={confirmStopTour}>
-                <Text style={styles.controlButtonText}>End Tour</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+      {(foregroundPhase === 'guided_navigating' || foregroundPhase === 'guided_approaching') && (
+        <GuidedNavigationView
+          height={guidedMapHeight}
+          region={tourRegion}
+          completedRouteCoordinates={completedRouteCoordinates}
+          upcomingRouteCoordinates={upcomingRouteCoordinates}
+          targets={guidedTargetMarkers}
+          userCoordinate={tourState.location}
+          currentTargetTitle={currentTargetTitle}
+          currentTargetSequence={currentTarget?.sequence ?? 1}
+          totalTargets={tourBTargets.length}
+          guideImage={guideImages[activeGuideId]}
+          guideName={t(`guide.${activeGuideId}`)}
+          journeyStateLabel={t(`journey.${tourState.journeyState}`)}
+          distanceMeters={tourState.distanceToCurrentTargetMeters}
+          approachText={approachText}
+          isPaused={tourState.isPaused}
+          onTogglePause={tourState.isPaused ? resumeTour : pauseTour}
+          onTranscript={openTranscript}
+          onEndTour={confirmStopTour}
+        />
       )}
+
+      {(foregroundPhase === 'guided_story_active' ||
+        foregroundPhase === 'guided_story_paused' ||
+        foregroundPhase === 'guided_story_complete') &&
+        activeNarrative &&
+        narrativeTarget && (
+          <ActiveStoryView
+            height={guidedMapHeight}
+            region={tourRegion}
+            completedRouteCoordinates={completedRouteCoordinates}
+            upcomingRouteCoordinates={upcomingRouteCoordinates}
+            targets={guidedTargetMarkers}
+            userCoordinate={tourState.location}
+            title={activeNarrative.title}
+            guideName={t(`guide.${activeGuideId}`)}
+            text={activeNarrative.arrivalText}
+            playbackState={
+              foregroundPhase === 'guided_story_complete'
+                ? 'completed'
+                : foregroundPhase === 'guided_story_paused'
+                  ? 'paused'
+                  : 'playing'
+            }
+            progress={
+              narrativeRemainingMs === null
+                ? 1
+                : 1 - narrativeRemainingMs / Math.max(1, activeNarrative.estimatedDurationSec * 1000)
+            }
+            autoContinueRemainingMs={tourState.autoContinueRemainingMs}
+            onPause={pauseTour}
+            onResume={resumeTour}
+            onContinue={continueTour}
+            onTranscript={openTranscript}
+          />
+        )}
 
       {mode === 'drive_discovery' && (
         <>
@@ -953,91 +947,30 @@ export function LiveScreen() {
 
       </ScrollView>
 
-      <Modal visible={tourPreferencesOpen} animationType="slide">
-        <ScrollView style={styles.modalScreen} contentContainerStyle={[styles.modalContent, { paddingTop: insets.top + spacing.lg }]}>
-          <Text style={styles.modalTitle}>Start your walk</Text>
-          <Text style={styles.modalSubtitle}>Choose your guide, interests and language. Defaults work if you skip this.</Text>
-
-          <View style={styles.preferenceGuideRow}>
-            {(['dana', 'arthur'] as GuidePreference[]).map((guideId) => {
-              const selected = preferences.preferredGuideId === guideId;
-              return (
-                <TouchableOpacity
-                  key={guideId}
-                  style={[styles.preferenceGuideCard, selected && styles.preferenceGuideCardSelected]}
-                  accessibilityLabel={`Select ${t(`guide.${guideId}`)}`}
-                  onPress={() => void selectGuide(guideId)}
-                >
-                  <TouchableOpacity
-                    accessibilityLabel={`Open ${t(`guide.${guideId}`)} profile`}
-                    onPress={() => setGuideProfileOpen(guideId)}
-                  >
-                    <Image source={guideImages[guideId]} style={styles.preferenceGuideImage} resizeMode="cover" />
-                  </TouchableOpacity>
-                  <Text style={styles.preferenceGuideName}>{t(`guide.${guideId}`)}</Text>
-                  <Text style={styles.preferenceGuideRole}>{guideProfiles[guideId].role}</Text>
-                  {selected && <Text style={styles.preferenceCheck}>✓</Text>}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={styles.sectionHeading}>Interests - choose up to 3</Text>
-          <View style={styles.chipRow}>
-            {interestOptions.map((interest) => {
-              const selected = selectedInterests.includes(interest);
-              return (
-                <TouchableOpacity
-                  key={interest}
-                  style={[styles.chip, selected && styles.chipActive]}
-                  accessibilityLabel={`${selected ? 'Remove' : 'Select'} ${interest}`}
-                  onPress={() => toggleInterest(interest)}
-                >
-                  <Text style={[styles.chipText, selected && styles.chipTextActive]}>{interest}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {!selectedInterests.length && (
-            <Text style={styles.preferenceHint}>
-              No interests selected. We will use {t(`guide.${preferences.preferredGuideId}`)}'s recommended mix.
-            </Text>
-          )}
-
-          <Text style={styles.sectionHeading}>Language</Text>
-          <View style={styles.languageRow}>
-            {(['en', 'ru'] as SupportedLocale[]).map((locale) => (
-              <TouchableOpacity
-                key={locale}
-                style={[styles.languageButton, preferences.guideLanguage === locale && styles.languageButtonActive]}
-                accessibilityLabel={`Select ${t(`language.${locale}`)}`}
-                onPress={() => void selectLanguage(locale)}
-              >
-                <Text style={[styles.languageButtonText, preferences.guideLanguage === locale && styles.languageButtonTextActive]}>
-                  {t(`language.${locale}`)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.routeSummaryCard}>
-            <Text style={styles.routeSummaryTitle}>{tourB.title[preferences.guideLanguage]}</Text>
-            <Text style={styles.routeSummaryMeta}>4 stops - 2.3 km - 52 min - {t(`guide.${preferences.preferredGuideId}`)}</Text>
-          </View>
-          <TouchableOpacity style={[styles.completionButton, styles.completionButtonPrimary]} onPress={startTour}>
-            <Text style={styles.completionButtonPrimaryText}>Start Walk</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.modalPlainButton}
-            onPress={() => {
-              setTourPreferencesOpen(false);
-              navigation.navigate('Settings' as never);
-            }}
-          >
-            <Text style={styles.completionButtonText}>More Settings</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </Modal>
+      <TourPreferencesSheet
+        visible={liveOverlay?.kind === 'tour_preferences'}
+        topInset={insets.top}
+        guideIds={['dana', 'arthur']}
+        selectedGuideId={preferences.preferredGuideId}
+        selectedLanguage={preferences.guideLanguage}
+        selectedInterests={selectedInterests}
+        interestOptions={interestOptions}
+        guideImages={guideImages}
+        guideProfiles={guideProfiles}
+        tourTitle={tourB.title[preferences.guideLanguage]}
+        routeMeta={`4 stops - 2.3 km - 52 min - ${t(`guide.${preferences.preferredGuideId}`)}`}
+        getGuideName={(guideId) => t(`guide.${guideId}`)}
+        getLanguageName={(locale) => t(`language.${locale}`)}
+        onSelectGuide={(guideId) => void selectGuide(guideId)}
+        onOpenGuideProfile={setGuideProfileOpen}
+        onToggleInterest={toggleInterest}
+        onSelectLanguage={(locale) => void selectLanguage(locale)}
+        onStartWalk={startTour}
+        onMoreSettings={() => {
+          closeForegroundOverlay();
+          navigation.navigate('Settings' as never);
+        }}
+      />
 
       <Modal visible={Boolean(guideProfileOpen)} animationType="slide">
         {guideProfileOpen && (
@@ -1080,19 +1013,13 @@ export function LiveScreen() {
         )}
       </Modal>
 
-      <Modal transparent visible={transcriptOpen} animationType="fade">
-        <View style={styles.saveModalBackdrop}>
-          <View style={styles.saveModalCard}>
-            <Text style={styles.saveModalTitle}>Transcript</Text>
-            <Text style={styles.transcriptBody}>
-              {activeNarrative?.arrivalText ?? activeExploreNarrative?.arrivalText ?? 'Transcript will appear when a story starts.'}
-            </Text>
-            <TouchableOpacity style={[styles.completionButton, styles.completionButtonPrimary]} onPress={() => setTranscriptOpen(false)}>
-              <Text style={styles.completionButtonPrimaryText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <TranscriptSheet
+        visible={liveOverlay?.kind === 'transcript'}
+        topInset={insets.top}
+        title={activeNarrative?.title ?? activeExploreNarrative?.title ?? 'Story'}
+        body={activeNarrative?.arrivalText ?? activeExploreNarrative?.arrivalText ?? 'Transcript will appear when a story starts.'}
+        onClose={closeForegroundOverlay}
+      />
 
       <Modal visible={sharePreviewOpen} animationType="slide">
         <ScrollView style={styles.modalScreen} contentContainerStyle={[styles.modalContent, { paddingTop: insets.top + spacing.lg }]}>
