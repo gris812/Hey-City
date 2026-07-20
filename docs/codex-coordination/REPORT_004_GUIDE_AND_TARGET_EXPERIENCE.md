@@ -6,7 +6,7 @@ Status: READY FOR DESIGN AND ARCHITECTURE REVIEW
 
 - Implementation SHA: `2f4243682a0393ff78ac381677f2231e71a1b2c1`
 - Branch: `main`
-- Working tree at report creation: screenshots and report pending commit
+- Working tree at final report commit: clean after push verification
 
 ## B. Audit Summary
 
@@ -160,7 +160,7 @@ Focused commands:
 CI:
 
 - GitHub Actions workflow added: `.github/workflows/validation.yml`
-- Remote workflow result: pending until push
+- Remote workflow result: PASS - `Validation` run `29752580019`, job `mobile-and-server`, completed in 32s
 - Excluded from CI: `expo-doctor`, because it is a local Expo metadata validation and can become flaky in hosted CI. It remains a required local check and passed.
 
 ## G. Screenshot Review
