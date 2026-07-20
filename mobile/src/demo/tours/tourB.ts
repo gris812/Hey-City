@@ -55,8 +55,8 @@ export const tourBTargets: DemoTarget[] = [
     ],
     media: {
       imageAsset: 'trinity-church-demo',
-      attribution: 'Local demo metadata',
-      license: 'Demo use',
+      attribution: 'AI-generated local demo image, 2026-07-20',
+      license: 'Project demo asset',
       altText: { en: 'Trinity Church in Lower Manhattan', ru: 'Trinity Church в Нижнем Манхэттене' },
     },
     route: {
@@ -120,9 +120,8 @@ export const tourBTargets: DemoTarget[] = [
       },
     ],
     media: {
-      imageAsset: 'one-world-trade-center-demo',
-      attribution: 'Local demo metadata',
-      license: 'Demo use',
+      attribution: 'No local demo image available; fallback card is intentional',
+      license: 'Not applicable',
       altText: { en: 'One World Trade Center tower', ru: 'Башня One World Trade Center' },
     },
     route: {
@@ -185,9 +184,8 @@ export const tourBTargets: DemoTarget[] = [
       },
     ],
     media: {
-      imageAsset: '911-memorial-demo',
-      attribution: 'Local demo metadata',
-      license: 'Demo use',
+      attribution: 'No local demo image available; fallback card is intentional',
+      license: 'Not applicable',
       altText: { en: '9/11 Memorial reflecting pool', ru: 'Мемориальный бассейн 11 сентября' },
     },
     route: {
@@ -251,9 +249,8 @@ export const tourBTargets: DemoTarget[] = [
       },
     ],
     media: {
-      imageAsset: 'battery-park-city-marina-demo',
-      attribution: 'Local demo metadata',
-      license: 'Demo use',
+      attribution: 'No local demo image available; fallback card is intentional',
+      license: 'Not applicable',
       altText: { en: 'Battery Park City waterfront and marina', ru: 'Набережная и марина Battery Park City' },
     },
     route: {

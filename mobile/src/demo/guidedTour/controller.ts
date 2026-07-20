@@ -7,6 +7,8 @@ import type { JourneyState } from './modes';
 
 export type NarrativeState = 'hidden' | 'approach' | 'arrival' | 'paused' | 'completed';
 
+export const arrivalAutoplayDelayMs = 1800;
+
 export type GuidedTourState = {
   tourId: string;
   journeyState: JourneyState;
@@ -112,10 +114,19 @@ export function analyzeLocationEvent(
 }
 
 export function beginNarrative(state: GuidedTourState): GuidedTourState {
-  if (state.journeyState !== 'arrived') return state;
+  if (state.journeyState !== 'arrived' && state.journeyState !== 'at_target') return state;
   return {
     ...state,
     journeyState: 'narrating',
+    narrativeState: 'arrival',
+  };
+}
+
+export function prepareAtTarget(state: GuidedTourState): GuidedTourState {
+  if (state.journeyState !== 'arrived') return state;
+  return {
+    ...state,
+    journeyState: 'at_target',
     narrativeState: 'arrival',
   };
 }
@@ -180,7 +191,9 @@ export function resumeGuidedTour(state: GuidedTourState): GuidedTourState {
     ...state,
     isPaused: false,
     journeyState:
-      state.narrativeState === 'arrival'
+      state.journeyState === 'at_target'
+        ? 'at_target'
+        : state.narrativeState === 'arrival'
         ? 'narrating'
         : state.narrativeState === 'completed'
           ? 'waiting_to_continue'

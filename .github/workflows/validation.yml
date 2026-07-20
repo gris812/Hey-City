@@ -1,0 +1,46 @@
+name: Validation
+
+on:
+  push:
+    paths:
+      - 'mobile/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/validation.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/validation.yml'
+
+jobs:
+  mobile-and-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Mobile typecheck
+        run: npm run typecheck --workspace mobile
+
+      - name: Mobile presentation tests
+        run: npm run test:presentation --workspace mobile
+
+      - name: Server tests
+        run: npm run test --workspace server

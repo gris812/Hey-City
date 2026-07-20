@@ -28,14 +28,18 @@ import {
 import { colors, radius, spacing, typography } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useAppTranslation } from '../localization';
+import type { TranslationKey } from '../localization/translations';
 import type { GuidePreference, SupportedLocale } from '../localization/preferences';
 import { NarrativeOverlay } from '../components/explore/NarrativeOverlay';
+import { ApproachingTargetView } from '../components/explore/ApproachingTargetView';
 import { ActiveStoryView } from '../components/explore/ActiveStoryView';
+import { AtTargetView } from '../components/explore/AtTargetView';
 import { ExploreHomeView } from '../components/explore/ExploreHomeView';
+import { GuideQuickPreviewSheet } from '../components/explore/GuideQuickPreviewSheet';
 import { GuidedNavigationView } from '../components/explore/GuidedNavigationView';
 import { TourPreferencesSheet } from '../components/explore/TourPreferencesSheet';
 import { TranscriptSheet } from '../components/explore/TranscriptSheet';
-import { tourB, tourBTargets } from '../demo/tours';
+import { resolveTargetMedia, tourB, tourBTargets } from '../demo/tours';
 import {
   createInitialGuidedTourState,
   defaultExplorationMode,
@@ -77,24 +81,28 @@ const guideSelectionImages = {
   arthur: require('../../assets/Guides/ArturSelection.png'),
 } as const;
 
+const targetImageSources = {
+  'trinity-church-demo': require('../../assets/Places/trinity-church-demo.png'),
+} as const;
+
 const guideProfiles = {
   dana: {
-    role: 'Urban Companion',
-    description: {
-      en: 'Warm, curious, conversational. Dana helps you notice hidden corners and local city details.',
-      ru: 'Тёплая, любопытная, живая. Dana помогает замечать скрытые детали города.',
-    },
+    roleKey: 'guide.danaRole',
+    quickCopyKey: 'guide.danaQuickCopy',
+    fullCopyKey: 'guide.danaFullCopy',
     interests: ['Hidden Gems', 'Local Life', 'Atmosphere'],
+    interestKeys: ['guide.interest.hiddenGems', 'guide.interest.localLife', 'guide.interest.atmosphere'],
     sample: 'Look up - this corner is easy to miss.',
+    chooseKey: 'guide.chooseDana',
   },
   arthur: {
-    role: 'Historian',
-    description: {
-      en: 'Analytical, architectural, precise. Arthur brings city history to life with context and detail.',
-      ru: 'Структурный, точный, внимательный. Arthur объясняет город через историю и архитектуру.',
-    },
+    roleKey: 'guide.arthurRole',
+    quickCopyKey: 'guide.arthurQuickCopy',
+    fullCopyKey: 'guide.arthurFullCopy',
     interests: ['History', 'Architecture', 'Context'],
+    interestKeys: ['guide.interest.history', 'guide.interest.architecture', 'guide.interest.context'],
     sample: 'This building connects finance and civic history.',
+    chooseKey: 'guide.chooseArthur',
   },
 } as const;
 
@@ -134,6 +142,7 @@ export function LiveScreen() {
     mode,
     preferredGuideId: preferences.preferredGuideId,
     guideLanguage: preferences.guideLanguage,
+    autoplay: drive.autoplay,
   });
   const exploreNarrative = useExploreNarrative({
     mode,
@@ -178,9 +187,11 @@ export function LiveScreen() {
     upcomingRouteCoordinates,
     guidedTargetMarkers,
     narrativeRemainingMs,
+    arrivalDelayRemainingMs,
     startTour: startGuidedTourDemo,
     stopTour,
     continueTour,
+    startStory,
     pauseTour,
     resumeTour,
     applySnapshotState,
@@ -213,7 +224,40 @@ export function LiveScreen() {
     guideLanguage: preferences.guideLanguage,
     ambientCopy: t(`live.walkNaturally.${preferences.preferredGuideId}`),
   });
+  const getLocalizedGuideProfile = (guideId: GuidePreference) => {
+    const profile = guideProfiles[guideId];
+    return {
+      role: t(profile.roleKey as TranslationKey),
+      quickCopy: t(profile.quickCopyKey as TranslationKey),
+      fullCopy: t(profile.fullCopyKey as TranslationKey),
+      interests: profile.interestKeys.map((key) => t(key as TranslationKey)),
+      sample: profile.sample,
+      chooseLabel: t(profile.chooseKey as TranslationKey),
+    };
+  };
+  const selectedQuickPreviewGuideId =
+    liveOverlay?.kind === 'guide_quick_preview' ? liveOverlay.guideId : null;
+  const selectedQuickPreviewProfile = selectedQuickPreviewGuideId
+    ? getLocalizedGuideProfile(selectedQuickPreviewGuideId)
+    : null;
+  const stopProgressLabel = t('tour.stopProgress')
+    .replace('{current}', String(currentTarget?.sequence ?? narrativeTarget?.sequence ?? 1))
+    .replace('{total}', String(tourBTargets.length));
+  const distanceLabel =
+    typeof tourState.distanceToCurrentTargetMeters === 'number'
+      ? tourState.distanceToCurrentTargetMeters <= 95
+        ? t('tour.aboutOneMinAway')
+        : `${Math.round(tourState.distanceToCurrentTargetMeters)} m`
+      : undefined;
+  const targetForArrival = narrativeTarget ?? currentTarget;
+  const targetCategoryLabel = targetForArrival
+    ? t(`tour.category.${targetForArrival.targetType}` as TranslationKey)
+    : '';
+  const targetMedia = targetForArrival
+    ? resolveTargetMedia(targetForArrival, activeGuideLanguage, false, targetImageSources)
+    : {};
   const openTourPreferences = () => setLiveOverlay({ kind: 'tour_preferences' });
+  const openGuideQuickPreview = (guideId: GuidePreference) => setLiveOverlay({ kind: 'guide_quick_preview', guideId });
   const openTranscript = () => setLiveOverlay(openTranscriptOverlay(foregroundPhase));
   const closeForegroundOverlay = () => setLiveOverlay(null);
 
@@ -232,6 +276,10 @@ export function LiveScreen() {
   const selectGuide = async (guideId: GuidePreference) => {
     await updatePreferences({ preferredGuideId: guideId });
     setSelectedInterests([...guideProfiles[guideId].interests.slice(0, 2)]);
+  };
+  const chooseGuideFromPreview = async (guideId: GuidePreference) => {
+    await selectGuide(guideId);
+    setLiveOverlay({ kind: 'tour_preferences' });
   };
   const selectLanguage = async (guideLanguage: SupportedLocale) => {
     await updatePreferences({ guideLanguage });
@@ -289,6 +337,33 @@ export function LiveScreen() {
         return;
       }
 
+      if (decodedPhase === 'preferences_arthur') {
+        void updatePreferences({ preferredGuideId: 'arthur' });
+        setSelectedInterests(['History', 'Architecture']);
+        setMode('city_explorer');
+        applySnapshotState(createInitialGuidedTourState('arthur', preferences.guideLanguage), null);
+        setLiveOverlay({ kind: 'tour_preferences' });
+        return;
+      }
+
+      if (decodedPhase === 'quick_dana' || decodedPhase === 'quick_arthur') {
+        const guideId = decodedPhase === 'quick_arthur' ? 'arthur' : 'dana';
+        void updatePreferences({ preferredGuideId: guideId });
+        setMode('city_explorer');
+        applySnapshotState(createInitialGuidedTourState(guideId, preferences.guideLanguage), null);
+        setLiveOverlay({ kind: 'guide_quick_preview', guideId });
+        return;
+      }
+
+      if (decodedPhase === 'profile_dana' || decodedPhase === 'profile_arthur') {
+        const guideId = decodedPhase === 'profile_arthur' ? 'arthur' : 'dana';
+        void updatePreferences({ preferredGuideId: guideId });
+        setMode('city_explorer');
+        applySnapshotState(createInitialGuidedTourState(guideId, preferences.guideLanguage), null);
+        setGuideProfileOpen(guideId);
+        return;
+      }
+
       if (decodedPhase === 'russian_dense') {
         void updatePreferences({ guideLanguage: 'ru', preferredGuideId: 'arthur' });
         setSelectedInterests(['History', 'Architecture', 'Context']);
@@ -320,6 +395,54 @@ export function LiveScreen() {
           },
           null,
           tourBLocationEvents.length
+        );
+        return;
+      }
+
+      if (decodedPhase === 'approaching' || decodedPhase === 'russian_approaching') {
+        const guideId = decodedPhase === 'russian_approaching' ? 'arthur' : preferences.preferredGuideId;
+        const guideLanguage = decodedPhase === 'russian_approaching' ? 'ru' : preferences.guideLanguage;
+        if (decodedPhase === 'russian_approaching') {
+          void updatePreferences({ appLanguage: 'ru', guideLanguage, preferredGuideId: guideId });
+        }
+        applySnapshotState(
+          {
+            ...startGuidedTour(createInitialGuidedTourState(guideId, guideLanguage)),
+            journeyState: 'approaching',
+            narrativeState: 'approach',
+            currentTargetId: firstTarget.id,
+            location: {
+              latitude: firstTarget.coordinates.latitude + 0.00045,
+              longitude: firstTarget.coordinates.longitude,
+              heading: 180,
+              speedKmh: 4.2,
+              timestampMs: Date.now(),
+            },
+            distanceToCurrentTargetMeters: 82,
+          },
+          null,
+          tourBLocationEvents.length
+        );
+        return;
+      }
+
+      if (decodedPhase === 'at_target_image' || decodedPhase === 'at_target_fallback') {
+        const target = decodedPhase === 'at_target_fallback' ? tourBTargets[1] : firstTarget;
+        applySnapshotState(
+          {
+            ...baseState,
+            journeyState: 'at_target',
+            narrativeState: 'arrival',
+            currentTargetIndex: target.sequence - 1,
+            currentTargetId: target.id,
+            arrivedTargetIds: [target.id],
+            location: createSnapshotLocation(target),
+            distanceToCurrentTargetMeters: 0,
+            isPaused: true,
+          },
+          null,
+          tourBLocationEvents.length,
+          null
         );
         return;
       }
@@ -473,7 +596,7 @@ export function LiveScreen() {
         </View>
       )}
 
-      {(foregroundPhase === 'guided_navigating' || foregroundPhase === 'guided_approaching') && (
+      {foregroundPhase === 'guided_navigating' && (
         <GuidedNavigationView
           height={guidedMapHeight}
           region={tourRegion}
@@ -493,6 +616,53 @@ export function LiveScreen() {
           onTogglePause={tourState.isPaused ? resumeTour : pauseTour}
           onTranscript={openTranscript}
           onEndTour={confirmStopTour}
+        />
+      )}
+
+      {foregroundPhase === 'guided_approaching' && (
+        <ApproachingTargetView
+          height={guidedMapHeight}
+          region={tourRegion}
+          completedRouteCoordinates={completedRouteCoordinates}
+          upcomingRouteCoordinates={upcomingRouteCoordinates}
+          targets={guidedTargetMarkers}
+          userCoordinate={tourState.location}
+          currentTargetTitle={currentTargetTitle}
+          currentTargetSequence={currentTarget?.sequence ?? 1}
+          totalTargets={tourBTargets.length}
+          guideImage={guideImages[activeGuideId]}
+          guideName={t(`guide.${activeGuideId}`)}
+          titleLabel={t('tour.approachingPrefix')}
+          message={t('tour.storyBeginsArrival')}
+          distanceLabel={distanceLabel}
+          stopProgressLabel={stopProgressLabel}
+          pauseLabel={t('tour.pause')}
+          resumeLabel={t('tour.resume')}
+          endTourLabel={t('tour.finish')}
+          isPaused={tourState.isPaused}
+          onTogglePause={tourState.isPaused ? resumeTour : pauseTour}
+          onEndTour={confirmStopTour}
+        />
+      )}
+
+      {foregroundPhase === 'guided_at_target' && activeNarrative && targetForArrival && (
+        <AtTargetView
+          height={guidedMapHeight}
+          region={tourRegion}
+          completedRouteCoordinates={completedRouteCoordinates}
+          upcomingRouteCoordinates={upcomingRouteCoordinates}
+          targets={guidedTargetMarkers}
+          userCoordinate={tourState.location}
+          targetTitle={activeNarrative.title}
+          categoryLabel={targetCategoryLabel}
+          guideName={t(`guide.${activeGuideId}`)}
+          guideImage={guideImages[activeGuideId]}
+          stopProgressLabel={stopProgressLabel}
+          media={targetMedia}
+          fallbackTitle={t('tour.atTargetFallbackTitle')}
+          fallbackBody={t('tour.atTargetFallbackBody')}
+          startStoryLabel={t('tour.startStory')}
+          onStartStory={startStory}
         />
       )}
 
@@ -648,13 +818,21 @@ export function LiveScreen() {
         selectedInterests={selectedInterests}
         interestOptions={interestOptions}
         guideImages={guideImages}
-        guideProfiles={guideProfiles}
+        guideProfiles={{
+          dana: { role: getLocalizedGuideProfile('dana').role },
+          arthur: { role: getLocalizedGuideProfile('arthur').role },
+        }}
         tourTitle={tourB.title[preferences.guideLanguage]}
         routeMeta={`4 stops - 2.3 km - 52 min - ${t(`guide.${preferences.preferredGuideId}`)}`}
+        startWalkLabel={t('tour.startWalk')}
+        moreSettingsLabel={t('tour.moreSettings')}
+        selectedLabel={t('guide.selected')}
+        chooseGuideLabel={(guideId) => getLocalizedGuideProfile(guideId).chooseLabel}
+        previewGuideLabel={(guideId) => `${t('guide.viewFullProfile')}: ${t(`guide.${guideId}`)}`}
         getGuideName={(guideId) => t(`guide.${guideId}`)}
         getLanguageName={(locale) => t(`language.${locale}`)}
         onSelectGuide={(guideId) => void selectGuide(guideId)}
-        onOpenGuideProfile={setGuideProfileOpen}
+        onOpenGuidePreview={openGuideQuickPreview}
         onToggleInterest={toggleInterest}
         onSelectLanguage={(locale) => void selectLanguage(locale)}
         onStartWalk={startTour}
@@ -664,24 +842,53 @@ export function LiveScreen() {
         }}
       />
 
+      {selectedQuickPreviewGuideId && selectedQuickPreviewProfile && (
+        <GuideQuickPreviewSheet
+          visible={liveOverlay?.kind === 'guide_quick_preview'}
+          topInset={insets.top}
+          guideImage={guideImages[selectedQuickPreviewGuideId]}
+          guideName={t(`guide.${selectedQuickPreviewGuideId}`)}
+          role={selectedQuickPreviewProfile.role}
+          shortCopy={selectedQuickPreviewProfile.quickCopy}
+          suggestedInterests={selectedQuickPreviewProfile.interests}
+          chooseLabel={selectedQuickPreviewProfile.chooseLabel}
+          fullProfileLabel={t('guide.viewFullProfile')}
+          closeLabel={t('guide.quickPreview.close')}
+          selected={preferences.preferredGuideId === selectedQuickPreviewGuideId}
+          selectedLabel={t('guide.selected')}
+          onChoose={() => void chooseGuideFromPreview(selectedQuickPreviewGuideId)}
+          onViewFullProfile={() => {
+            setLiveOverlay(null);
+            setGuideProfileOpen(selectedQuickPreviewGuideId);
+          }}
+          onClose={() => setLiveOverlay({ kind: 'tour_preferences' })}
+        />
+      )}
+
       <Modal visible={Boolean(guideProfileOpen)} animationType="slide">
         {guideProfileOpen && (
           <View style={styles.profileScreen}>
             <Image source={guideSelectionImages[guideProfileOpen]} style={styles.profileImage} resizeMode="cover" />
             <View pointerEvents="none" style={styles.profileLowerShade} />
             <View style={[styles.profileOverlay, { paddingTop: insets.top + spacing.md }]}>
-              <TouchableOpacity style={styles.profileBackButton} onPress={() => setGuideProfileOpen(null)}>
+              <TouchableOpacity
+                style={styles.profileBackButton}
+                onPress={() => {
+                  setGuideProfileOpen(null);
+                  setLiveOverlay({ kind: 'tour_preferences' });
+                }}
+              >
                 <Text style={styles.profileBackText}>‹</Text>
               </TouchableOpacity>
               <View style={styles.profileCopy}>
                 <ScrollView style={styles.profileTextScroll} contentContainerStyle={styles.profileTextContent}>
                   <Text style={styles.profileName}>{t(`guide.${guideProfileOpen}`)}</Text>
-                  <Text style={styles.profileRole}>{guideProfiles[guideProfileOpen].role}</Text>
+                  <Text style={styles.profileRole}>{getLocalizedGuideProfile(guideProfileOpen).role}</Text>
                   <Text style={styles.profileBody}>
-                    {guideProfiles[guideProfileOpen].description[preferences.guideLanguage]}
+                    {getLocalizedGuideProfile(guideProfileOpen).fullCopy}
                   </Text>
                   <View style={styles.profileTagRow}>
-                    {guideProfiles[guideProfileOpen].interests.map((interest) => (
+                    {getLocalizedGuideProfile(guideProfileOpen).interests.map((interest) => (
                       <Text key={interest} style={styles.profileTag}>{interest}</Text>
                     ))}
                   </View>
@@ -694,10 +901,16 @@ export function LiveScreen() {
                     setGuideProfileOpen(null);
                   }}
                 >
-                  <Text style={styles.completionButtonPrimaryText}>Choose {t(`guide.${guideProfileOpen}`)}</Text>
+                  <Text style={styles.completionButtonPrimaryText}>{getLocalizedGuideProfile(guideProfileOpen).chooseLabel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalPlainButton} onPress={() => setGuideProfileOpen(null)}>
-                  <Text style={styles.profileSecondaryText}>Back to Guides</Text>
+                <TouchableOpacity
+                  style={styles.modalPlainButton}
+                  onPress={() => {
+                    setGuideProfileOpen(null);
+                    setLiveOverlay({ kind: 'tour_preferences' });
+                  }}
+                >
+                  <Text style={styles.profileSecondaryText}>{t('guide.backToGuides')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

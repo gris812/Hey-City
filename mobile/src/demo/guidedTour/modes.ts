@@ -8,6 +8,7 @@ export type JourneyState =
   | 'exploring'
   | 'approaching'
   | 'arrived'
+  | 'at_target'
   | 'narrating'
   | 'paused'
   | 'waiting_to_continue'

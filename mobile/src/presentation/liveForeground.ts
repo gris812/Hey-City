@@ -7,6 +7,7 @@ export type LiveForegroundPhase =
   | 'guided_preferences'
   | 'guided_navigating'
   | 'guided_approaching'
+  | 'guided_at_target'
   | 'guided_story_active'
   | 'guided_story_paused'
   | 'guided_story_complete'
@@ -16,6 +17,7 @@ export type LiveForegroundPhase =
 
 export type LiveOverlay =
   | { kind: 'tour_preferences' }
+  | { kind: 'guide_quick_preview'; guideId: GuidePreference }
   | { kind: 'transcript'; returnPhase: LiveForegroundPhase }
   | null;
 
@@ -60,6 +62,10 @@ export function selectLiveForegroundPhase(input: LiveForegroundInput): LiveForeg
 
   if (input.journeyState === 'completed') {
     return 'guided_tour_complete';
+  }
+
+  if (input.journeyState === 'arrived' || input.journeyState === 'at_target') {
+    return 'guided_at_target';
   }
 
   if (input.journeyState === 'waiting_to_continue' || input.narrativeState === 'completed') {

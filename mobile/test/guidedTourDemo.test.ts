@@ -7,6 +7,7 @@ import {
   defaultExplorationMode,
   explorationModes,
   pauseGuidedTour,
+  prepareAtTarget,
   resumeGuidedTour,
   startGuidedTour,
   tickAutoContinue,
@@ -90,8 +91,26 @@ state = analyzeLocationEvent(state, {
 assertEqual(state.arrivedTargetIds.length, arrivedCount, 'arrival triggers once');
 
 state = beginNarrative(state);
-assertEqual(state.journeyState, 'narrating', 'arrival begins narrative');
+assertEqual(state.journeyState, 'narrating', 'arrived can still begin narrative through controller');
 state = completeNarrative(state);
+assertEqual(state.journeyState, 'waiting_to_continue', 'narrative waits to continue');
+
+let arrivalState = createInitialGuidedTourState('arthur', 'en');
+arrivalState = startGuidedTour(arrivalState);
+arrivalState = analyzeLocationEvent(arrivalState, {
+  latitude: firstTarget.coordinates.latitude,
+  longitude: firstTarget.coordinates.longitude,
+  heading: 180,
+  speedKmh: 0,
+  timestampMs: 4,
+});
+assertEqual(arrivalState.journeyState, 'arrived', 'arrival is explicit before at-target');
+arrivalState = prepareAtTarget(arrivalState);
+assertEqual(arrivalState.journeyState, 'at_target', 'arrival prepares explicit at-target state');
+arrivalState = beginNarrative(arrivalState);
+assertEqual(arrivalState.journeyState, 'narrating', 'at-target starts narrative');
+
+state = completeNarrative(arrivalState);
 assertEqual(state.journeyState, 'waiting_to_continue', 'narrative waits to continue');
 const paused = pauseGuidedTour(state);
 assertEqual(paused.isPaused, true, 'pause freezes timers');

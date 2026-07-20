@@ -68,6 +68,26 @@ assert.equal(
 assert.equal(
   selectLiveForegroundPhase({
     ...defaultInput,
+    journeyState: 'approaching',
+    narrativeState: 'approach',
+  }),
+  'guided_approaching',
+  'approaching selects explicit Approaching foreground'
+);
+
+assert.equal(
+  selectLiveForegroundPhase({
+    ...defaultInput,
+    journeyState: 'at_target',
+    narrativeState: 'arrival',
+  }),
+  'guided_at_target',
+  'at-target selects explicit At Target foreground before story'
+);
+
+assert.equal(
+  selectLiveForegroundPhase({
+    ...defaultInput,
     journeyState: 'waiting_to_continue',
     narrativeState: 'completed',
   }),

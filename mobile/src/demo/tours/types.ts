@@ -1,3 +1,4 @@
+import type { ImageSourcePropType } from 'react-native';
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
 import type { JourneyState } from '../guidedTour/modes';
 
@@ -22,6 +23,12 @@ export type DemoFact = {
   verifiedAt: string;
 };
 
+export type TargetMedia = {
+  imageSource?: ImageSourcePropType;
+  imageAlt?: string;
+  attribution?: string;
+};
+
 export type DemoTarget = {
   id: string;
   sequence: number;
@@ -44,7 +51,7 @@ export type DemoTarget = {
   };
   narratives: Record<GuideId, Record<SupportedLocale, DemoNarrative>>;
   facts: DemoFact[];
-  media: {
+  media?: {
     imageAsset?: string;
     attribution?: string;
     license?: string;

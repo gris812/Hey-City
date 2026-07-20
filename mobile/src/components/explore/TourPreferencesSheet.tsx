@@ -28,10 +28,15 @@ export type TourPreferencesSheetProps = {
   guideProfiles: Record<GuidePreference, GuideProfileSummary>;
   tourTitle: string;
   routeMeta: string;
+  startWalkLabel: string;
+  moreSettingsLabel: string;
+  selectedLabel: string;
+  chooseGuideLabel: (guideId: GuidePreference) => string;
+  previewGuideLabel: (guideId: GuidePreference) => string;
   getGuideName: (guideId: GuidePreference) => string;
   getLanguageName: (locale: SupportedLocale) => string;
   onSelectGuide: (guideId: GuidePreference) => void;
-  onOpenGuideProfile: (guideId: GuidePreference) => void;
+  onOpenGuidePreview: (guideId: GuidePreference) => void;
   onToggleInterest: (interest: string) => void;
   onSelectLanguage: (locale: SupportedLocale) => void;
   onStartWalk: () => void;
@@ -50,10 +55,15 @@ export function TourPreferencesSheet({
   guideProfiles,
   tourTitle,
   routeMeta,
+  startWalkLabel,
+  moreSettingsLabel,
+  selectedLabel,
+  chooseGuideLabel,
+  previewGuideLabel,
   getGuideName,
   getLanguageName,
   onSelectGuide,
-  onOpenGuideProfile,
+  onOpenGuidePreview,
   onToggleInterest,
   onSelectLanguage,
   onStartWalk,
@@ -72,18 +82,21 @@ export function TourPreferencesSheet({
               <TouchableOpacity
                 key={guideId}
                 style={[styles.guideCard, selected && styles.guideCardSelected]}
-                accessibilityLabel={`Select ${getGuideName(guideId)}`}
-                onPress={() => onSelectGuide(guideId)}
+                accessibilityLabel={`${previewGuideLabel(guideId)}. ${getGuideName(guideId)}, ${guideProfiles[guideId].role}. ${selected ? selectedLabel : ''}`}
+                accessibilityRole="button"
+                onPress={() => onOpenGuidePreview(guideId)}
               >
-                <TouchableOpacity
-                  accessibilityLabel={`Open ${getGuideName(guideId)} profile`}
-                  onPress={() => onOpenGuideProfile(guideId)}
-                >
-                  <Image source={guideImages[guideId]} style={styles.guideImage} resizeMode="cover" />
-                </TouchableOpacity>
+                <Image source={guideImages[guideId]} style={styles.guideImage} resizeMode="cover" />
                 <Text style={styles.guideName}>{getGuideName(guideId)}</Text>
                 <Text style={styles.guideRole}>{guideProfiles[guideId].role}</Text>
                 {selected && <Text style={styles.check}>✓</Text>}
+                <TouchableOpacity
+                  style={styles.guideChooseButton}
+                  accessibilityLabel={chooseGuideLabel(guideId)}
+                  onPress={() => onSelectGuide(guideId)}
+                >
+                  <Text style={styles.guideChooseText}>{selected ? selectedLabel : chooseGuideLabel(guideId)}</Text>
+                </TouchableOpacity>
               </TouchableOpacity>
             );
           })}
@@ -132,10 +145,10 @@ export function TourPreferencesSheet({
           <Text style={styles.routeSummaryMeta}>{routeMeta}</Text>
         </View>
         <TouchableOpacity style={styles.primaryButton} onPress={onStartWalk}>
-          <Text style={styles.primaryText}>Start Walk</Text>
+          <Text style={styles.primaryText}>{startWalkLabel}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.plainButton} onPress={onMoreSettings}>
-          <Text style={styles.plainButtonText}>More Settings</Text>
+          <Text style={styles.plainButtonText}>{moreSettingsLabel}</Text>
         </TouchableOpacity>
       </ScrollView>
     </Modal>
@@ -167,6 +180,15 @@ const styles = StyleSheet.create({
   guideImage: { width: 76, height: 76, borderRadius: 38, marginBottom: spacing.sm },
   guideName: { ...typography.body, color: colors.foreground, fontWeight: '600' },
   guideRole: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
+  guideChooseButton: {
+    minHeight: 44,
+    marginTop: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+  },
+  guideChooseText: { ...typography.caption, color: colors.foreground, fontWeight: '600' },
   check: {
     position: 'absolute',
     top: spacing.sm,
