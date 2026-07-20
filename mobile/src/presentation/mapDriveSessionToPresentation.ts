@@ -1,4 +1,5 @@
 import type { PingResult } from '../api/drive';
+import { fromBackendGuideId } from '../localization/guideIds';
 import type {
   DiscoveryPhase,
   DiscoveryTargetSummary,
@@ -70,7 +71,7 @@ function getPresentationMode(
 }
 
 function getGuideId(result: PingResult | null): GuideId {
-  return result?.narrativePlan?.guideId?.toLowerCase() === 'arthur' ? 'arthur' : 'dana';
+  return fromBackendGuideId(result?.narrativePlan?.guideId?.toLowerCase());
 }
 
 function getActiveTarget(result: PingResult | null): DiscoveryTargetSummary | undefined {

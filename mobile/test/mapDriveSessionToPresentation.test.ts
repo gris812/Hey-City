@@ -71,6 +71,18 @@ assertEqual(playing.activeGuideId, 'arthur', 'guide id comes from backend plan')
 assertEqual(playing.activeTarget?.name, 'Federal Hall', 'active target comes from backend POI');
 assertEqual(playing.activeTarget?.latitude, 40.707, 'target latitude is preserved');
 
+const legacyGuide = mapDriveSessionToPresentation(
+  {
+    ...playResult,
+    narrativePlan: {
+      ...playResult.narrativePlan!,
+      guideId: 'artur',
+    },
+  },
+  { sessionActive: true, playbackState: 'playing' }
+);
+assertEqual(legacyGuide.activeGuideId, 'arthur', 'legacy backend guide id maps to canonical mobile guide');
+
 const paused = mapDriveSessionToPresentation(playResult, {
   sessionActive: true,
   playbackState: 'paused',

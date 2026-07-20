@@ -33,6 +33,11 @@ assertEqual(persisted.guideLanguage, 'ru', 'persisted guide language remains ind
 assertEqual(persisted.preferredGuideId, 'arthur', 'preferred guide persists');
 assertEqual(persisted.onboardingCompleted, true, 'onboarding completion persists');
 assertEqual(
+  sanitizeGuestPreferences({ preferredGuideId: 'artur' }, 'en').preferredGuideId,
+  'arthur',
+  'legacy artur preference normalizes to canonical arthur'
+);
+assertEqual(
   sanitizeGuestPreferences({ showOnboardingAtLaunch: false }, 'en').showOnboardingAtLaunch,
   false,
   'showOnboardingAtLaunch persists'
@@ -65,5 +70,6 @@ assertEqual(
   'invalid stored guide locale falls back safely'
 );
 assertEqual(normalizeGuidePreference('both'), 'dana', 'both guide mode is not accepted');
+assertEqual(normalizeGuidePreference('arthur'), 'arthur', 'canonical Arthur guide remains arthur');
 
 console.log('localizationPreferences tests passed');

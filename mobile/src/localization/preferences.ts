@@ -1,9 +1,11 @@
+import { normalizeGuideId, type CanonicalGuideId } from './guideIds';
+
 export const supportedLocales = ['en', 'ru'] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 
 const supportedLocaleSet = new Set<string>(supportedLocales);
 
-export type GuidePreference = 'dana' | 'arthur';
+export type GuidePreference = CanonicalGuideId;
 
 export type LanguagePreferences = {
   appLanguage: SupportedLocale;
@@ -32,7 +34,7 @@ export function isSupportedLocale(value: string): value is SupportedLocale {
 }
 
 export function normalizeGuidePreference(value: string | null | undefined): GuidePreference {
-  return value === 'arthur' ? 'arthur' : 'dana';
+  return normalizeGuideId(value);
 }
 
 export function createInitialGuestPreferences(systemLocale: SupportedLocale): GuestPreferences {

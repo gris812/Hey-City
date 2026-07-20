@@ -4,6 +4,7 @@ import type {
   StoryFinishResult,
 } from '@heycity/shared';
 import { apiFetch } from './client';
+import { toDriveBackendVoiceId, type CanonicalGuideId } from '../localization/guideIds';
 
 export type PingResult = DrivePingResult;
 export type { StoryFinishReason, StoryFinishResult };
@@ -14,10 +15,18 @@ export async function startDriveSession(params: {
   lengthSec?: number;
   leadTimeMin?: number;
   voiceId?: string;
+  guideId?: CanonicalGuideId;
   language?: string;
   autoplay?: boolean;
 }): Promise<{ sessionId: string }> {
-  return apiFetch('/drive/session/start', { method: 'POST', body: params });
+  const { guideId, ...body } = params;
+  return apiFetch('/drive/session/start', {
+    method: 'POST',
+    body: {
+      ...body,
+      voiceId: guideId ? toDriveBackendVoiceId(guideId) : body.voiceId,
+    },
+  });
 }
 
 export async function stopDriveSession(sessionId: string): Promise<void> {

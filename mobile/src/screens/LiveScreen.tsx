@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Alert,
   View,
@@ -16,38 +16,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
-import * as Location from 'expo-location';
-import {
-  finishDriveStory,
-  pingDriveSession,
-  PingResult,
-  startDriveSession,
-  stopDriveSession,
-  StoryFinishReason,
-} from '../api/drive';
-import { getProfile } from '../api/me';
-import { config } from '../config';
 import { LiveControls } from '../components/live/LiveControls';
 import { LiveStatusPill } from '../components/live/LiveStatusPill';
 import { StoryPanel } from '../components/live/StoryPanel';
 import {
-  LivePresentationState,
-  mapDriveSessionToPresentation,
-  type PlaybackState,
-} from '../presentation';
-import {
   createExploreHomeViewModel,
   openTranscriptOverlay,
   selectLiveForegroundPhase,
-  shouldSyncPreferencesToTour,
   type LiveOverlay,
 } from '../presentation/liveForeground';
 import { colors, radius, spacing, typography } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import {
-  guestProfileDefaults,
-  shouldLoadProfile,
-} from '../context/appIdentity';
 import { useAppTranslation } from '../localization';
 import type { GuidePreference, SupportedLocale } from '../localization/preferences';
 import { NarrativeOverlay } from '../components/explore/NarrativeOverlay';
@@ -58,23 +37,16 @@ import { TourPreferencesSheet } from '../components/explore/TourPreferencesSheet
 import { TranscriptSheet } from '../components/explore/TranscriptSheet';
 import { tourB, tourBTargets } from '../demo/tours';
 import {
-  analyzeLocationEvent,
-  beginNarrative,
-  completeNarrative,
-  continueToNextTarget,
   createInitialGuidedTourState,
   defaultExplorationMode,
   explorationModes,
-  getCurrentTarget,
-  getNarrativeTarget,
-  pauseGuidedTour,
-  resumeGuidedTour,
   startGuidedTour,
-  tickAutoContinue,
   tourBLocationEvents,
   type ExplorationMode,
-  type GuidedTourState,
 } from '../demo/guidedTour';
+import { useDriveDiscoverySession } from '../features/live/useDriveDiscoverySession';
+import { useExploreNarrative } from '../features/live/useExploreNarrative';
+import { createSnapshotLocation, useGuidedTourDemo } from '../features/live/useGuidedTourDemo';
 
 const THEME_TAGS = [
   'history',
@@ -147,80 +119,75 @@ export function LiveScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { height: windowHeight } = useWindowDimensions();
   const [mode, setMode] = useState<ExplorationMode>(defaultExplorationMode);
-  const [driveDiscoveryOn, setDriveDiscoveryOn] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionError, setSessionError] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [themes, setThemes] = useState<string[]>(['mixed']);
-  const [style, setStyle] = useState('documentary');
-  const [lengthSec, setLengthSec] = useState(90);
-  const [leadTimeMin, setLeadTimeMin] = useState(2);
-  const [autoplay, setAutoplay] = useState(true);
-  const [muted, setMuted] = useState(false);
-  const [lastResult, setLastResult] = useState<PingResult | null>(null);
-  const [playingName, setPlayingName] = useState<string | null>(null);
-  const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
-  const [lastMotion, setLastMotion] = useState<{ speedKmh: number; heading: number } | null>(null);
-  const [tourState, setTourState] = useState<GuidedTourState>(() =>
-    createInitialGuidedTourState(preferences.preferredGuideId, preferences.guideLanguage)
-  );
-  const [tourEventIndex, setTourEventIndex] = useState(0);
-  const [narrativeRemainingMs, setNarrativeRemainingMs] = useState<number | null>(null);
   const [routeSaveModal, setRouteSaveModal] = useState<'guest' | 'saved' | null>(null);
   const [liveOverlay, setLiveOverlay] = useState<LiveOverlay>(null);
   const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hidden Gems', 'Local Life']);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
   const [sharePreviewState, setSharePreviewState] = useState<SharePreviewState>('ready');
-  const [exploreNarrativeTargetId, setExploreNarrativeTargetId] = useState<string | null>(null);
-  const [exploreNarrativePaused, setExploreNarrativePaused] = useState(false);
-  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
-  const lastHeadingRef = useRef(0);
-  const activeGuideId = tourState.guideId;
-  const activeGuideLanguage = tourState.guideLanguage;
-  const defaultPresentation: LivePresentationState = {
-    discoveryPhase: 'exploring',
-    playbackState: 'idle',
-    activeGuideId: preferences.preferredGuideId,
-    presentationMode: 'map',
-    transcriptPreview: t(`live.walkNaturally.${preferences.preferredGuideId}`),
-  };
-  const currentTarget = getCurrentTarget(tourState);
-  const narrativeTarget = getNarrativeTarget(tourState);
-  const exploreNarrativeTarget = tourBTargets.find((target) => target.id === exploreNarrativeTargetId);
-  const activeNarrative =
-    narrativeTarget?.narratives[activeGuideId][activeGuideLanguage];
-  const activeExploreNarrative =
-    exploreNarrativeTarget?.narratives[preferences.preferredGuideId][preferences.guideLanguage];
-  const currentTargetNarrative =
-    currentTarget?.narratives[activeGuideId][activeGuideLanguage];
-  const currentTargetTitle = currentTargetNarrative?.title ?? currentTarget?.name ?? '-';
+  const drive = useDriveDiscoverySession({
+    identity,
+    guideId: preferences.preferredGuideId,
+    guideLanguage: preferences.guideLanguage,
+  });
+  const guided = useGuidedTourDemo({
+    mode,
+    preferredGuideId: preferences.preferredGuideId,
+    guideLanguage: preferences.guideLanguage,
+  });
+  const exploreNarrative = useExploreNarrative({
+    mode,
+    guideId: preferences.preferredGuideId,
+    guideLanguage: preferences.guideLanguage,
+  });
+  const {
+    driveDiscoveryOn,
+    sessionId,
+    sessionError,
+    settingsOpen,
+    setSettingsOpen,
+    themes,
+    style,
+    setStyle,
+    lengthSec,
+    leadTimeMin,
+    autoplay,
+    setAutoplay,
+    muted,
+    setMuted,
+    lastResult,
+    lastMotion,
+    presentation,
+    startSession,
+    stopSession,
+    toggleTheme,
+    finishStory,
+    pausePlayback,
+    resumePlayback,
+  } = drive;
+  const {
+    tourState,
+    activeGuideId,
+    activeGuideLanguage,
+    currentTarget,
+    narrativeTarget,
+    activeNarrative,
+    currentTargetTitle,
+    approachText,
+    completedRouteCoordinates,
+    upcomingRouteCoordinates,
+    guidedTargetMarkers,
+    narrativeRemainingMs,
+    startTour: startGuidedTourDemo,
+    stopTour,
+    continueTour,
+    pauseTour,
+    resumeTour,
+    applySnapshotState,
+  } = guided;
   const visibleExplorationModes = explorationModes.filter((item) => item !== 'drive_discovery');
-  const passiveMapUserCoordinate = exploreNarrativeTarget?.coordinates ?? tourState.location ?? tourB.startCoordinate;
-  const approachText =
-    tourState.narrativeState === 'approach' && activeNarrative?.approachText
-      ? activeNarrative.approachText
-      : null;
+  const passiveMapUserCoordinate = exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
   const guidedMapHeight = Math.max(520, windowHeight - insets.top - insets.bottom - 250);
-  const completedTargetIndex = tourState.completedTargetIds.length
-    ? Math.max(
-        0,
-        tourBTargets.findIndex(
-          (target) => target.id === tourState.completedTargetIds[tourState.completedTargetIds.length - 1]
-        )
-      )
-    : 0;
-  const completedRouteCoordinates = tourState.completedTargetIds.length
-    ? tourBTargets.slice(0, completedTargetIndex + 1).flatMap((target, index) =>
-        index === 0 ? target.route.routeCoordinates : target.route.routeCoordinates.slice(1)
-      )
-    : [tourB.startCoordinate];
-  const upcomingRouteCoordinates = tourBTargets
-    .slice(Math.max(0, tourState.currentTargetIndex))
-    .flatMap((target, index) =>
-      index === 0 ? target.route.routeCoordinates : target.route.routeCoordinates.slice(1)
-    );
   const tourRegion: Region = useMemo(
     () => ({
       latitude: 40.7097,
@@ -246,277 +213,16 @@ export function LiveScreen() {
     guideLanguage: preferences.guideLanguage,
     ambientCopy: t(`live.walkNaturally.${preferences.preferredGuideId}`),
   });
-  const guidedTargetMarkers = tourBTargets.map((target) => ({
-    id: target.id,
-    coordinate: target.coordinates,
-    title: target.narratives[activeGuideId][activeGuideLanguage].title,
-    pinColor: tourState.completedTargetIds.includes(target.id)
-      ? '#34C759'
-      : currentTarget?.id === target.id
-        ? colors.warning
-        : '#8E8E93',
-  }));
   const openTourPreferences = () => setLiveOverlay({ kind: 'tour_preferences' });
   const openTranscript = () => setLiveOverlay(openTranscriptOverlay(foregroundPhase));
   const closeForegroundOverlay = () => setLiveOverlay(null);
 
-  const startSession = useCallback(async () => {
-    setSessionError(null);
-    if (!shouldLoadProfile(identity)) {
-      setSessionId('guest-drive-demo');
-      setDriveDiscoveryOn(true);
-      setLocalPlaybackState('idle');
-      setLastResult(null);
-      setPlayingName(null);
-      return;
-    }
-
-    try {
-      const profile = profileRef.current ?? (await getProfile());
-      profileRef.current = profile;
-      const { sessionId: id } = await startDriveSession({
-        themeTags: themes,
-        narrationStyle: style,
-        lengthSec,
-        leadTimeMin,
-        voiceId: profile.driveDiscovery.voiceId,
-        language: preferences.guideLanguage,
-        autoplay,
-      });
-      setSessionId(id);
-      setDriveDiscoveryOn(true);
-      setLocalPlaybackState('idle');
-    } catch (e) {
-      setSessionError((e as Error).message);
-      console.error(e);
-    }
-  }, [identity, preferences.guideLanguage, themes, style, lengthSec, leadTimeMin, autoplay, t]);
-
-  const stopSession = useCallback(async () => {
-    if (sessionId) {
-      if (shouldLoadProfile(identity)) {
-        try {
-          await stopDriveSession(sessionId);
-        } catch (_) {}
-      }
-      setSessionId(null);
-      setDriveDiscoveryOn(false);
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = null;
-      }
-      setLastResult(null);
-      setPlayingName(null);
-      setLocalPlaybackState('idle');
-      setSessionError(null);
-    }
-  }, [identity, sessionId]);
-
-  useEffect(() => {
-    if (!shouldLoadProfile(identity)) {
-      profileRef.current = null;
-      setThemes(guestProfileDefaults.themeTags);
-      setStyle(guestProfileDefaults.narrationStyle);
-      setAutoplay(guestProfileDefaults.autoplay);
-      return;
-    }
-
-    getProfile().then((p) => {
-      profileRef.current = p;
-      setThemes(p.driveDiscovery.themeTags.length ? p.driveDiscovery.themeTags : ['mixed']);
-      setStyle(p.driveDiscovery.narrationStyle);
-      setLengthSec(p.driveDiscovery.lengthSec);
-      setLeadTimeMin(p.driveDiscovery.leadTimeMin);
-      setAutoplay(p.driveDiscovery.autoplay);
-    });
-  }, [identity]);
-
-  useEffect(() => {
-    if (!sessionId || muted || !shouldLoadProfile(identity)) return;
-
-    const runPing = async () => {
-      try {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const rawHeading = loc.coords.heading;
-        const heading =
-          typeof rawHeading === 'number' && rawHeading >= 0
-            ? rawHeading
-            : lastHeadingRef.current;
-        lastHeadingRef.current = heading;
-
-        const speedMps =
-          typeof loc.coords.speed === 'number' && loc.coords.speed > 0
-            ? loc.coords.speed
-            : 0;
-        const speedKmh = speedMps * 3.6;
-        setLastMotion({ speedKmh, heading });
-
-        const result = await pingDriveSession(
-          sessionId,
-          loc.coords.latitude,
-          loc.coords.longitude,
-          heading,
-          speedKmh,
-          Date.now()
-        );
-        setLastResult(result);
-        if (result.nextAction === 'PLAY' && result.poi) {
-          setPlayingName(result.poi.name);
-          setLocalPlaybackState((current) => (current === 'paused' ? current : 'playing'));
-          if (result.audioUrl) {
-            // TODO: play audio with expo-av
-          }
-        } else if (result.decision?.type !== 'hold' || result.decision.reason !== 'already_listening') {
-          setPlayingName(null);
-          setLocalPlaybackState((current) => (current === 'paused' ? current : 'idle'));
-        }
-      } catch (_) {}
-    };
-
-    runPing();
-    const id = setInterval(runPing, config.pingIntervalSec * 1000);
-    pingIntervalRef.current = id;
-    return () => {
-      clearInterval(id);
-      pingIntervalRef.current = null;
-    };
-  }, [identity, sessionId, muted]);
-
-  const toggleTheme = (t: string) => {
-    setThemes((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
-  };
-
-  const finishStory = async (reason: StoryFinishReason) => {
-    if (!sessionId) return;
-    setSessionError(null);
-    try {
-      const result = await finishDriveStory(sessionId, reason);
-      setPlayingName(null);
-      setLocalPlaybackState(reason === 'paused' ? 'paused' : 'completed');
-      setLastResult({
-        nextAction: 'NONE',
-        decision: {
-          type: 'hold',
-          reason: result.activeStoryWasPlaying ? 'cooldown_active' : 'no_candidate',
-        },
-      });
-    } catch (e) {
-      setSessionError((e as Error).message);
-      console.error(e);
-    }
-  };
-
-  const presentation = mapDriveSessionToPresentation(lastResult, {
-    sessionActive: Boolean(sessionId),
-    playbackState: localPlaybackState,
-  });
-
-  const pausePlayback = () => {
-    if (localPlaybackState === 'playing' || localPlaybackState === 'loading') {
-      setLocalPlaybackState('paused');
-    }
-  };
-
-  const resumePlayback = () => {
-    if (localPlaybackState === 'paused') {
-      setLocalPlaybackState(playingName ? 'playing' : 'idle');
-    }
-  };
-
-  useEffect(() => {
-    setTourState((current) => {
-      if (!shouldSyncPreferencesToTour(current.journeyState)) {
-        return current;
-      }
-      return {
-        ...current,
-        guideId: preferences.preferredGuideId,
-        guideLanguage: preferences.guideLanguage,
-      };
-    });
-  }, [preferences.preferredGuideId, preferences.guideLanguage]);
-
-  useEffect(() => {
-    setExploreNarrativeTargetId(null);
-    setExploreNarrativePaused(false);
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode !== 'guided_tour') return;
-    if (tourState.isPaused) return;
-    if (
-      tourState.journeyState === 'idle' ||
-      tourState.journeyState === 'narrating' ||
-      tourState.journeyState === 'waiting_to_continue' ||
-      tourState.journeyState === 'completed'
-    ) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      const event = tourBLocationEvents[tourEventIndex];
-      if (!event) return;
-      setLastMotion({ speedKmh: event.speedKmh, heading: event.heading });
-      setTourState((current) => {
-        const analyzed = analyzeLocationEvent(current, event);
-        if (analyzed.journeyState === 'arrived') {
-          const target = getCurrentTarget(analyzed);
-          setNarrativeRemainingMs(
-            (target?.narratives[activeGuideId][activeGuideLanguage].estimatedDurationSec ?? 8) *
-              1000
-          );
-          return beginNarrative(analyzed);
-        }
-        return analyzed;
-      });
-      setTourEventIndex((index) => index + 1);
-    }, 700);
-
-    return () => clearTimeout(timer);
-  }, [activeGuideId, activeGuideLanguage, mode, tourEventIndex, tourState]);
-
-  useEffect(() => {
-    if (tourState.journeyState !== 'narrating' || tourState.isPaused || narrativeRemainingMs === null) return;
-    if (narrativeRemainingMs <= 0) {
-      setTourState((current) => completeNarrative(current));
-      setNarrativeRemainingMs(null);
-      return;
-    }
-    const timer = setTimeout(() => setNarrativeRemainingMs((value) => Math.max(0, (value ?? 0) - 1000)), 1000);
-    return () => clearTimeout(timer);
-  }, [narrativeRemainingMs, tourState.isPaused, tourState.journeyState]);
-
-  useEffect(() => {
-    if (tourState.journeyState !== 'waiting_to_continue' || tourState.isPaused) return;
-    const timer = setTimeout(() => setTourState((current) => tickAutoContinue(current, 1000)), 1000);
-    return () => clearTimeout(timer);
-  }, [tourState]);
-
   const startTour = () => {
     setMode('guided_tour');
-    setTourEventIndex(0);
-    setNarrativeRemainingMs(null);
     setLiveOverlay(null);
-    setTourState(startGuidedTour(createInitialGuidedTourState(preferences.preferredGuideId, preferences.guideLanguage)));
+    startGuidedTourDemo();
   };
 
-  const stopTour = () => {
-    setTourState((current) => createInitialGuidedTourState(current.guideId, current.guideLanguage));
-    setTourEventIndex(0);
-    setNarrativeRemainingMs(null);
-  };
-
-  const continueTour = () => {
-    setNarrativeRemainingMs(null);
-    setTourState((current) => continueToNextTarget(completeNarrative(current)));
-  };
-
-  const pauseTour = () => setTourState((current) => pauseGuidedTour(current));
-  const resumeTour = () => setTourState((current) => resumeGuidedTour(current));
   const confirmStopTour = () => {
     Alert.alert('End tour?', 'Your current walk will stop. The route summary remains available after completion.', [
       { text: 'Cancel', style: 'cancel' },
@@ -540,20 +246,6 @@ export function LiveScreen() {
       return [...current, interest];
     });
   };
-  const closeExploreNarrative = () => {
-    setExploreNarrativeTargetId(null);
-    setExploreNarrativePaused(false);
-    setPlayingName(null);
-    setLocalPlaybackState((current) => (current === 'paused' || current === 'playing' ? 'idle' : current));
-  };
-  const triggerExploreNarrative = (targetId: string) => {
-    const target = tourBTargets.find((item) => item.id === targetId);
-    if (!target) return;
-    setExploreNarrativeTargetId(targetId);
-    setExploreNarrativePaused(false);
-    setPlayingName(target.narratives[preferences.preferredGuideId][preferences.guideLanguage].title);
-    setLocalPlaybackState('playing');
-  };
   const saveRoute = () => {
     if (identity.status === 'authenticated') {
       setRouteSaveModal('saved');
@@ -576,31 +268,23 @@ export function LiveScreen() {
       const decodedPhase = decodeURIComponent(phase);
       const baseState = createInitialGuidedTourState(preferences.preferredGuideId, preferences.guideLanguage);
       const firstTarget = tourBTargets[0];
-      const snapshotLocation = {
-        ...firstTarget.coordinates,
-        heading: 24,
-        speedKmh: 4.2,
-        timestampMs: Date.now(),
-      };
+      const snapshotLocation = createSnapshotLocation(firstTarget);
 
       setLiveOverlay(null);
       setGuideProfileOpen(null);
       setSharePreviewOpen(false);
       setRouteSaveModal(null);
-      setExploreNarrativeTargetId(null);
-      setExploreNarrativePaused(false);
-      setTourEventIndex(0);
-      setNarrativeRemainingMs(null);
+      exploreNarrative.reset();
 
       if (decodedPhase === 'explore') {
         setMode('city_explorer');
-        setTourState(baseState);
+        applySnapshotState(baseState, null);
         return;
       }
 
       if (decodedPhase === 'preferences') {
         setMode('city_explorer');
-        setTourState(baseState);
+        applySnapshotState(baseState, null);
         setLiveOverlay({ kind: 'tour_preferences' });
         return;
       }
@@ -609,40 +293,51 @@ export function LiveScreen() {
         void updatePreferences({ guideLanguage: 'ru', preferredGuideId: 'arthur' });
         setSelectedInterests(['History', 'Architecture', 'Context']);
         setMode('city_explorer');
-        setTourState(createInitialGuidedTourState('arthur', 'ru'));
+        applySnapshotState(createInitialGuidedTourState('arthur', 'ru'), null);
         setLiveOverlay({ kind: 'tour_preferences' });
+        return;
+      }
+
+      if (decodedPhase === 'drive_idle') {
+        setMode('drive_discovery');
+        applySnapshotState(baseState, null);
         return;
       }
 
       setMode('guided_tour');
 
       if (decodedPhase === 'navigating') {
-        setTourEventIndex(tourBLocationEvents.length);
-        setTourState({
-          ...startGuidedTour(baseState),
-          location: {
-            ...tourB.startCoordinate,
-            heading: 24,
-            speedKmh: 4.2,
-            timestampMs: Date.now(),
+        applySnapshotState(
+          {
+            ...startGuidedTour(baseState),
+            location: {
+              ...tourB.startCoordinate,
+              heading: 24,
+              speedKmh: 4.2,
+              timestampMs: Date.now(),
+            },
+            distanceToCurrentTargetMeters: 440,
           },
-          distanceToCurrentTargetMeters: 440,
-        });
+          null,
+          tourBLocationEvents.length
+        );
         return;
       }
 
       if (decodedPhase === 'active_story' || decodedPhase === 'story_paused' || decodedPhase === 'transcript' || decodedPhase === 'restored') {
-        setTourState({
-          ...baseState,
-          journeyState: decodedPhase === 'story_paused' ? 'paused' : 'narrating',
-          narrativeState: 'arrival',
-          currentTargetId: firstTarget.id,
-          arrivedTargetIds: [firstTarget.id],
-          location: snapshotLocation,
-          distanceToCurrentTargetMeters: 0,
-          isPaused: decodedPhase === 'story_paused',
-        });
-        setNarrativeRemainingMs(decodedPhase === 'story_paused' ? 7000 : 5000);
+        applySnapshotState(
+          {
+            ...baseState,
+            journeyState: decodedPhase === 'story_paused' ? 'paused' : 'narrating',
+            narrativeState: 'arrival',
+            currentTargetId: firstTarget.id,
+            arrivedTargetIds: [firstTarget.id],
+            location: snapshotLocation,
+            distanceToCurrentTargetMeters: 0,
+            isPaused: decodedPhase === 'story_paused',
+          },
+          decodedPhase === 'story_paused' ? 7000 : 5000
+        );
         if (decodedPhase === 'transcript') {
           setLiveOverlay({ kind: 'transcript', returnPhase: 'guided_story_active' });
         }
@@ -650,17 +345,20 @@ export function LiveScreen() {
       }
 
       if (decodedPhase === 'story_complete') {
-        setTourState({
-          ...baseState,
-          journeyState: 'waiting_to_continue',
-          narrativeState: 'completed',
-          currentTargetId: firstTarget.id,
-          arrivedTargetIds: [firstTarget.id],
-          narratedTargetIds: [firstTarget.id],
-          location: snapshotLocation,
-          distanceToCurrentTargetMeters: 0,
-          autoContinueRemainingMs: tourB.continueDelaySec * 1000,
-        });
+        applySnapshotState(
+          {
+            ...baseState,
+            journeyState: 'waiting_to_continue',
+            narrativeState: 'completed',
+            currentTargetId: firstTarget.id,
+            arrivedTargetIds: [firstTarget.id],
+            narratedTargetIds: [firstTarget.id],
+            location: snapshotLocation,
+            distanceToCurrentTargetMeters: 0,
+            autoContinueRemainingMs: tourB.continueDelaySec * 1000,
+          },
+          null
+        );
       }
     };
 
@@ -695,8 +393,8 @@ export function LiveScreen() {
                   id: target.id,
                   coordinate: target.coordinates,
                   title: target.narratives[preferences.preferredGuideId][preferences.guideLanguage].title,
-                  pinColor: exploreNarrativeTargetId === target.id ? colors.warning : '#8E8E93',
-                  onPress: () => triggerExploreNarrative(target.id),
+                  pinColor: exploreNarrative.activeTargetId === target.id ? colors.warning : '#8E8E93',
+                  onPress: () => exploreNarrative.trigger(target.id),
                 }))
               : []
           }
@@ -707,22 +405,16 @@ export function LiveScreen() {
           viewModel={exploreHomeViewModel}
           onChooseGuidedWalk={openTourPreferences}
         >
-          {activeExploreNarrative && exploreNarrativeTarget && (
+          {exploreNarrative.narrative && exploreNarrative.target && (
             <NarrativeOverlay
-              title={activeExploreNarrative.title}
+              title={exploreNarrative.narrative.title}
               guideName={t(`guide.${preferences.preferredGuideId}`)}
-              text={activeExploreNarrative.arrivalText}
-              playbackState={exploreNarrativePaused ? 'paused' : 'playing'}
+              text={exploreNarrative.narrative.arrivalText}
+              playbackState={exploreNarrative.isPaused ? 'paused' : 'playing'}
               progress={1}
-              onPause={() => {
-                setExploreNarrativePaused(true);
-                setLocalPlaybackState('paused');
-              }}
-              onResume={() => {
-                setExploreNarrativePaused(false);
-                setLocalPlaybackState('playing');
-              }}
-              onContinue={closeExploreNarrative}
+              onPause={exploreNarrative.pause}
+              onResume={exploreNarrative.resume}
+              onContinue={exploreNarrative.close}
               onTranscript={openTranscript}
             />
           )}
@@ -1016,8 +708,8 @@ export function LiveScreen() {
       <TranscriptSheet
         visible={liveOverlay?.kind === 'transcript'}
         topInset={insets.top}
-        title={activeNarrative?.title ?? activeExploreNarrative?.title ?? 'Story'}
-        body={activeNarrative?.arrivalText ?? activeExploreNarrative?.arrivalText ?? 'Transcript will appear when a story starts.'}
+        title={activeNarrative?.title ?? exploreNarrative.narrative?.title ?? 'Story'}
+        body={activeNarrative?.arrivalText ?? exploreNarrative.narrative?.arrivalText ?? 'Transcript will appear when a story starts.'}
         onClose={closeForegroundOverlay}
       />
 

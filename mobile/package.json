@@ -6,9 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test:presentation": "tsc -p tsconfig.presentation-test.json && node .presentation-test-dist/test/appIdentity.test.js && node .presentation-test-dist/test/authErrors.test.js && node .presentation-test-dist/test/localizationPreferences.test.js && node .presentation-test-dist/test/onboardingRouting.test.js && node .presentation-test-dist/test/guidedTourDemo.test.js && node .presentation-test-dist/test/liveForeground.test.js && node .presentation-test-dist/test/locationSimulation.test.js && node .presentation-test-dist/test/mapDriveSessionToPresentation.test.js && node test/citySignalUiContract.test.cjs",
+    "test:presentation": "tsc -p tsconfig.presentation-test.json && node .presentation-test-dist/test/appIdentity.test.js && node .presentation-test-dist/test/authErrors.test.js && node .presentation-test-dist/test/guideIdCompatibility.test.js && node .presentation-test-dist/test/localizationPreferences.test.js && node .presentation-test-dist/test/onboardingRouting.test.js && node .presentation-test-dist/test/guidedTourDemo.test.js && node .presentation-test-dist/test/liveForeground.test.js && node .presentation-test-dist/test/locationSimulation.test.js && node .presentation-test-dist/test/mapDriveSessionToPresentation.test.js && node .presentation-test-dist/test/runtimeControllers.test.js && node test/citySignalUiContract.test.cjs",
     "doctor": "npx expo-doctor"
   },
   "dependencies": {
@@ -22,12 +21,10 @@
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-maps": "1.20.1",
     "react-native-safe-area-context": "~5.6.0",
-    "react-native-screens": "~4.16.0",
-    "react-native-web": "^0.21.0"
+    "react-native-screens": "~4.16.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -19,6 +19,7 @@
     "src/localization/preferences.ts",
     "src/localization/translations.ts",
     "src/location/types.ts",
+    "src/features/**/*.ts",
     "src/demo/guidedTour/**/*.ts",
     "src/demo/tours/**/*.ts",
     "src/dev/locationSimulation/fixtures.ts",
