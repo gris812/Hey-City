@@ -177,6 +177,10 @@ Local validation run:
 - `cd mobile && npm run test:presentation` - PASS
 - `cd mobile && npx expo-doctor` - PASS, 18/18 checks
 
+GitHub Actions:
+
+- Validation run `30181121566` on `main` - PASS
+
 ## 9. Field-Test Instructions
 
 Use:
