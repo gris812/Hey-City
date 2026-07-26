@@ -49,10 +49,27 @@ export async function pingDriveSession(
   lng: number,
   heading: number,
   speed: number,
-  timestamp: number
+  timestamp: number,
+  accuracyMeters?: number,
+  forceAheadRefresh = false
 ): Promise<PingResult> {
   return apiFetch<PingResult>('/drive/session/ping', {
     method: 'POST',
-    body: { sessionId, lat, lng, heading, speed, timestamp },
+    body: { sessionId, lat, lng, heading, speed, timestamp, accuracyMeters, forceAheadRefresh },
+  });
+}
+
+export async function forceAheadDiscoveryRefresh(params: {
+  sessionId: string;
+  lat: number;
+  lng: number;
+  heading: number;
+  speed: number;
+  timestamp: number;
+  accuracyMeters?: number;
+}): Promise<Pick<PingResult, 'aheadDiscovery'>> {
+  return apiFetch('/drive/session/ahead-discovery/refresh', {
+    method: 'POST',
+    body: params,
   });
 }

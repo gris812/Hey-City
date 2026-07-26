@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   finishActiveStoryHandler,
+  forceAheadDiscoveryRefresh,
   getPoiCandidates,
   pingSessionHandler,
   startSession,
@@ -15,5 +16,6 @@ driveRouter.use(requireAuth);
 driveRouter.post('/session/start', startSession);
 driveRouter.post('/session/stop', stopSessionHandler);
 driveRouter.post('/session/ping', pingSessionHandler);
+driveRouter.post('/session/ahead-discovery/refresh', forceAheadDiscoveryRefresh);
 driveRouter.post('/session/story/finish', finishActiveStoryHandler);
 driveRouter.post('/poi/candidates', getPoiCandidates);

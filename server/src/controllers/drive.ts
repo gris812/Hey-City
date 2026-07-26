@@ -66,7 +66,7 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  const { sessionId, lat, lng, heading, speed, timestamp } = req.body || {};
+  const { sessionId, lat, lng, heading, speed, timestamp, accuracyMeters, forceAheadRefresh } = req.body || {};
   if (
     typeof sessionId !== 'string' ||
     typeof lat !== 'number' ||
@@ -84,10 +84,53 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
   const headingDeg = typeof heading === 'number' ? heading : 0;
   const speedKmh = typeof speed === 'number' ? speed : 0;
   const ts = typeof timestamp === 'number' ? timestamp : Date.now();
+  const accuracy = typeof accuracyMeters === 'number' ? accuracyMeters : undefined;
 
-  const result = await pingSession(sessionId, lat, lng, headingDeg, speedKmh, ts);
+  const result = await pingSession(
+    sessionId,
+    lat,
+    lng,
+    headingDeg,
+    speedKmh,
+    ts,
+    accuracy,
+    forceAheadRefresh === true
+  );
 
   res.json(result);
+}
+
+export async function forceAheadDiscoveryRefresh(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const { sessionId, lat, lng, heading, speed, timestamp, accuracyMeters } = req.body || {};
+  if (
+    typeof sessionId !== 'string' ||
+    typeof lat !== 'number' ||
+    typeof lng !== 'number'
+  ) {
+    res.status(400).json({ error: 'sessionId, lat, lng required' });
+    return;
+  }
+  const session = getSession(sessionId);
+  if (!session || session.userId !== req.user.userId) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
+  const result = await pingSession(
+    sessionId,
+    lat,
+    lng,
+    typeof heading === 'number' ? heading : 0,
+    typeof speed === 'number' ? speed : 0,
+    typeof timestamp === 'number' ? timestamp : Date.now(),
+    typeof accuracyMeters === 'number' ? accuracyMeters : undefined,
+    true
+  );
+  res.json({ aheadDiscovery: result.aheadDiscovery });
 }
 
 export async function finishActiveStoryHandler(req: AuthRequest, res: Response): Promise<void> {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import {
   finishDriveStory,
+  forceAheadDiscoveryRefresh,
   pingDriveSession,
   startDriveSession,
   stopDriveSession,
@@ -52,6 +53,8 @@ export function useDriveDiscoverySession(input: {
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
   const [lastMotion, setLastMotion] = useState<DriveMotion | null>(null);
+  const [aheadRefreshLoading, setAheadRefreshLoading] = useState(false);
+  const [aheadRefreshStatus, setAheadRefreshStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef(0);
@@ -145,6 +148,10 @@ export function useDriveDiscoverySession(input: {
             : 0;
         const speedKmh = speedMps * 3.6;
         setLastMotion({ speedKmh, heading });
+        const accuracyMeters =
+          typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
+            ? loc.coords.accuracy
+            : undefined;
 
         const result = await pingDriveSession(
           sessionId,
@@ -152,7 +159,8 @@ export function useDriveDiscoverySession(input: {
           loc.coords.longitude,
           heading,
           speedKmh,
-          Date.now()
+          Date.now(),
+          accuracyMeters
         );
         setLastResult(result);
         if (result.nextAction === 'PLAY' && result.poi) {
@@ -211,6 +219,46 @@ export function useDriveDiscoverySession(input: {
     }
   };
 
+  const forceAheadRefresh = async () => {
+    if (!sessionId || !shouldLoadProfile(identity)) return;
+    setAheadRefreshLoading(true);
+    setAheadRefreshStatus(null);
+    try {
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const heading =
+        typeof loc.coords.heading === 'number' && loc.coords.heading >= 0
+          ? loc.coords.heading
+          : lastHeadingRef.current;
+      const speedMps =
+        typeof loc.coords.speed === 'number' && loc.coords.speed > 0
+          ? loc.coords.speed
+          : 0;
+      const result = await forceAheadDiscoveryRefresh({
+        sessionId,
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
+        heading,
+        speed: speedMps * 3.6,
+        timestamp: Date.now(),
+        accuracyMeters:
+          typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
+            ? loc.coords.accuracy
+            : undefined,
+      });
+      setLastResult((current) => ({
+        ...(current ?? { nextAction: 'NONE' as const }),
+        aheadDiscovery: result.aheadDiscovery,
+      }));
+      setAheadRefreshStatus(result.aheadDiscovery?.decision.type ?? 'ok');
+    } catch (e) {
+      setAheadRefreshStatus((e as Error).message);
+    } finally {
+      setAheadRefreshLoading(false);
+    }
+  };
+
   const presentation = mapDriveSessionToPresentation(lastResult, {
     sessionActive: Boolean(sessionId),
     playbackState: localPlaybackState,
@@ -233,6 +281,8 @@ export function useDriveDiscoverySession(input: {
     setMuted,
     lastResult,
     lastMotion,
+    aheadRefreshLoading,
+    aheadRefreshStatus,
     presentation,
     startSession,
     stopSession,
@@ -240,5 +290,6 @@ export function useDriveDiscoverySession(input: {
     finishStory,
     pausePlayback,
     resumePlayback,
+    forceAheadRefresh,
   };
 }

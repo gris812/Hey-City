@@ -166,6 +166,8 @@ export function LiveScreen() {
     setMuted,
     lastResult,
     lastMotion,
+    aheadRefreshLoading,
+    aheadRefreshStatus,
     presentation,
     startSession,
     stopSession,
@@ -173,6 +175,7 @@ export function LiveScreen() {
     finishStory,
     pausePlayback,
     resumePlayback,
+    forceAheadRefresh,
   } = drive;
   const {
     tourState,
@@ -802,6 +805,63 @@ export function LiveScreen() {
               {lastResult?.circuitLimited && (
                 <Text style={styles.warnText}>Временно ограничено (лимиты API)</Text>
               )}
+              {lastResult?.aheadDiscovery && (
+                <View style={styles.aheadDebugPanel}>
+                  <View style={styles.row}>
+                    <Text style={styles.aheadDebugTitle}>Ahead Discovery diagnostics</Text>
+                    <TouchableOpacity
+                      style={[styles.smallDebugButton, aheadRefreshLoading && styles.smallDebugButtonDisabled]}
+                      disabled={aheadRefreshLoading}
+                      onPress={() => void forceAheadRefresh()}
+                    >
+                      <Text style={styles.smallDebugButtonText}>
+                        {aheadRefreshLoading ? 'Refreshing' : 'Force refresh'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.aheadDebugText}>
+                    Movement: {lastResult.aheadDiscovery.movement.latitude.toFixed(5)}, {lastResult.aheadDiscovery.movement.longitude.toFixed(5)}
+                  </Text>
+                  <Text style={styles.aheadDebugText}>
+                    Speed: {((lastResult.aheadDiscovery.movement.speedMps ?? 0) * 2.23694).toFixed(1)} mph · Heading: {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}° · GPS ±{Math.round(lastResult.aheadDiscovery.movement.accuracyMeters)} m
+                  </Text>
+                  <Text style={styles.aheadDebugText}>
+                    Provider: {lastResult.aheadDiscovery.provider} · interval {lastResult.aheadDiscovery.providerRefresh.configuredIntervalMinutes} min · next {lastResult.aheadDiscovery.providerRefresh.nextRefreshAt ?? 'not scheduled'}
+                  </Text>
+                  {aheadRefreshStatus && <Text style={styles.aheadDebugText}>Manual refresh: {aheadRefreshStatus}</Text>}
+                  {lastResult.aheadDiscovery.decision.type === 'target_selected' ? (
+                    <>
+                      <Text style={styles.aheadDebugSelected}>
+                        Target: {lastResult.aheadDiscovery.decision.target.name}
+                      </Text>
+                      <Text style={styles.aheadDebugText}>
+                        Type: {lastResult.aheadDiscovery.decision.target.targetType} · Score {lastResult.aheadDiscovery.decision.score}
+                      </Text>
+                      <Text style={styles.aheadDebugText}>
+                        Distance: {(lastResult.aheadDiscovery.decision.target.distanceMeters / 1609.344).toFixed(1)} mi / {lastResult.aheadDiscovery.decision.target.distanceMeters} m · Bearing {lastResult.aheadDiscovery.decision.target.bearingDegrees}° · Δ {lastResult.aheadDiscovery.decision.target.headingDeltaDegrees}°
+                      </Text>
+                      <Text style={styles.aheadDebugText}>
+                        Reasons: {lastResult.aheadDiscovery.decision.reasons.join('; ')}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.warnText}>Hold: {lastResult.aheadDiscovery.decision.reason}</Text>
+                  )}
+                  <Text style={styles.aheadDebugText}>
+                    Candidates: {lastResult.aheadDiscovery.candidateCount} total · {lastResult.aheadDiscovery.includedCandidateCount} eligible · {lastResult.aheadDiscovery.excludedCandidateCount} excluded
+                  </Text>
+                  {lastResult.aheadDiscovery.topCandidates.slice(0, 3).map((candidate) => (
+                    <Text key={candidate.providerId} style={styles.aheadDebugText}>
+                      Top: {candidate.name} · {candidate.targetType} · {candidate.score}
+                    </Text>
+                  ))}
+                  {lastResult.aheadDiscovery.excludedCandidates.slice(0, 3).map((candidate) => (
+                    <Text key={candidate.providerId} style={styles.aheadDebugMuted}>
+                      Excluded: {candidate.name} · {candidate.reason}
+                    </Text>
+                  ))}
+                </View>
+              )}
             </>
           )}
         </>
@@ -1402,6 +1462,30 @@ const styles = StyleSheet.create({
   motionLabel: { marginTop: 8, color: colors.textMuted, fontSize: 12 },
   errorText: { marginBottom: spacing.md, color: colors.danger, fontSize: 13 },
   warnText: { marginTop: 8, color: colors.warning, fontSize: 12 },
+  aheadDebugPanel: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  aheadDebugTitle: { ...typography.body, color: colors.foreground, fontWeight: '700', flex: 1 },
+  aheadDebugText: { ...typography.caption, color: colors.foreground },
+  aheadDebugSelected: { ...typography.body, color: colors.primaryOrange, fontWeight: '700' },
+  aheadDebugMuted: { ...typography.caption, color: colors.textMuted },
+  smallDebugButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.primaryOrange,
+  },
+  smallDebugButtonDisabled: { opacity: 0.56 },
+  smallDebugButtonText: { ...typography.caption, color: colors.surface, fontWeight: '700' },
   previewButton: {
     minHeight: 44,
     alignItems: 'center',

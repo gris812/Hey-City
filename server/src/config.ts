@@ -19,6 +19,21 @@ function float(key: string, defaultVal: number): number {
   return Number.isFinite(n) ? n : defaultVal;
 }
 
+function requiredRangeNum(
+  key: string,
+  defaultVal: number,
+  min: number,
+  max: number,
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  const v = env[key];
+  const n = v === undefined || v === '' ? defaultVal : Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw new Error(`${key} must be a number between ${min} and ${max}`);
+  }
+  return n;
+}
+
 export const server = {
   port: num('PORT', 4000),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -61,6 +76,38 @@ export const discoveryConfig = {
   nearbyCacheTtlSeconds: num('NEARBY_CACHE_TTL_SECONDS', 180),
   etaCacheTtlSeconds: num('ETA_CACHE_TTL_SECONDS', 120),
 };
+
+export function getAheadDiscoveryConfig(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    providerRefreshMinutes: requiredRangeNum(
+      'AHEAD_DISCOVERY_PROVIDER_REFRESH_MINUTES',
+      60,
+      15,
+      240,
+      env
+    ),
+    evaluationSeconds: num('AHEAD_DISCOVERY_EVALUATION_SECONDS', 20),
+    maxHeadingDeltaDegrees: num('AHEAD_DISCOVERY_MAX_HEADING_DELTA_DEGREES', 70),
+    targetDistanceMinM: num('AHEAD_DISCOVERY_TARGET_DISTANCE_MIN_M', 500),
+    targetDistanceMaxM: num('AHEAD_DISCOVERY_TARGET_DISTANCE_MAX_M', 25000),
+    targetSwitchScoreMargin: float('AHEAD_DISCOVERY_TARGET_SWITCH_SCORE_MARGIN', 0.15),
+    headingGraceSeconds: num('AHEAD_DISCOVERY_HEADING_GRACE_SECONDS', 30),
+    minGpsAccuracyMeters: num('AHEAD_DISCOVERY_MAX_GPS_ACCURACY_M', 100),
+    providerTimeoutMs: num('AHEAD_DISCOVERY_PROVIDER_TIMEOUT_MS', 4500),
+    providerLimit: num('AHEAD_DISCOVERY_PROVIDER_LIMIT', 12),
+    searchRadiusMeters: num('AHEAD_DISCOVERY_SEARCH_RADIUS_M', 12000),
+    projectedSearchDistanceMeters: num('AHEAD_DISCOVERY_PROJECTED_DISTANCE_M', 10000),
+    weights: {
+      ahead: float('AHEAD_DISCOVERY_WEIGHT_AHEAD', 0.3),
+      distance: float('AHEAD_DISCOVERY_WEIGHT_DISTANCE', 0.22),
+      category: float('AHEAD_DISCOVERY_WEIGHT_CATEGORY', 0.28),
+      popularity: float('AHEAD_DISCOVERY_WEIGHT_POPULARITY', 0.1),
+      stability: float('AHEAD_DISCOVERY_WEIGHT_STABILITY', 0.16),
+    },
+  };
+}
+
+export const aheadDiscovery = getAheadDiscoveryConfig();
 
 /** Speed (km/h) below which we don't consider "vehicle" */
 export const speedThresholds = {
@@ -144,6 +191,9 @@ export const placeTypes = {
 
 export const googleMaps = {
   apiKey: process.env.GOOGLE_MAPS_API_KEY || '',
+  placesNewFieldMask:
+    process.env.GOOGLE_PLACES_NEW_FIELD_MASK ||
+    'places.id,places.displayName,places.location,places.types,places.rating,places.userRatingCount',
 };
 
 export const narration = {

@@ -17,6 +17,11 @@ import { addToHistory } from './history';
 import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
 import { createMockNarration, createNarrativePlan } from './narrativePlan';
+import {
+  clearAheadDiscoverySession,
+  createMovementContext,
+  evaluateAheadDiscovery,
+} from './aheadDiscovery';
 
 export interface DriveSessionParams {
   themeTags: string[];
@@ -71,6 +76,7 @@ export function getSession(sessionId: string): DriveSession | null {
 }
 
 export function stopSession(sessionId: string): boolean {
+  clearAheadDiscoverySession(sessionId);
   return sessions.delete(sessionId);
 }
 
@@ -107,13 +113,30 @@ export async function pingSession(
   lng: number,
   heading: number,
   speedKmh: number,
-  timestamp: number
+  timestamp: number,
+  accuracyMeters?: number,
+  forceAheadRefresh = false
 ): Promise<PingResult> {
   const session = sessions.get(sessionId);
   if (!session) {
     return { nextAction: 'NONE' };
   }
 
+  const now = timestamp || Date.now();
+  const movement = createMovementContext({
+    latitude: lat,
+    longitude: lng,
+    headingDegrees: Number.isFinite(heading) ? heading : null,
+    speedKmh,
+    accuracyMeters,
+    timestampMs: now,
+  });
+  const aheadDiscovery = await evaluateAheadDiscovery({
+    sessionId,
+    movement,
+    forceRefresh: forceAheadRefresh,
+    nowMs: now,
+  });
   const userId = session.userId;
   const circuitOpen = isCircuitOpen(userId);
   const skipReason = getPingSkipReason({
@@ -129,10 +152,10 @@ export async function pingSession(
         type: 'hold',
         reason: skipReason === 'circuit_open' ? 'budget_guardrail' : 'speed_too_low',
       },
+      aheadDiscovery,
     };
   }
 
-  const now = timestamp || Date.now();
   const leadTimeSec = session.params.leadTimeMin * 60;
   const localCandidates = await Promise.all(
     findLocalPoiCandidates({
@@ -169,7 +192,7 @@ export async function pingSession(
   });
 
   if (decision.type === 'hold') {
-    return { nextAction: 'NONE', decision };
+    return { nextAction: 'NONE', decision, aheadDiscovery };
   }
 
   const place = localCandidateToNearbyPlace({
@@ -211,5 +234,6 @@ export async function pingSession(
     narrativePlan,
     transcriptText: narration.transcriptText,
     estimatedDurationSec: narration.estimatedDurationSec,
+    aheadDiscovery,
   };
 }
