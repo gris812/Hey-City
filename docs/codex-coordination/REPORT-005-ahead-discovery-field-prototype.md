@@ -2,6 +2,11 @@
 
 Status: READY FOR ARCHITECTURE REVIEW
 
+Implementation checkpoint:
+
+- Code/runbook/report commit: `c3a07e6726b8940abfe587e8c1b0eed921978da4`
+- Branch: `main`
+
 ## 1. Summary Of Implemented Behavior
 
 TASK-005 implements a minimal field-testable Ahead Discovery prototype for Drive Discovery without a predefined route.
