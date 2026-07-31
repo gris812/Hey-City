@@ -23,7 +23,7 @@ import {
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
 import { clearRuntimeInterval } from './runtimeControllerContracts';
 
-export type DriveMotion = { speedKmh: number; heading: number };
+export type DriveMotion = { speedKmh: number; heading: number | null };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
 
 export function clearDrivePingInterval(
@@ -57,31 +57,32 @@ export function useDriveDiscoverySession(input: {
   const [aheadRefreshStatus, setAheadRefreshStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
-  const lastHeadingRef = useRef(0);
+  const lastHeadingRef = useRef<number | null>(null);
+  const guestId = identity.status === 'guest' ? identity.guestId : undefined;
 
   const startSession = useCallback(async () => {
     setSessionError(null);
-    if (!shouldLoadProfile(identity)) {
-      setSessionId('guest-drive-demo');
-      setDriveDiscoveryOn(true);
-      setLocalPlaybackState('idle');
-      setLastResult(null);
-      setPlayingName(null);
-      return;
-    }
 
     try {
-      const profile = profileRef.current ?? (await getProfile());
-      profileRef.current = profile;
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setSessionError('Location permission is required for Explore Mode.');
+        return;
+      }
+      const profile = shouldLoadProfile(identity)
+        ? profileRef.current ?? (await getProfile())
+        : null;
+      if (profile) profileRef.current = profile;
       const { sessionId: id } = await startDriveSession({
         themeTags: themes,
         narrationStyle: style,
         lengthSec,
         leadTimeMin,
-        voiceId: profile.driveDiscovery.voiceId,
+        voiceId: profile?.driveDiscovery.voiceId,
         guideId,
         language: guideLanguage,
         autoplay,
+        guestId,
       });
       setSessionId(id);
       setDriveDiscoveryOn(true);
@@ -90,15 +91,13 @@ export function useDriveDiscoverySession(input: {
       setSessionError((e as Error).message);
       console.error(e);
     }
-  }, [autoplay, guideId, guideLanguage, identity, leadTimeMin, lengthSec, style, themes]);
+  }, [autoplay, guestId, guideId, guideLanguage, identity, leadTimeMin, lengthSec, style, themes]);
 
   const stopSession = useCallback(async () => {
     if (!sessionId) return;
-    if (shouldLoadProfile(identity)) {
-      try {
-        await stopDriveSession(sessionId);
-      } catch (_) {}
-    }
+    try {
+      await stopDriveSession(sessionId, guestId);
+    } catch (_) {}
     setSessionId(null);
     setDriveDiscoveryOn(false);
     clearDrivePingInterval(pingIntervalRef);
@@ -106,7 +105,7 @@ export function useDriveDiscoverySession(input: {
     setPlayingName(null);
     setLocalPlaybackState('idle');
     setSessionError(null);
-  }, [identity, sessionId]);
+  }, [guestId, sessionId]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -128,7 +127,7 @@ export function useDriveDiscoverySession(input: {
   }, [identity]);
 
   useEffect(() => {
-    if (!sessionId || muted || !shouldLoadProfile(identity)) return;
+    if (!sessionId || muted) return;
 
     const runPing = async () => {
       try {
@@ -140,7 +139,7 @@ export function useDriveDiscoverySession(input: {
           typeof rawHeading === 'number' && rawHeading >= 0
             ? rawHeading
             : lastHeadingRef.current;
-        lastHeadingRef.current = heading;
+        if (heading !== null) lastHeadingRef.current = heading;
 
         const speedMps =
           typeof loc.coords.speed === 'number' && loc.coords.speed > 0
@@ -160,7 +159,9 @@ export function useDriveDiscoverySession(input: {
           heading,
           speedKmh,
           Date.now(),
-          accuracyMeters
+          accuracyMeters,
+          false,
+          guestId
         );
         setLastResult(result);
         if (result.nextAction === 'PLAY' && result.poi) {
@@ -177,7 +178,7 @@ export function useDriveDiscoverySession(input: {
     const id = setInterval(runPing, config.pingIntervalSec * 1000);
     pingIntervalRef.current = id;
     return () => clearDrivePingInterval(pingIntervalRef);
-  }, [identity, muted, sessionId]);
+  }, [guestId, muted, sessionId]);
 
   useEffect(() => () => clearDrivePingInterval(pingIntervalRef), []);
 
@@ -191,7 +192,7 @@ export function useDriveDiscoverySession(input: {
     if (!sessionId) return;
     setSessionError(null);
     try {
-      const result = await finishDriveStory(sessionId, reason);
+      const result = await finishDriveStory(sessionId, reason, guestId);
       setPlayingName(null);
       setLocalPlaybackState(reason === 'paused' ? 'paused' : 'completed');
       setLastResult({
@@ -220,7 +221,7 @@ export function useDriveDiscoverySession(input: {
   };
 
   const forceAheadRefresh = async () => {
-    if (!sessionId || !shouldLoadProfile(identity)) return;
+    if (!sessionId) return;
     setAheadRefreshLoading(true);
     setAheadRefreshStatus(null);
     try {
@@ -246,6 +247,7 @@ export function useDriveDiscoverySession(input: {
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
             ? loc.coords.accuracy
             : undefined,
+        guestId,
       });
       setLastResult((current) => ({
         ...(current ?? { nextAction: 'NONE' as const }),

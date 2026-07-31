@@ -199,8 +199,11 @@ export function LiveScreen() {
     resumeTour,
     applySnapshotState,
   } = guided;
-  const visibleExplorationModes = explorationModes.filter((item) => item !== 'drive_discovery');
-  const passiveMapUserCoordinate = exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
+  const visibleExplorationModes = explorationModes.filter((item) => item === 'city_explorer');
+  const liveMovement = lastResult?.aheadDiscovery?.movement;
+  const passiveMapUserCoordinate = liveMovement
+    ? { latitude: liveMovement.latitude, longitude: liveMovement.longitude }
+    : exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
   const guidedMapHeight = Math.max(520, windowHeight - insets.top - insets.bottom - 250);
   const tourRegion: Region = useMemo(
     () => ({
@@ -211,6 +214,17 @@ export function LiveScreen() {
     }),
     []
   );
+  const exploreRegion: Region = useMemo(
+    () => ({
+      latitude: passiveMapUserCoordinate.latitude,
+      longitude: passiveMapUserCoordinate.longitude,
+      latitudeDelta: 0.18,
+      longitudeDelta: 0.18,
+    }),
+    [passiveMapUserCoordinate.latitude, passiveMapUserCoordinate.longitude]
+  );
+  const aheadDecision = lastResult?.aheadDiscovery?.decision;
+  const aheadTarget = aheadDecision?.type === 'target_selected' ? aheadDecision.target : null;
   const foregroundPhase = selectLiveForegroundPhase({
     mode,
     journeyState: tourState.journeyState,
@@ -221,7 +235,7 @@ export function LiveScreen() {
     overlayKind: liveOverlay?.kind ?? null,
   });
   const exploreHomeViewModel = createExploreHomeViewModel({
-    areaName: 'Financial District - Nearby',
+    areaName: aheadTarget?.name ?? 'Explore Mode - scanning ahead',
     guideId: preferences.preferredGuideId,
     guideName: t(`guide.${preferences.preferredGuideId}`),
     guideLanguage: preferences.guideLanguage,
@@ -263,6 +277,11 @@ export function LiveScreen() {
   const openGuideQuickPreview = (guideId: GuidePreference) => setLiveOverlay({ kind: 'guide_quick_preview', guideId });
   const openTranscript = () => setLiveOverlay(openTranscriptOverlay(foregroundPhase));
   const closeForegroundOverlay = () => setLiveOverlay(null);
+
+  useEffect(() => {
+    if (mode !== 'city_explorer' || identity.status === 'loading' || sessionId) return;
+    void startSession();
+  }, [identity.status, mode, sessionId, startSession]);
 
   const startTour = () => {
     setMode('guided_tour');
@@ -511,17 +530,19 @@ export function LiveScreen() {
       {mode === 'city_explorer' && (
         <ExploreHomeView
           height={Math.max(640, windowHeight - tabBarHeight - insets.top - 8)}
-          region={tourRegion}
+          region={exploreRegion}
           userCoordinate={passiveMapUserCoordinate}
           markers={
-            __DEV__
-              ? tourBTargets.map((target) => ({
-                  id: target.id,
-                  coordinate: target.coordinates,
-                  title: target.narratives[preferences.preferredGuideId][preferences.guideLanguage].title,
-                  pinColor: exploreNarrative.activeTargetId === target.id ? colors.warning : '#8E8E93',
-                  onPress: () => exploreNarrative.trigger(target.id),
-                }))
+            aheadTarget
+              ? [{
+                  id: aheadTarget.providerId,
+                  coordinate: {
+                    latitude: aheadTarget.latitude,
+                    longitude: aheadTarget.longitude,
+                  },
+                  title: aheadTarget.name,
+                  pinColor: colors.warning,
+                }]
               : []
           }
           modes={visibleExplorationModes}
@@ -531,6 +552,49 @@ export function LiveScreen() {
           viewModel={exploreHomeViewModel}
           onChooseGuidedWalk={openTourPreferences}
         >
+          <View style={styles.exploreAheadPanel}>
+            <View style={styles.row}>
+              <Text style={styles.aheadDebugTitle}>Explore Mode</Text>
+              <TouchableOpacity
+                style={[styles.smallDebugButton, aheadRefreshLoading && styles.smallDebugButtonDisabled]}
+                disabled={aheadRefreshLoading || !sessionId}
+                onPress={() => void forceAheadRefresh()}
+              >
+                <Text style={styles.smallDebugButtonText}>
+                  {aheadRefreshLoading ? 'Refreshing' : 'Refresh'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {sessionError ? (
+              <Text style={styles.errorText}>{sessionError}</Text>
+            ) : !lastResult?.aheadDiscovery ? (
+              <Text style={styles.aheadDebugText}>
+                {sessionId ? 'Waiting for a valid GPS position and movement direction...' : 'Starting location session...'}
+              </Text>
+            ) : aheadTarget && aheadDecision?.type === 'target_selected' ? (
+              <>
+                <Text style={styles.aheadDebugSelected}>{aheadTarget.name}</Text>
+                <Text style={styles.aheadDebugText}>
+                  {aheadTarget.targetType} · {(aheadTarget.distanceMeters / 1609.344).toFixed(1)} mi ahead · Δ {aheadTarget.headingDeltaDegrees}°
+                </Text>
+                <Text style={styles.aheadDebugText}>
+                  {lastResult.aheadDiscovery.includedCandidateCount} eligible / {lastResult.aheadDiscovery.candidateCount} found
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.warnText}>
+                  Hold: {lastResult.aheadDiscovery.decision.type === 'hold'
+                    ? lastResult.aheadDiscovery.decision.reason
+                    : 'evaluating'}
+                </Text>
+                <Text style={styles.aheadDebugText}>
+                  GPS ±{Math.round(lastResult.aheadDiscovery.movement.accuracyMeters)} m · heading {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}°
+                </Text>
+              </>
+            )}
+            {aheadRefreshStatus && <Text style={styles.aheadDebugMuted}>Refresh: {aheadRefreshStatus}</Text>}
+          </View>
           {exploreNarrative.narrative && exploreNarrative.target && (
             <NarrativeOverlay
               title={exploreNarrative.narrative.title}
@@ -799,7 +863,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {lastMotion.speedKmh.toFixed(1)} km/h · Heading {Math.round(lastMotion.heading)}°
+                  Speed {lastMotion.speedKmh.toFixed(1)} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
@@ -1471,6 +1535,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+  },
+  exploreAheadPanel: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    top: 132,
+    zIndex: 24,
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'rgba(255,255,255,0.94)',
   },
   aheadDebugTitle: { ...typography.body, color: colors.foreground, fontWeight: '700', flex: 1 },
   aheadDebugText: { ...typography.caption, color: colors.foreground },

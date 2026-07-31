@@ -21,7 +21,9 @@ assert.match(app, /name="Settings"/, 'Settings tab is present');
 assert.doesNotMatch(app, /name="Drive"/, 'Drive is not a bottom tab');
 
 assert.match(live, /visibleExplorationModes = explorationModes\.filter/, 'visible mode selector is filtered');
-assert.match(live, /item !== 'drive_discovery'/, 'Drive Discovery is not a visible mode selector item');
+assert.match(live, /item === 'city_explorer'/, 'Explore is the only visible MVP mode');
+assert.match(live, /mode !== 'city_explorer'.*sessionId/s, 'Explore starts a real discovery session');
+assert.match(live, /aheadTarget\.providerId/, 'Explore renders the selected Ahead Discovery target');
 assert.match(liveSurface, /stage/, 'Explore screen uses a map-first City Signal stage');
 assert.match(liveSurface, /Start your walk/, 'Tour Preferences surface exists');
 assert.match(live, /guideProfileOpen/, 'Guide Profile surface exists');

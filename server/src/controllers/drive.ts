@@ -17,25 +17,26 @@ export async function startSession(req: AuthRequest, res: Response): Promise<voi
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  const user = await getUserById(req.user.userId);
-  if (!user) {
+  const isGuest = req.user.userId.startsWith('guest_');
+  const user = isGuest ? null : await getUserById(req.user.userId);
+  if (!isGuest && !user) {
     res.status(404).json({ error: 'User not found' });
     return;
   }
 
   const body = req.body || {};
   const lang =
-    user.driveDiscovery.languageDefault === 'auto'
+    !user || user.driveDiscovery.languageDefault === 'auto'
       ? 'ru'
       : user.driveDiscovery.languageDefault;
   const params: DriveSessionParams = {
-    themeTags: Array.isArray(body.themeTags) ? body.themeTags : user.driveDiscovery.themeTags,
-    narrationStyle: body.narrationStyle ?? user.driveDiscovery.narrationStyle,
-    lengthSec: typeof body.lengthSec === 'number' ? body.lengthSec : user.driveDiscovery.lengthSec,
-    leadTimeMin: typeof body.leadTimeMin === 'number' ? body.leadTimeMin : user.driveDiscovery.leadTimeMin,
-    voiceId: body.voiceId ?? user.driveDiscovery.voiceId,
+    themeTags: Array.isArray(body.themeTags) ? body.themeTags : user?.driveDiscovery.themeTags ?? ['mixed'],
+    narrationStyle: body.narrationStyle ?? user?.driveDiscovery.narrationStyle ?? 'documentary',
+    lengthSec: typeof body.lengthSec === 'number' ? body.lengthSec : user?.driveDiscovery.lengthSec ?? 90,
+    leadTimeMin: typeof body.leadTimeMin === 'number' ? body.leadTimeMin : user?.driveDiscovery.leadTimeMin ?? 2,
+    voiceId: body.voiceId ?? user?.driveDiscovery.voiceId ?? 'dana',
     language: body.language ?? lang,
-    autoplay: typeof body.autoplay === 'boolean' ? body.autoplay : user.driveDiscovery.autoplay,
+    autoplay: typeof body.autoplay === 'boolean' ? body.autoplay : user?.driveDiscovery.autoplay ?? true,
   };
 
   const session = createSession(req.user.userId, params);
@@ -81,7 +82,7 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
     return;
   }
 
-  const headingDeg = typeof heading === 'number' ? heading : 0;
+  const headingDeg = typeof heading === 'number' ? heading : null;
   const speedKmh = typeof speed === 'number' ? speed : 0;
   const ts = typeof timestamp === 'number' ? timestamp : Date.now();
   const accuracy = typeof accuracyMeters === 'number' ? accuracyMeters : undefined;
@@ -124,7 +125,7 @@ export async function forceAheadDiscoveryRefresh(req: AuthRequest, res: Response
     sessionId,
     lat,
     lng,
-    typeof heading === 'number' ? heading : 0,
+    typeof heading === 'number' ? heading : null,
     typeof speed === 'number' ? speed : 0,
     typeof timestamp === 'number' ? timestamp : Date.now(),
     typeof accuracyMeters === 'number' ? accuracyMeters : undefined,

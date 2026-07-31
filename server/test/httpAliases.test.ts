@@ -12,6 +12,50 @@ async function run(): Promise<void> {
   const { createApp } = await import('../src/app');
   const app = createApp();
 
+  process.env.AUTH_DISABLED = 'false';
+  process.env.NODE_ENV = 'test';
+  const guestHeaders = { 'x-hey-city-guest-id': 'guest_test123_abcdefg' };
+  const guestStart = await post<{ sessionId: string }>(
+    app,
+    '/drive/session/start',
+    {
+      themeTags: ['mixed'],
+      narrationStyle: 'documentary',
+      lengthSec: 90,
+      leadTimeMin: 2,
+      voiceId: 'dana',
+      language: 'en',
+      autoplay: true,
+    },
+    guestHeaders
+  );
+  assert.ok(guestStart.sessionId.startsWith('drive_'));
+  const guestPing = await post<{
+    nextAction: 'PLAY' | 'NONE';
+    aheadDiscovery?: { decision: { type: string; reason?: string } };
+  }>(
+    app,
+    '/drive/session/ping',
+    {
+      sessionId: guestStart.sessionId,
+      lat: 40.7074,
+      lng: -74.0104,
+      heading: 180,
+      speed: 35,
+      timestamp: Date.now(),
+      accuracyMeters: 15,
+    },
+    guestHeaders
+  );
+  assert.ok(guestPing.aheadDiscovery, 'guest Explore receives Ahead Discovery diagnostics');
+  await post(
+    app,
+    '/drive/session/stop',
+    { sessionId: guestStart.sessionId },
+    guestHeaders
+  );
+  process.env.AUTH_DISABLED = 'true';
+
   const start = await post<{ sessionId: string }>(app, '/sessions/start', {
       themeTags: ['government'],
       narrationStyle: 'documentary',
@@ -112,8 +156,13 @@ async function run(): Promise<void> {
   console.log('httpAliases tests passed');
 }
 
-async function post<T>(app: Application, url: string, body: object): Promise<T> {
-  return dispatch<T>(app, 'POST', url, body);
+async function post<T>(
+  app: Application,
+  url: string,
+  body: object,
+  headers?: Record<string, string>
+): Promise<T> {
+  return dispatch<T>(app, 'POST', url, body, headers);
 }
 
 async function get<T>(app: Application, url: string): Promise<T> {
@@ -124,7 +173,8 @@ async function dispatch<T>(
   app: Application,
   method: 'GET' | 'POST',
   url: string,
-  body?: object
+  body?: object,
+  headers?: Record<string, string>
 ): Promise<T> {
   const payload = body ? Buffer.from(JSON.stringify(body)) : Buffer.alloc(0);
   const req = new Readable({
@@ -142,6 +192,7 @@ async function dispatch<T>(
   req.headers = {
     'content-type': 'application/json',
     'content-length': String(payload.length),
+    ...headers,
   };
 
   const chunks: Buffer[] = [];

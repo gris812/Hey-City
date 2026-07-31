@@ -111,7 +111,7 @@ export async function pingSession(
   sessionId: string,
   lat: number,
   lng: number,
-  heading: number,
+  heading: number | null,
   speedKmh: number,
   timestamp: number,
   accuracyMeters?: number,
@@ -126,7 +126,7 @@ export async function pingSession(
   const movement = createMovementContext({
     latitude: lat,
     longitude: lng,
-    headingDegrees: Number.isFinite(heading) ? heading : null,
+    headingDegrees: typeof heading === 'number' && Number.isFinite(heading) ? heading : null,
     speedKmh,
     accuracyMeters,
     timestampMs: now,
