@@ -82,6 +82,39 @@ type DiscoveryDecision =
     };
 ```
 
+## Adaptive discovery profiles
+
+Status: accepted; runtime profile resolution is not implemented yet.
+
+The engine must choose a deterministic `DiscoveryProfile` before candidate
+scoring. Speed is one input, not the profile itself.
+
+| Profile | Intended context | Typical targets | Narrative entry |
+|---|---|---|---|
+| `urban_nearby` | Walking, stopping, or cycling in a city | Nearby buildings, monuments, streets, districts, museums, places of worship | Start with a short story; in dense scenes mention up to 3–5 spatially diverse targets |
+| `urban_corridor` | Vehicle movement through a city | Major buildings, bridges, districts, parks, significant museums | Name and relative direction, then a short story |
+| `road_trip` | Sustained long-distance movement | Cities, natural attractions, parks, viewpoints, major infrastructure, administrative transitions | Name and distance first, then offer short or detailed narration |
+
+Profile resolution may use:
+
+- explicit movement mode;
+- smoothed speed;
+- road and area context;
+- candidate density;
+- movement duration;
+- known route length;
+- hysteresis to prevent rapid profile switching.
+
+The editable starting coefficients are defined only in
+`server/src/config/discoveryProfileWeights.ts`. Every profile must total `1.0`;
+validation fails if an edited value is invalid. Do not duplicate the numeric
+weights in architecture documents or scoring code.
+
+The existing Ahead Discovery prototype continues using its legacy scorer until
+the profile resolver and the six corresponding factor evaluators are
+implemented. This avoids mapping `targetScale` or
+`significanceAndCoverage` to unrelated legacy signals.
+
 ## Candidate scoring
 
 ```mermaid
