@@ -13,6 +13,16 @@ export function createApp(): express.Express {
   app.use(cors());
   app.use(express.json());
 
+  app.get('/', (_req, res) => {
+    res.json({
+      service: 'hey-city-api',
+      status: 'ok',
+      mode: 'backend-api',
+      health: '/health',
+      note: 'Hey City WebApp is a separate frontend stage.',
+    });
+  });
+
   app.use('/health', healthRouter);
   app.use('/auth', authRouter);
   app.use('/me', meRouter);
@@ -29,4 +39,3 @@ export function createApp(): express.Express {
 
   return app;
 }
-
