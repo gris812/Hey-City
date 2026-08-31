@@ -18,10 +18,11 @@ const WELCOME_REGION: Region = {
 export function WelcomeScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { preferences } = useAuth();
+  const { preferences, completeWelcomeExperience } = useAuth();
   const { t } = useAppTranslation();
 
-  const continueFlow = () => {
+  const continueFlow = async () => {
+    await completeWelcomeExperience();
     if (preferences.onboardingCompleted) {
       navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
       return;
@@ -82,7 +83,7 @@ export function WelcomeScreen() {
           accessibilityRole="button"
           style={styles.primaryButton}
           activeOpacity={0.86}
-          onPress={continueFlow}
+          onPress={() => void continueFlow()}
         >
           <Text style={styles.primaryText}>{t('welcome.start')}</Text>
           <Text style={styles.arrow}>→</Text>

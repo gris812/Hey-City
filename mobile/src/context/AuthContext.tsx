@@ -29,6 +29,7 @@ type AuthContextType = {
   login: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   updatePreferences: (patch: Partial<GuestPreferences>) => Promise<void>;
+  completeWelcomeExperience: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
 };
 
@@ -39,6 +40,7 @@ const GUIDE_LANGUAGE_KEY = 'pref_guide_language';
 const PREFERRED_GUIDE_KEY = 'pref_guide_id';
 const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
 const SHOW_ONBOARDING_AT_LAUNCH_KEY = 'show_onboarding_at_launch';
+const WELCOME_EXPERIENCE_SEEN_KEY = 'welcome_experience_v1_seen';
 
 async function getOrCreateGuestId(): Promise<string> {
   const storedGuestId = await SecureStore.getItemAsync(GUEST_ID_KEY);
@@ -51,13 +53,14 @@ async function getOrCreateGuestId(): Promise<string> {
 
 async function readPreferences(): Promise<GuestPreferences> {
   const systemLocale = getSystemLocale();
-  const [appLanguage, guideLanguage, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch] =
+  const [appLanguage, guideLanguage, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch, welcomeExperienceSeen] =
     await Promise.all([
       SecureStore.getItemAsync(APP_LANGUAGE_KEY),
       SecureStore.getItemAsync(GUIDE_LANGUAGE_KEY),
       SecureStore.getItemAsync(PREFERRED_GUIDE_KEY),
       SecureStore.getItemAsync(ONBOARDING_COMPLETED_KEY),
       SecureStore.getItemAsync(SHOW_ONBOARDING_AT_LAUNCH_KEY),
+      SecureStore.getItemAsync(WELCOME_EXPERIENCE_SEEN_KEY),
     ]);
 
   const hasStoredPreferences =
@@ -65,7 +68,8 @@ async function readPreferences(): Promise<GuestPreferences> {
     guideLanguage !== null ||
     preferredGuideId !== null ||
     onboardingCompleted !== null ||
-    showOnboardingAtLaunch !== null;
+    showOnboardingAtLaunch !== null ||
+    welcomeExperienceSeen !== null;
 
   if (!hasStoredPreferences) {
     const initial = createInitialGuestPreferences(systemLocale);
@@ -81,6 +85,8 @@ async function readPreferences(): Promise<GuestPreferences> {
       onboardingCompleted: onboardingCompleted === 'true',
       showOnboardingAtLaunch:
         showOnboardingAtLaunch === null ? null : showOnboardingAtLaunch === 'true',
+      welcomeExperienceSeen:
+        welcomeExperienceSeen === null ? null : welcomeExperienceSeen === 'true',
     },
     systemLocale
   );
@@ -98,6 +104,10 @@ async function persistPreferences(preferences: GuestPreferences): Promise<void> 
     SecureStore.setItemAsync(
       SHOW_ONBOARDING_AT_LAUNCH_KEY,
       preferences.showOnboardingAtLaunch ? 'true' : 'false'
+    ),
+    SecureStore.setItemAsync(
+      WELCOME_EXPERIENCE_SEEN_KEY,
+      preferences.welcomeExperienceSeen ? 'true' : 'false'
     ),
   ]);
 }
@@ -155,6 +165,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await updatePreferences({ onboardingCompleted: true });
   };
 
+  const completeWelcomeExperience = async () => {
+    await updatePreferences({ welcomeExperienceSeen: true });
+  };
+
   const token = identity.status === 'authenticated' ? identity.token : null;
   const loading = identity.status === 'loading';
   const isAuthenticated = identity.status === 'authenticated';
@@ -170,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         updatePreferences,
+        completeWelcomeExperience,
         completeOnboarding,
       }}
     >

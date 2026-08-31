@@ -18,6 +18,7 @@ assertEqual(normalizeLocale('es-ES'), 'en', 'unsupported system locale falls bac
 const firstRun = createInitialGuestPreferences('ru');
 assertEqual(firstRun.appLanguage, 'ru', 'first-run app language uses system locale');
 assertEqual(firstRun.guideLanguage, 'ru', 'first-run guide language equals app language');
+assertEqual(firstRun.welcomeExperienceSeen, false, 'new Welcome experience is required initially');
 
 const persisted = sanitizeGuestPreferences(
   {
@@ -32,6 +33,7 @@ assertEqual(persisted.appLanguage, 'en', 'persisted app language is not overwrit
 assertEqual(persisted.guideLanguage, 'ru', 'persisted guide language remains independent');
 assertEqual(persisted.preferredGuideId, 'arthur', 'preferred guide persists');
 assertEqual(persisted.onboardingCompleted, true, 'onboarding completion persists');
+assertEqual(persisted.welcomeExperienceSeen, false, 'older installations migrate to the new Welcome experience');
 assertEqual(
   sanitizeGuestPreferences({ preferredGuideId: 'artur' }, 'en').preferredGuideId,
   'arthur',

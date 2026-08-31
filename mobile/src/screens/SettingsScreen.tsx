@@ -80,9 +80,14 @@ export function SettingsScreen() {
     : null;
 
   return (
-    <>
+    <View style={styles.screen}>
       <ScrollView
         style={styles.container}
+        contentInsetAdjustmentBehavior="never"
+        nestedScrollEnabled
+        alwaysBounceVertical
+        showsVerticalScrollIndicator
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + 120 },
@@ -214,13 +219,14 @@ export function SettingsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.md },
+  content: { flexGrow: 1, paddingHorizontal: spacing.lg, gap: spacing.md },
   title: { ...typography.title, color: colors.foreground, fontSize: 30, lineHeight: 36 },
   section: {
     padding: spacing.sm,

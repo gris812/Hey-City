@@ -16,6 +16,7 @@ export type GuestPreferences = LanguagePreferences & {
   preferredGuideId: GuidePreference;
   onboardingCompleted: boolean;
   showOnboardingAtLaunch: boolean;
+  welcomeExperienceSeen: boolean;
 };
 
 export const defaultLanguagePreferences: LanguagePreferences = {
@@ -44,6 +45,7 @@ export function createInitialGuestPreferences(systemLocale: SupportedLocale): Gu
     preferredGuideId: 'dana',
     onboardingCompleted: false,
     showOnboardingAtLaunch: true,
+    welcomeExperienceSeen: false,
   };
 }
 
@@ -73,5 +75,9 @@ export function sanitizeGuestPreferences(
       typeof stored.showOnboardingAtLaunch === 'boolean'
         ? stored.showOnboardingAtLaunch
         : initial.showOnboardingAtLaunch,
+    welcomeExperienceSeen:
+      typeof stored.welcomeExperienceSeen === 'boolean'
+        ? stored.welcomeExperienceSeen
+        : initial.welcomeExperienceSeen,
   };
 }

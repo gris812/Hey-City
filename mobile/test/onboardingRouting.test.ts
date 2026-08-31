@@ -28,12 +28,12 @@ assertEqual(
   'returning guest sees Welcome when onboarding-at-launch is enabled'
 );
 assertEqual(
-  initialRouteForSession(guest, true, false),
+  initialRouteForSession(guest, true, false, true),
   'Main',
   'showOnboardingAtLaunch false skips onboarding on returning launch'
 );
 assertEqual(
-  initialRouteForSession(guest, true, true),
+  initialRouteForSession(guest, true, true, true),
   'Welcome',
   'showOnboardingAtLaunch true opens Welcome'
 );
@@ -43,14 +43,19 @@ assertEqual(
   'authenticated user without onboarding starts on Welcome'
 );
 assertEqual(
-  initialRouteForSession(authenticated, true, false),
+  initialRouteForSession(authenticated, true, false, true),
   'Main',
   'authenticated returning user may start on Explore'
 );
 assertEqual(
-  initialRouteForSession(authenticated, true, true),
+  initialRouteForSession(authenticated, true, true, true),
   'Welcome',
   'authenticated returning user follows onboarding-at-launch preference'
+);
+assertEqual(
+  initialRouteForSession(guest, true, false, false),
+  'Welcome',
+  'existing installations see the new Welcome experience once'
 );
 assertEqual(
   initialRouteForSession({ status: 'loading' }, false),

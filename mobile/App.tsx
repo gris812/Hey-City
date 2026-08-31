@@ -81,7 +81,8 @@ function AppContent() {
   const initialRouteName = initialRouteForSession(
     identity,
     preferences.onboardingCompleted,
-    preferences.showOnboardingAtLaunch
+    preferences.showOnboardingAtLaunch,
+    preferences.welcomeExperienceSeen
   );
 
   if (!initialRouteName) {
