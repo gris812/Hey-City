@@ -96,6 +96,7 @@ export function SettingsScreen() {
         ]}
       >
         <Text style={styles.title}>{t('settings.title')}</Text>
+        <Text style={styles.buildLabel}>{UI_BUILD_LABEL}</Text>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
@@ -230,6 +231,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, paddingHorizontal: spacing.lg, gap: spacing.md },
   title: { ...typography.title, color: colors.foreground, fontSize: 30, lineHeight: 36 },
+  buildLabel: { ...typography.caption, color: colors.textMuted },
   section: {
     padding: spacing.sm,
     borderRadius: radius.md,
