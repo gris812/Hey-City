@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { type ImageSourcePropType, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, type LatLng, type Region } from 'react-native-maps';
 import { colors, radius, spacing } from '../../theme';
 import { NarrativeOverlay } from './NarrativeOverlay';
@@ -20,6 +20,7 @@ export type ActiveStoryViewProps = {
   userCoordinate?: LatLng;
   title: string;
   guideName: string;
+  guideImage?: ImageSourcePropType;
   text: string;
   playbackState: 'playing' | 'paused' | 'completed';
   progress?: number;
@@ -39,6 +40,7 @@ export function ActiveStoryView({
   userCoordinate,
   title,
   guideName,
+  guideImage,
   text,
   playbackState,
   progress,
@@ -70,6 +72,7 @@ export function ActiveStoryView({
       <NarrativeOverlay
         title={title}
         guideName={guideName}
+        guideImage={guideImage}
         text={text}
         playbackState={playbackState}
         progress={progress}

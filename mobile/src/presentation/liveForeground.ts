@@ -17,7 +17,11 @@ export type LiveForegroundPhase =
 
 export type LiveOverlay =
   | { kind: 'tour_preferences' }
-  | { kind: 'guide_quick_preview'; guideId: GuidePreference }
+  | {
+      kind: 'guide_quick_preview';
+      guideId: GuidePreference;
+      returnTo: 'explore' | 'tour_preferences';
+    }
   | { kind: 'transcript'; returnPhase: LiveForegroundPhase }
   | null;
 
@@ -105,10 +109,12 @@ export function createExploreHomeViewModel(input: {
   guideName: string;
   guideLanguage: SupportedLocale;
   ambientCopy: string;
+  primaryStatusLabel?: string;
+  secondaryActionLabel?: string;
 }): ExploreHomeViewModel {
   return {
     ...input,
-    primaryStatusLabel: 'Listening nearby',
-    secondaryActionLabel: 'Choose a guided walk',
+    primaryStatusLabel: input.primaryStatusLabel ?? 'Walking mode',
+    secondaryActionLabel: input.secondaryActionLabel ?? 'Choose a guided walk',
   };
 }

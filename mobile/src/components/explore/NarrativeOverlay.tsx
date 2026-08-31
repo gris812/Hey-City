@@ -1,11 +1,20 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, radius, spacing, typography } from '../../theme';
+import {
+  Image,
+  type ImageSourcePropType,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { colors, radius, shadows, spacing, typography } from '../../theme';
 import { useAppTranslation } from '../../localization';
 
 export type NarrativeOverlayProps = {
   title: string;
   guideName: string;
+  guideImage?: ImageSourcePropType;
   text: string;
   playbackState: 'idle' | 'playing' | 'paused' | 'completed';
   progress?: number;
@@ -13,12 +22,15 @@ export type NarrativeOverlayProps = {
   onPause: () => void;
   onResume: () => void;
   onContinue: () => void;
+  continueLabel?: string;
+  onSkip?: () => void;
   onTranscript?: () => void;
 };
 
 export function NarrativeOverlay({
   title,
   guideName,
+  guideImage,
   text,
   playbackState,
   progress,
@@ -26,27 +38,54 @@ export function NarrativeOverlay({
   onPause,
   onResume,
   onContinue,
+  continueLabel,
+  onSkip,
   onTranscript,
 }: NarrativeOverlayProps) {
   const { t } = useAppTranslation();
   const paused = playbackState === 'paused';
+  const completed = playbackState === 'completed';
 
   return (
-    <View style={styles.overlay}>
+    <View pointerEvents="box-none" style={styles.overlay}>
       <View style={styles.panel}>
+        <View style={styles.handle} />
         <View style={styles.header}>
-          <View>
-            <Text style={styles.guide}>{guideName}</Text>
-            <Text style={styles.title}>{title}</Text>
+          {guideImage ? <Image source={guideImage} style={styles.guideAvatar} /> : null}
+          <View style={styles.headerCopy}>
+            <Text style={styles.guide}>
+              {t('walking.guideSpeaking').replace('{guide}', guideName)}
+            </Text>
+            <Text style={styles.title} numberOfLines={2}>{title}</Text>
           </View>
-          {typeof progress === 'number' && (
-            <Text style={styles.progress}>{Math.round(progress * 100)}%</Text>
-          )}
+          <View style={styles.liveBadge}>
+            <View style={[styles.liveDot, paused && styles.liveDotPaused]} />
+            <Text style={styles.liveText}>{paused ? t('tour.pause') : t('walking.live')}</Text>
+          </View>
         </View>
 
-        <ScrollView style={styles.textScroll}>
+        <ScrollView style={styles.textScroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.body}>{text}</Text>
         </ScrollView>
+
+        <View style={styles.waveformRow} accessibilityElementsHidden>
+          {[12, 20, 14, 28, 18, 32, 22, 16, 26, 14, 20, 12].map((height, index) => (
+            <View
+              key={`${height}-${index}`}
+              style={[
+                styles.waveBar,
+                { height },
+                (paused || completed) && styles.waveBarInactive,
+              ]}
+            />
+          ))}
+        </View>
+
+        {typeof progress === 'number' && (
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(1, progress)) * 100}%` }]} />
+          </View>
+        )}
 
         {typeof autoContinueRemainingMs === 'number' && (
           <Text style={styles.countdown}>
@@ -55,18 +94,31 @@ export function NarrativeOverlay({
         )}
 
         <View style={styles.controls}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={paused ? onResume : onPause}>
-            <Text style={styles.secondaryText}>{paused ? t('tour.resume') : t('tour.pause')}</Text>
-          </TouchableOpacity>
+          {!completed && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={styles.playbackButton}
+              onPress={paused ? onResume : onPause}
+            >
+              <Text style={styles.playbackGlyph}>{paused ? '▶' : 'Ⅱ'}</Text>
+              <Text style={styles.playbackText}>{paused ? t('tour.resume') : t('tour.pause')}</Text>
+            </TouchableOpacity>
+          )}
           {onTranscript && (
             <TouchableOpacity style={styles.secondaryButton} onPress={onTranscript}>
-              <Text style={styles.secondaryText}>Transcript</Text>
+              <Text style={styles.secondaryText}>{t('walking.transcript')}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.primaryButton} onPress={onContinue}>
-            <Text style={styles.primaryText}>{t('tour.continue')}</Text>
+            <Text style={styles.primaryText}>{continueLabel ?? t('tour.continue')}</Text>
           </TouchableOpacity>
         </View>
+
+        {onSkip && !completed && (
+          <TouchableOpacity style={styles.skipButton} onPress={onSkip}>
+            <Text style={styles.skipText}>{t('walking.skipStory')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -75,39 +127,89 @@ export function NarrativeOverlay({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-start',
-    padding: spacing.md,
-    zIndex: 10,
+    justifyContent: 'flex-end',
+    padding: spacing.sm,
+    zIndex: 40,
   },
   panel: {
-    maxHeight: 340,
+    maxHeight: 420,
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(255,253,248,0.94)',
-    padding: spacing.md,
-    shadowColor: colors.foreground,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    elevation: 8,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    paddingHorizontal: spacing.md,
+    paddingTop: 10,
+    paddingBottom: spacing.md,
+    ...shadows.floating,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginBottom: 12,
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    gap: 12,
     marginBottom: spacing.sm,
   },
-  guide: { ...typography.caption, color: colors.textMuted },
+  guideAvatar: { width: 48, height: 48, borderRadius: 24 },
+  headerCopy: { flex: 1, minWidth: 0 },
+  guide: { ...typography.caption, color: colors.primary },
   title: { ...typography.body, color: colors.foreground, fontWeight: '700', marginTop: 2 },
-  progress: { ...typography.caption, color: colors.textMuted },
-  textScroll: { maxHeight: 140, marginVertical: spacing.sm },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primaryBright },
+  liveDotPaused: { backgroundColor: colors.warning },
+  liveText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  textScroll: { maxHeight: 112, marginVertical: spacing.sm },
   body: { ...typography.body, color: colors.foreground },
   countdown: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.sm },
+  waveformRow: {
+    height: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginVertical: spacing.sm,
+  },
+  waveBar: { width: 4, borderRadius: 2, backgroundColor: colors.primaryBright },
+  waveBarInactive: { backgroundColor: colors.border },
+  progressTrack: {
+    height: 4,
+    overflow: 'hidden',
+    borderRadius: 2,
+    backgroundColor: colors.surfaceMuted,
+    marginBottom: spacing.md,
+  },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: colors.primary },
   controls: { flexDirection: 'row', gap: spacing.sm },
+  playbackButton: {
+    flex: 1.15,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  playbackGlyph: { color: colors.surface, fontSize: 16, lineHeight: 18, fontWeight: '800' },
+  playbackText: { ...typography.caption, color: colors.surface, fontWeight: '700' },
   secondaryButton: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
@@ -117,12 +219,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: radius.pill,
-    backgroundColor: colors.primaryOrange,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondaryText: { ...typography.caption, color: colors.foreground },
-  primaryText: { ...typography.caption, color: colors.surface },
+  primaryText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  skipButton: { alignSelf: 'center', paddingHorizontal: spacing.md, paddingTop: 12, paddingBottom: 2 },
+  skipText: { ...typography.caption, color: colors.textMuted },
 });

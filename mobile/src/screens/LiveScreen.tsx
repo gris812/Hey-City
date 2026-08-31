@@ -34,7 +34,12 @@ import { NarrativeOverlay } from '../components/explore/NarrativeOverlay';
 import { ApproachingTargetView } from '../components/explore/ApproachingTargetView';
 import { ActiveStoryView } from '../components/explore/ActiveStoryView';
 import { AtTargetView } from '../components/explore/AtTargetView';
-import { ExploreHomeView } from '../components/explore/ExploreHomeView';
+import {
+  ExploreHomeView,
+  type ExploreActiveTarget,
+  type ExploreNearbyPlace,
+} from '../components/explore/ExploreHomeView';
+import { DiscoveryPlaceSheet } from '../components/explore/DiscoveryPlaceSheet';
 import { GuideQuickPreviewSheet } from '../components/explore/GuideQuickPreviewSheet';
 import { GuidedNavigationView } from '../components/explore/GuidedNavigationView';
 import { TourPreferencesSheet } from '../components/explore/TourPreferencesSheet';
@@ -43,7 +48,6 @@ import { resolveTargetMedia, tourB, tourBTargets } from '../demo/tours';
 import {
   createInitialGuidedTourState,
   defaultExplorationMode,
-  explorationModes,
   startGuidedTour,
   tourBLocationEvents,
   type ExplorationMode,
@@ -130,6 +134,8 @@ export function LiveScreen() {
   const [routeSaveModal, setRouteSaveModal] = useState<'guest' | 'saved' | null>(null);
   const [liveOverlay, setLiveOverlay] = useState<LiveOverlay>(null);
   const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
+  const [guideProfileReturnTo, setGuideProfileReturnTo] = useState<'explore' | 'tour_preferences'>('explore');
+  const [selectedExplorePlaceId, setSelectedExplorePlaceId] = useState<string | null>(null);
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hidden Gems', 'Local Life']);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
   const [sharePreviewState, setSharePreviewState] = useState<SharePreviewState>('ready');
@@ -199,7 +205,6 @@ export function LiveScreen() {
     resumeTour,
     applySnapshotState,
   } = guided;
-  const visibleExplorationModes = explorationModes.filter((item) => item === 'city_explorer');
   const liveMovement = lastResult?.aheadDiscovery?.movement;
   const passiveMapUserCoordinate = liveMovement
     ? { latitude: liveMovement.latitude, longitude: liveMovement.longitude }
@@ -218,13 +223,52 @@ export function LiveScreen() {
     () => ({
       latitude: passiveMapUserCoordinate.latitude,
       longitude: passiveMapUserCoordinate.longitude,
-      latitudeDelta: 0.18,
-      longitudeDelta: 0.18,
+      latitudeDelta: 0.018,
+      longitudeDelta: 0.018,
     }),
     [passiveMapUserCoordinate.latitude, passiveMapUserCoordinate.longitude]
   );
   const aheadDecision = lastResult?.aheadDiscovery?.decision;
   const aheadTarget = aheadDecision?.type === 'target_selected' ? aheadDecision.target : null;
+  const aheadCandidates = lastResult?.aheadDiscovery?.topCandidates ?? [];
+  const exploreNearbyPlaces: ExploreNearbyPlace[] = aheadCandidates.slice(0, 8).map((candidate) => ({
+    id: candidate.providerId,
+    coordinate: {
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+    },
+    title: candidate.name,
+    targetType: candidate.targetType,
+    distanceMeters: candidate.distanceMeters,
+    isAhead: candidate.isAhead,
+    selected: candidate.providerId === aheadTarget?.providerId,
+  }));
+  const exploreActiveTarget: ExploreActiveTarget | undefined = aheadTarget ? {
+    id: aheadTarget.providerId,
+    coordinate: {
+      latitude: aheadTarget.latitude,
+      longitude: aheadTarget.longitude,
+    },
+    title: aheadTarget.name,
+    targetType: aheadTarget.targetType,
+    distanceMeters: aheadTarget.distanceMeters,
+    isAhead: aheadTarget.isAhead,
+    selected: true,
+    isNarrating:
+      presentation.playbackState === 'playing' || presentation.playbackState === 'paused',
+  } : undefined;
+  const selectedExplorePlace = [exploreActiveTarget, ...exploreNearbyPlaces].find(
+    (place): place is ExploreNearbyPlace => Boolean(place && place.id === selectedExplorePlaceId)
+  );
+  const backendWalkingStoryVisible = Boolean(
+    mode === 'city_explorer' &&
+    presentation.activeTarget &&
+    (presentation.playbackState === 'playing' ||
+      presentation.playbackState === 'paused' ||
+      presentation.playbackState === 'loading')
+  );
+  const backendWalkingStoryText =
+    lastResult?.transcriptText ?? lastResult?.textPreview ?? t('walking.storyLoading');
   const foregroundPhase = selectLiveForegroundPhase({
     mode,
     journeyState: tourState.journeyState,
@@ -235,11 +279,17 @@ export function LiveScreen() {
     overlayKind: liveOverlay?.kind ?? null,
   });
   const exploreHomeViewModel = createExploreHomeViewModel({
-    areaName: aheadTarget?.name ?? 'Explore Mode - scanning ahead',
+    areaName: t('live.cityExplorer'),
     guideId: preferences.preferredGuideId,
     guideName: t(`guide.${preferences.preferredGuideId}`),
     guideLanguage: preferences.guideLanguage,
     ambientCopy: t(`live.walkNaturally.${preferences.preferredGuideId}`),
+    primaryStatusLabel: sessionError
+      ? t('common.error')
+      : sessionId
+        ? t('walking.modeStatus')
+        : t('app.loading'),
+    secondaryActionLabel: t('walking.chooseWalk'),
   });
   const getLocalizedGuideProfile = (guideId: GuidePreference) => {
     const profile = guideProfiles[guideId];
@@ -254,6 +304,8 @@ export function LiveScreen() {
   };
   const selectedQuickPreviewGuideId =
     liveOverlay?.kind === 'guide_quick_preview' ? liveOverlay.guideId : null;
+  const selectedQuickPreviewReturnTo =
+    liveOverlay?.kind === 'guide_quick_preview' ? liveOverlay.returnTo : null;
   const selectedQuickPreviewProfile = selectedQuickPreviewGuideId
     ? getLocalizedGuideProfile(selectedQuickPreviewGuideId)
     : null;
@@ -274,9 +326,15 @@ export function LiveScreen() {
     ? resolveTargetMedia(targetForArrival, activeGuideLanguage, false, targetImageSources)
     : {};
   const openTourPreferences = () => setLiveOverlay({ kind: 'tour_preferences' });
-  const openGuideQuickPreview = (guideId: GuidePreference) => setLiveOverlay({ kind: 'guide_quick_preview', guideId });
+  const openGuideQuickPreview = (
+    guideId: GuidePreference,
+    returnTo: 'explore' | 'tour_preferences' = 'tour_preferences'
+  ) => setLiveOverlay({ kind: 'guide_quick_preview', guideId, returnTo });
   const openTranscript = () => setLiveOverlay(openTranscriptOverlay(foregroundPhase));
   const closeForegroundOverlay = () => setLiveOverlay(null);
+  const restoreGuideSurfaceOrigin = (returnTo: 'explore' | 'tour_preferences') => {
+    setLiveOverlay(returnTo === 'tour_preferences' ? { kind: 'tour_preferences' } : null);
+  };
 
   useEffect(() => {
     if (mode !== 'city_explorer' || identity.status === 'loading' || sessionId) return;
@@ -300,8 +358,9 @@ export function LiveScreen() {
     setSelectedInterests([...guideProfiles[guideId].interests.slice(0, 2)]);
   };
   const chooseGuideFromPreview = async (guideId: GuidePreference) => {
+    const returnTo = liveOverlay?.kind === 'guide_quick_preview' ? liveOverlay.returnTo : 'explore';
     await selectGuide(guideId);
-    setLiveOverlay({ kind: 'tour_preferences' });
+    restoreGuideSurfaceOrigin(returnTo);
   };
   const selectLanguage = async (guideLanguage: SupportedLocale) => {
     await updatePreferences({ guideLanguage });
@@ -326,6 +385,15 @@ export function LiveScreen() {
   const shareRoute = () => {
     setSharePreviewState('ready');
     setSharePreviewOpen(true);
+  };
+  const openPlaceInMaps = async (place: ExploreNearbyPlace) => {
+    const destination = `${place.coordinate.latitude},${place.coordinate.longitude}`;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&destination_place_id=${encodeURIComponent(place.id)}`;
+    try {
+      await Linking.openURL(url);
+    } catch (_) {
+      Alert.alert(t('walking.mapsErrorTitle'), t('walking.mapsErrorBody'));
+    }
   };
 
   useEffect(() => {
@@ -373,7 +441,7 @@ export function LiveScreen() {
         void updatePreferences({ preferredGuideId: guideId });
         setMode('city_explorer');
         applySnapshotState(createInitialGuidedTourState(guideId, preferences.guideLanguage), null);
-        setLiveOverlay({ kind: 'guide_quick_preview', guideId });
+        setLiveOverlay({ kind: 'guide_quick_preview', guideId, returnTo: 'tour_preferences' });
         return;
       }
 
@@ -382,6 +450,7 @@ export function LiveScreen() {
         void updatePreferences({ preferredGuideId: guideId });
         setMode('city_explorer');
         applySnapshotState(createInitialGuidedTourState(guideId, preferences.guideLanguage), null);
+        setGuideProfileReturnTo('tour_preferences');
         setGuideProfileOpen(guideId);
         return;
       }
@@ -516,89 +585,65 @@ export function LiveScreen() {
     <>
       <ScrollView
         style={styles.container}
+        scrollEnabled={mode !== 'city_explorer'}
         contentContainerStyle={[
           styles.content,
           {
+            paddingHorizontal: mode === 'city_explorer' ? 0 : spacing.lg,
             paddingTop:
               mode === 'city_explorer'
-                ? Math.max(spacing.md, insets.top - spacing.sm)
+                ? 0
                 : insets.top + spacing.lg,
-            paddingBottom: tabBarHeight + insets.bottom + 48,
+            paddingBottom: mode === 'city_explorer' ? 0 : tabBarHeight + insets.bottom + 48,
           },
         ]}
       >
       {mode === 'city_explorer' && (
         <ExploreHomeView
-          height={Math.max(640, windowHeight - tabBarHeight - insets.top - 8)}
+          height={Math.max(520, windowHeight - tabBarHeight)}
+          topInset={insets.top}
           region={exploreRegion}
-          userCoordinate={passiveMapUserCoordinate}
-          markers={
-            aheadTarget
-              ? [{
-                  id: aheadTarget.providerId,
-                  coordinate: {
-                    latitude: aheadTarget.latitude,
-                    longitude: aheadTarget.longitude,
-                  },
-                  title: aheadTarget.name,
-                  pinColor: colors.warning,
-                }]
-              : []
-          }
-          modes={visibleExplorationModes}
-          activeMode={mode}
-          onSelectMode={setMode}
+          markers={aheadCandidates.slice(0, 8).map((candidate) => ({
+            id: candidate.providerId,
+            coordinate: {
+              latitude: candidate.latitude,
+              longitude: candidate.longitude,
+            },
+            title: candidate.name,
+            targetType: candidate.targetType,
+            selected: candidate.providerId === aheadTarget?.providerId,
+          }))}
+          nearbyPlaces={exploreNearbyPlaces}
+          activeTarget={exploreActiveTarget}
           guideImage={guideImages[preferences.preferredGuideId]}
           viewModel={exploreHomeViewModel}
+          onOpenMenu={() => navigation.navigate('Settings' as never)}
+          onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
+          onSelectPlace={(place) => setSelectedExplorePlaceId(place.id)}
+          statusMessage={sessionError ? t('walking.serviceUnavailable') : undefined}
+          onRetry={sessionError ? () => void startSession() : undefined}
         >
-          <View style={styles.exploreAheadPanel}>
-            <View style={styles.row}>
-              <Text style={styles.aheadDebugTitle}>Explore Mode</Text>
-              <TouchableOpacity
-                style={[styles.smallDebugButton, aheadRefreshLoading && styles.smallDebugButtonDisabled]}
-                disabled={aheadRefreshLoading || !sessionId}
-                onPress={() => void forceAheadRefresh()}
-              >
-                <Text style={styles.smallDebugButtonText}>
-                  {aheadRefreshLoading ? 'Refreshing' : 'Refresh'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {sessionError ? (
-              <Text style={styles.errorText}>{sessionError}</Text>
-            ) : !lastResult?.aheadDiscovery ? (
-              <Text style={styles.aheadDebugText}>
-                {sessionId ? 'Waiting for a valid GPS position and movement direction...' : 'Starting location session...'}
-              </Text>
-            ) : aheadTarget && aheadDecision?.type === 'target_selected' ? (
-              <>
-                <Text style={styles.aheadDebugSelected}>{aheadTarget.name}</Text>
-                <Text style={styles.aheadDebugText}>
-                  {aheadTarget.targetType} · {(aheadTarget.distanceMeters / 1609.344).toFixed(1)} mi ahead · Δ {aheadTarget.headingDeltaDegrees}°
-                </Text>
-                <Text style={styles.aheadDebugText}>
-                  {lastResult.aheadDiscovery.includedCandidateCount} eligible / {lastResult.aheadDiscovery.candidateCount} found
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.warnText}>
-                  Hold: {lastResult.aheadDiscovery.decision.type === 'hold'
-                    ? lastResult.aheadDiscovery.decision.reason
-                    : 'evaluating'}
-                </Text>
-                <Text style={styles.aheadDebugText}>
-                  GPS ±{Math.round(lastResult.aheadDiscovery.movement.accuracyMeters)} m · heading {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}°
-                </Text>
-              </>
-            )}
-            {aheadRefreshStatus && <Text style={styles.aheadDebugMuted}>Refresh: {aheadRefreshStatus}</Text>}
-          </View>
-          {exploreNarrative.narrative && exploreNarrative.target && (
+          {backendWalkingStoryVisible && presentation.activeTarget ? (
+            <NarrativeOverlay
+              title={presentation.activeTarget.name}
+              guideName={t(`guide.${preferences.preferredGuideId}`)}
+              guideImage={guideImages[preferences.preferredGuideId]}
+              text={backendWalkingStoryText}
+              playbackState={presentation.playbackState === 'paused' ? 'paused' : 'playing'}
+              progress={presentation.audioProgress}
+              continueLabel={t('walking.finishStory')}
+              onPause={pausePlayback}
+              onResume={resumePlayback}
+              onContinue={() => void finishStory('ended')}
+              onSkip={() => void finishStory('skipped')}
+              onTranscript={openTranscript}
+            />
+          ) : exploreNarrative.narrative && exploreNarrative.target ? (
             <NarrativeOverlay
               title={exploreNarrative.narrative.title}
               guideName={t(`guide.${preferences.preferredGuideId}`)}
+              guideImage={guideImages[preferences.preferredGuideId]}
               text={exploreNarrative.narrative.arrivalText}
               playbackState={exploreNarrative.isPaused ? 'paused' : 'playing'}
               progress={1}
@@ -607,7 +652,7 @@ export function LiveScreen() {
               onContinue={exploreNarrative.close}
               onTranscript={openTranscript}
             />
-          )}
+          ) : null}
         </ExploreHomeView>
       )}
 
@@ -747,6 +792,7 @@ export function LiveScreen() {
             userCoordinate={tourState.location}
             title={activeNarrative.title}
             guideName={t(`guide.${activeGuideId}`)}
+            guideImage={guideImages[activeGuideId]}
             text={activeNarrative.arrivalText}
             playbackState={
               foregroundPhase === 'guided_story_complete'
@@ -956,7 +1002,7 @@ export function LiveScreen() {
         getGuideName={(guideId) => t(`guide.${guideId}`)}
         getLanguageName={(locale) => t(`language.${locale}`)}
         onSelectGuide={(guideId) => void selectGuide(guideId)}
-        onOpenGuidePreview={openGuideQuickPreview}
+        onOpenGuidePreview={(guideId) => openGuideQuickPreview(guideId, 'tour_preferences')}
         onToggleInterest={toggleInterest}
         onSelectLanguage={(locale) => void selectLanguage(locale)}
         onStartWalk={startTour}
@@ -966,7 +1012,7 @@ export function LiveScreen() {
         }}
       />
 
-      {selectedQuickPreviewGuideId && selectedQuickPreviewProfile && (
+      {selectedQuickPreviewGuideId && selectedQuickPreviewProfile && selectedQuickPreviewReturnTo && (
         <GuideQuickPreviewSheet
           visible={liveOverlay?.kind === 'guide_quick_preview'}
           topInset={insets.top}
@@ -982,10 +1028,11 @@ export function LiveScreen() {
           selectedLabel={t('guide.selected')}
           onChoose={() => void chooseGuideFromPreview(selectedQuickPreviewGuideId)}
           onViewFullProfile={() => {
+            setGuideProfileReturnTo(selectedQuickPreviewReturnTo);
             setLiveOverlay(null);
             setGuideProfileOpen(selectedQuickPreviewGuideId);
           }}
-          onClose={() => setLiveOverlay({ kind: 'tour_preferences' })}
+          onClose={() => restoreGuideSurfaceOrigin(selectedQuickPreviewReturnTo)}
         />
       )}
 
@@ -999,7 +1046,7 @@ export function LiveScreen() {
                 style={styles.profileBackButton}
                 onPress={() => {
                   setGuideProfileOpen(null);
-                  setLiveOverlay({ kind: 'tour_preferences' });
+                  restoreGuideSurfaceOrigin(guideProfileReturnTo);
                 }}
               >
                 <Text style={styles.profileBackText}>‹</Text>
@@ -1023,6 +1070,7 @@ export function LiveScreen() {
                   onPress={() => {
                     void selectGuide(guideProfileOpen);
                     setGuideProfileOpen(null);
+                    restoreGuideSurfaceOrigin(guideProfileReturnTo);
                   }}
                 >
                   <Text style={styles.completionButtonPrimaryText}>{getLocalizedGuideProfile(guideProfileOpen).chooseLabel}</Text>
@@ -1031,7 +1079,7 @@ export function LiveScreen() {
                   style={styles.modalPlainButton}
                   onPress={() => {
                     setGuideProfileOpen(null);
-                    setLiveOverlay({ kind: 'tour_preferences' });
+                    restoreGuideSurfaceOrigin(guideProfileReturnTo);
                   }}
                 >
                   <Text style={styles.profileSecondaryText}>{t('guide.backToGuides')}</Text>
@@ -1045,9 +1093,36 @@ export function LiveScreen() {
       <TranscriptSheet
         visible={liveOverlay?.kind === 'transcript'}
         topInset={insets.top}
-        title={activeNarrative?.title ?? exploreNarrative.narrative?.title ?? 'Story'}
-        body={activeNarrative?.arrivalText ?? exploreNarrative.narrative?.arrivalText ?? 'Transcript will appear when a story starts.'}
+        title={
+          presentation.activeTarget?.name ??
+          activeNarrative?.title ??
+          exploreNarrative.narrative?.title ??
+          t('walking.storyTitle')
+        }
+        body={
+          lastResult?.transcriptText ??
+          lastResult?.textPreview ??
+          activeNarrative?.arrivalText ??
+          exploreNarrative.narrative?.arrivalText ??
+          t('walking.transcriptUnavailable')
+        }
         onClose={closeForegroundOverlay}
+      />
+
+      <DiscoveryPlaceSheet
+        visible={Boolean(selectedExplorePlace)}
+        bottomInset={insets.bottom}
+        place={selectedExplorePlace}
+        guideName={t(`guide.${preferences.preferredGuideId}`)}
+        guideImage={guideImages[preferences.preferredGuideId]}
+        hasActiveStory={Boolean(
+          selectedExplorePlace &&
+          presentation.activeTarget?.id === selectedExplorePlace.id &&
+          backendWalkingStoryVisible
+        )}
+        onClose={() => setSelectedExplorePlaceId(null)}
+        onOpenMaps={(place) => void openPlaceInMaps(place)}
+        onOpenStory={() => setSelectedExplorePlaceId(null)}
       />
 
       <Modal visible={sharePreviewOpen} animationType="slide">

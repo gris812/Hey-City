@@ -8,6 +8,7 @@ import {
   openTranscriptOverlay,
   selectLiveForegroundPhase,
   shouldSyncPreferencesToTour,
+  type LiveOverlay,
 } from '../src/presentation/liveForeground';
 import {
   createInitialGuidedTourState,
@@ -100,6 +101,17 @@ assert.equal(
   closeTranscriptOverlay(transcript),
   'guided_story_active',
   'transcript restores its prior foreground phase'
+);
+
+const walkingGuidePreview: LiveOverlay = {
+  kind: 'guide_quick_preview',
+  guideId: 'dana',
+  returnTo: 'explore',
+};
+assert.equal(
+  walkingGuidePreview.returnTo,
+  'explore',
+  'guide preview retains the Walking surface as its return destination'
 );
 
 const startedTour = startGuidedTour(createInitialGuidedTourState('arthur', 'en'));

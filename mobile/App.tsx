@@ -11,6 +11,7 @@ import { LiveScreen } from './src/screens/LiveScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { initialRouteForSession } from './src/context/appIdentity';
 import { colors } from './src/theme';
 import { useAppTranslation } from './src/localization';
@@ -52,15 +53,15 @@ function MainTabs() {
       initialRouteName="Explore"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: colors.primaryOrange,
+        tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarIcon: ({ color }) => <TabIcon name={route.name} color={color} />,
         tabBarStyle: {
-          minHeight: 70,
+          minHeight: 72,
           paddingTop: 8,
           paddingBottom: 12,
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
+          borderTopColor: 'rgba(216,229,219,0.82)',
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -95,6 +96,7 @@ function AppContent() {
     <NavigationContainer>
       <StatusBar style="auto" />
       <Stack.Navigator initialRouteName={initialRouteName} screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Login" component={LoginScreen} />

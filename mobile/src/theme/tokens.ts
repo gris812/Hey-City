@@ -1,19 +1,30 @@
+const brandGreen = '#0F7A3F';
+const brandGreenPressed = '#0A6233';
+const brandGreenSoft = '#E6F4EA';
+
 export const colors = {
-  background: '#F8F6F2',
-  foreground: '#1F1F1F',
+  background: '#F8FAF7',
+  foreground: '#0B1711',
   surface: '#FFFFFF',
-  surfaceMuted: '#F3F0EA',
-  border: '#DADADA',
-  textMuted: '#6E6E73',
-  primaryOrange: '#FF6B2C',
-  primaryOrangePressed: '#E95A20',
-  primaryOrangeLight: '#FFF1E8',
+  surfaceMuted: '#F1F6F2',
+  border: '#D8E5DB',
+  textMuted: '#66736B',
+  primary: brandGreen,
+  primaryPressed: brandGreenPressed,
+  primaryBright: '#22C55E',
+  primarySoft: brandGreenSoft,
+  /** @deprecated Migrate touched components to semantic primary tokens. */
+  primaryOrange: brandGreen,
+  /** @deprecated Migrate touched components to semantic primary tokens. */
+  primaryOrangePressed: brandGreenPressed,
+  /** @deprecated Migrate touched components to semantic primary tokens. */
+  primaryOrangeLight: brandGreenSoft,
   locationBlue: '#2F80ED',
-  routeCompleted: '#B8B8B8',
-  dana: '#D6C3A3',
+  routeCompleted: '#A9B5AC',
+  dana: brandGreen,
   arthur: '#6B8CA3',
-  warning: '#C6922D',
-  danger: '#EB5757',
+  warning: '#B97818',
+  danger: '#C33E3E',
 } as const;
 
 export const spacing = {
@@ -57,14 +68,14 @@ export const typography = {
 
 export const shadows = {
   floating: {
-    shadowColor: '#1C1C1E',
+    shadowColor: '#102518',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 5,
   },
   subtle: {
-    shadowColor: '#1C1C1E',
+    shadowColor: '#102518',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 12,

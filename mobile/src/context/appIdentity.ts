@@ -59,9 +59,10 @@ export function initialRouteForIdentity(identity: AppIdentityState): 'Main' | 'L
 
 export function initialRouteForSession(
   identity: AppIdentityState,
-  _onboardingCompleted: boolean,
-  _showOnboardingAtLaunch = true
-): 'Onboarding' | 'Main' | null {
+  onboardingCompleted: boolean,
+  showOnboardingAtLaunch = true
+): 'Welcome' | 'Main' | null {
   if (identity.status === 'loading') return null;
+  if (!onboardingCompleted || showOnboardingAtLaunch) return 'Welcome';
   return 'Main';
 }

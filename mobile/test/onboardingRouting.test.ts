@@ -19,13 +19,13 @@ const authenticated = identityFromStoredToken('valid-token', 'guest_local');
 
 assertEqual(
   initialRouteForSession(guest, false),
-  'Main',
-  'guest without completed onboarding starts on Explore'
+  'Welcome',
+  'guest without completed onboarding starts on Welcome'
 );
 assertEqual(
   initialRouteForSession(guest, true),
-  'Main',
-  'completed onboarding starts on Explore'
+  'Welcome',
+  'returning guest sees Welcome when onboarding-at-launch is enabled'
 );
 assertEqual(
   initialRouteForSession(guest, true, false),
@@ -34,23 +34,23 @@ assertEqual(
 );
 assertEqual(
   initialRouteForSession(guest, true, true),
-  'Main',
-  'showOnboardingAtLaunch true does not block Explore'
+  'Welcome',
+  'showOnboardingAtLaunch true opens Welcome'
 );
 assertEqual(
   initialRouteForSession(authenticated, false),
-  'Main',
-  'authenticated user without onboarding starts on Explore'
-);
-assertEqual(
-  initialRouteForSession(authenticated, true),
-  'Main',
-  'authenticated user starts on Explore'
+  'Welcome',
+  'authenticated user without onboarding starts on Welcome'
 );
 assertEqual(
   initialRouteForSession(authenticated, true, false),
   'Main',
-  'authenticated user may skip onboarding on returning launch'
+  'authenticated returning user may start on Explore'
+);
+assertEqual(
+  initialRouteForSession(authenticated, true, true),
+  'Welcome',
+  'authenticated returning user follows onboarding-at-launch preference'
 );
 assertEqual(
   initialRouteForSession({ status: 'loading' }, false),

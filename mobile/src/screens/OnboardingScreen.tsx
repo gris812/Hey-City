@@ -54,7 +54,7 @@ export function OnboardingScreen() {
       const permission = await requestForegroundLocationPermission();
       setPermissionState(permission === 'granted' ? 'granted' : 'denied');
       await completeOnboarding();
-      navigation.navigate('Main' as never);
+      navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
     } finally {
       setLoading(false);
     }
