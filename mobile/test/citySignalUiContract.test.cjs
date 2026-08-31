@@ -21,6 +21,7 @@ assert.match(app, /name="Explore"/, 'Explore tab is present');
 assert.match(app, /name="Stories"/, 'Stories tab is present');
 assert.match(app, /name="Settings"/, 'Settings tab is present');
 assert.doesNotMatch(app, /name="Drive"/, 'Drive is not a bottom tab');
+assert.match(app, /hey-city-navigation-welcome-v2/, 'UI update remounts stale navigation state');
 
 assert.match(live, /mode !== 'city_explorer'.*sessionId/s, 'Explore starts a real discovery session');
 assert.match(live, /aheadTarget\.providerId/, 'Explore renders the selected Ahead Discovery target');
@@ -60,5 +61,9 @@ assert.match(settings, /Audio & Text/, 'Settings has Audio & Text');
 assert.match(settings, /History & Privacy/, 'Settings has History & Privacy');
 assert.match(settings, /About Hey City/, 'Settings has About Hey City');
 assert.match(settings, /Switch value disabled/, 'Settings does not expose inert audio controls as active');
+assert.match(settings, /nestedScrollEnabled/, 'Settings explicitly enables nested scrolling');
+assert.match(settings, /alwaysBounceVertical/, 'Settings exposes vertical scrolling on iOS');
+assert.match(settings, /flexGrow: 1/, 'Settings content owns a full-height scroll surface');
+assert.match(settings, /Welcome v2 · Settings scroll v2/, 'Settings exposes the current UI build marker');
 
 console.log('citySignalUiContract tests passed');

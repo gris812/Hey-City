@@ -94,7 +94,7 @@ function AppContent() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer key="hey-city-navigation-welcome-v2">
       <StatusBar style="auto" />
       <Stack.Navigator initialRouteName={initialRouteName} screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Welcome" component={WelcomeScreen} />

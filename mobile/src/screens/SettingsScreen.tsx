@@ -37,6 +37,8 @@ const guideImages = {
   arthur: require('../../assets/Guides/ArturSelection.png'),
 } as const;
 
+export const UI_BUILD_LABEL = 'Welcome v2 · Settings scroll v2';
+
 export function SettingsScreen() {
   const { identity, logout, preferences, updatePreferences } = useAuth();
   const navigation = useNavigation();
@@ -199,7 +201,7 @@ export function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About Hey City</Text>
-          <Text style={styles.hint}>Version 1.0.0 - City Signal v1 UI refresh</Text>
+          <Text style={styles.hint}>Version 1.0.0 · {UI_BUILD_LABEL}</Text>
         </View>
 
         {__DEV__ && (
