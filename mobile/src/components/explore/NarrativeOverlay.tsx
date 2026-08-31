@@ -49,7 +49,18 @@ export function NarrativeOverlay({
   return (
     <View pointerEvents="box-none" style={styles.overlay}>
       <View style={styles.panel}>
-        <View style={styles.handle} />
+        <View style={styles.compactWaveform} accessibilityElementsHidden>
+          {[6, 12, 8, 15, 10, 13, 7].map((height, index) => (
+            <View
+              key={`${height}-${index}`}
+              style={[
+                styles.compactWaveBar,
+                { height },
+                (paused || completed) && styles.waveBarInactive,
+              ]}
+            />
+          ))}
+        </View>
         <View style={styles.header}>
           {guideImage ? <Image source={guideImage} style={styles.guideAvatar} /> : null}
           <View style={styles.headerCopy}>
@@ -58,28 +69,11 @@ export function NarrativeOverlay({
             </Text>
             <Text style={styles.title} numberOfLines={2}>{title}</Text>
           </View>
-          <View style={styles.liveBadge}>
-            <View style={[styles.liveDot, paused && styles.liveDotPaused]} />
-            <Text style={styles.liveText}>{paused ? t('tour.pause') : t('walking.live')}</Text>
-          </View>
         </View>
 
         <ScrollView style={styles.textScroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.body}>{text}</Text>
         </ScrollView>
-
-        <View style={styles.waveformRow} accessibilityElementsHidden>
-          {[12, 20, 14, 28, 18, 32, 22, 16, 26, 14, 20, 12].map((height, index) => (
-            <View
-              key={`${height}-${index}`}
-              style={[
-                styles.waveBar,
-                { height },
-                (paused || completed) && styles.waveBarInactive,
-              ]}
-            />
-          ))}
-        </View>
 
         {typeof progress === 'number' && (
           <View style={styles.progressTrack}>
@@ -132,8 +126,8 @@ const styles = StyleSheet.create({
     zIndex: 40,
   },
   panel: {
-    maxHeight: 420,
-    borderRadius: radius.xl,
+    maxHeight: 360,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: 'rgba(255,255,255,0.98)',
@@ -142,14 +136,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     ...shadows.floating,
   },
-  handle: {
+  compactWaveform: {
     alignSelf: 'center',
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    marginBottom: 12,
+    height: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginBottom: 8,
   },
+  compactWaveBar: { width: 3, borderRadius: 1.5, backgroundColor: colors.primaryBright },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -161,30 +156,9 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, minWidth: 0 },
   guide: { ...typography.caption, color: colors.primary },
   title: { ...typography.body, color: colors.foreground, fontWeight: '700', marginTop: 2 },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primaryBright },
-  liveDotPaused: { backgroundColor: colors.warning },
-  liveText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
   textScroll: { maxHeight: 112, marginVertical: spacing.sm },
   body: { ...typography.body, color: colors.foreground },
   countdown: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.sm },
-  waveformRow: {
-    height: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    marginVertical: spacing.sm,
-  },
-  waveBar: { width: 4, borderRadius: 2, backgroundColor: colors.primaryBright },
   waveBarInactive: { backgroundColor: colors.border },
   progressTrack: {
     height: 4,
@@ -202,7 +176,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     backgroundColor: colors.primary,
   },
   playbackGlyph: { color: colors.surface, fontSize: 16, lineHeight: 18, fontWeight: '800' },
@@ -210,7 +184,7 @@ const styles = StyleSheet.create({
   secondaryButton: {
     flex: 1,
     minHeight: 48,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -220,7 +194,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     flex: 1,
     minHeight: 48,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',

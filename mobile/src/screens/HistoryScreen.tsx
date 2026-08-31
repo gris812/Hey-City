@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   title: { ...typography.title, color: colors.foreground, marginBottom: spacing.md },
   headerRow: { marginBottom: spacing.md },
   countLabel: { ...typography.body, color: colors.textMuted },
-  listContent: { paddingBottom: spacing.xl },
+  listContent: { flexGrow: 1, paddingBottom: spacing.xl },
   disabled: { ...typography.body, color: colors.textMuted },
   empty: { ...typography.body, color: colors.textMuted, marginTop: spacing.lg },
   item: {
@@ -191,7 +191,8 @@ const styles = StyleSheet.create({
   },
   storyThumbLarge: {
     width: '100%',
-    height: 180,
+    flex: 1,
+    minHeight: 280,
     marginBottom: spacing.md,
   },
   thumbBadge: {
@@ -210,19 +211,19 @@ const styles = StyleSheet.create({
   itemMeta: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
   itemTime: { ...typography.caption, color: colors.textMuted, maxWidth: 78 },
   emptyCard: {
+    flex: 1,
     padding: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
+    borderTopWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
   },
   emptyTitle: { ...typography.title, color: colors.foreground, fontSize: 22, lineHeight: 28 },
   emptyButton: {
     minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.pill,
-    backgroundColor: colors.primaryOrange,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
     marginTop: spacing.md,
   },
   emptyButtonText: { ...typography.label, color: colors.surface },

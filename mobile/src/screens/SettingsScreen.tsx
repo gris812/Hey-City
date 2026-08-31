@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  Modal,
   Image,
   ScrollView,
   StyleSheet,
@@ -26,6 +25,7 @@ import {
 } from '../localization';
 import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
+import { GuideProfileModal } from '../components/explore/GuideProfileModal';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
@@ -46,7 +46,7 @@ export function SettingsScreen() {
   const { t } = useAppTranslation();
   const [historyEnabled, setHistoryEnabled] = useState(guestProfileDefaults.historyEnabled);
   const [loading, setLoading] = useState(false);
-  const [guideTip, setGuideTip] = useState<GuidePreference | null>(null);
+  const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) return;
@@ -55,7 +55,6 @@ export function SettingsScreen() {
 
   const selectGuide = async (guide: GuidePreference) => {
     await updatePreferences({ preferredGuideId: guide });
-    setGuideTip(guide);
   };
 
   const handleHistoryToggle = async (value: boolean) => {
@@ -74,12 +73,34 @@ export function SettingsScreen() {
     }
   };
 
-  const selectedTip = guideTip
-    ? {
-        name: t(`guide.${guideTip}`),
-        description: t(`guide.${guideTip}Description`),
-      }
-    : null;
+  const fullGuideProfiles = {
+    dana: {
+      image: guideImages.dana,
+      name: t('guide.dana'),
+      role: t('guide.danaRole'),
+      body: t('guide.danaFullCopy'),
+      interests: [t('guide.interest.hiddenGems'), t('guide.interest.localLife'), t('guide.interest.atmosphere')],
+      quote: 'Look up — this corner is easy to miss.',
+      chooseLabel: t('guide.chooseDana'),
+      voiceGreeting:
+        preferences.appLanguage === 'ru'
+          ? 'Привет! Я Dana. Я помогу замечать характер города, его людей и детали, мимо которых легко пройти.'
+          : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
+    },
+    arthur: {
+      image: guideImages.arthur,
+      name: t('guide.arthur'),
+      role: t('guide.arthurRole'),
+      body: t('guide.arthurFullCopy'),
+      interests: [t('guide.interest.history'), t('guide.interest.architecture'), t('guide.interest.context')],
+      quote: 'This building connects finance and civic history.',
+      chooseLabel: t('guide.chooseArthur'),
+      voiceGreeting:
+        preferences.appLanguage === 'ru'
+          ? 'Здравствуйте. Я Arthur. Вместе мы разберёмся, как история, архитектура и решения людей сформировали город вокруг нас.'
+          : 'Hello. I’m Arthur. Together we’ll see how history, architecture, and human decisions shaped the city around us.',
+    },
+  };
 
   return (
     <View style={styles.screen}>
@@ -124,8 +145,8 @@ export function SettingsScreen() {
                     guide.id === 'arthur' && styles.avatarOptionArthur,
                     active && styles.avatarOptionActive,
                   ]}
-                  onPress={() => void selectGuide(guide.id)}
-                  accessibilityLabel={`Select ${t(`guide.${guide.id}`)}`}
+                  onPress={() => setGuideProfileOpen(guide.id)}
+                  accessibilityLabel={`${t('guide.viewFullProfile')}: ${t(`guide.${guide.id}`)}`}
                   activeOpacity={0.85}
                 >
                   <Image source={guideImages[guide.id]} style={styles.avatarImage} />
@@ -213,15 +234,23 @@ export function SettingsScreen() {
         )}
       </ScrollView>
 
-      <Modal transparent visible={Boolean(selectedTip)} animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setGuideTip(null)}>
-          <View style={styles.glassPanel}>
-            <Text style={styles.glassEyebrow}>{t('guide.tipTitle')}</Text>
-            <Text style={styles.glassTitle}>{selectedTip?.name}</Text>
-            <Text style={styles.glassBody}>{selectedTip?.description}</Text>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <GuideProfileModal
+        visible={Boolean(guideProfileOpen)}
+        topInset={insets.top}
+        initialGuideId={guideProfileOpen ?? preferences.preferredGuideId}
+        profiles={fullGuideProfiles}
+        backLabel={t('common.back')}
+        backToGuidesLabel={t('guide.backToGuides')}
+        voiceSampleLabel={t('guide.voiceSample')}
+        voicePlaceholderLabel={t('guide.voicePlaceholder')}
+        swipeLabel={t('guide.swipeHint')}
+        onChoose={(guideId) => {
+          void selectGuide(guideId);
+          setGuideProfileOpen(null);
+        }}
+        onBack={() => setGuideProfileOpen(null)}
+        onBackToGuides={() => setGuideProfileOpen(null)}
+      />
     </View>
   );
 }
@@ -297,25 +326,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   accountButtonText: { ...typography.label, color: colors.surface },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-    backgroundColor: 'rgba(28, 28, 30, 0.24)',
-  },
-  glassPanel: {
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    backgroundColor: 'rgba(255,253,248,0.86)',
-    shadowColor: colors.foreground,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.22,
-    shadowRadius: 32,
-    elevation: 10,
-  },
-  glassEyebrow: { ...typography.caption, color: colors.textMuted, marginBottom: spacing.xs },
-  glassTitle: { ...typography.title, color: colors.foreground, marginBottom: spacing.sm },
-  glassBody: { ...typography.body, color: colors.foreground },
 });

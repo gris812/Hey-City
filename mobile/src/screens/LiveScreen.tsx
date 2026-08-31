@@ -41,6 +41,7 @@ import {
 } from '../components/explore/ExploreHomeView';
 import { DiscoveryPlaceSheet } from '../components/explore/DiscoveryPlaceSheet';
 import { GuideQuickPreviewSheet } from '../components/explore/GuideQuickPreviewSheet';
+import { GuideProfileModal } from '../components/explore/GuideProfileModal';
 import { GuidedNavigationView } from '../components/explore/GuidedNavigationView';
 import { TourPreferencesSheet } from '../components/explore/TourPreferencesSheet';
 import { TranscriptSheet } from '../components/explore/TranscriptSheet';
@@ -209,7 +210,7 @@ export function LiveScreen() {
   const passiveMapUserCoordinate = liveMovement
     ? { latitude: liveMovement.latitude, longitude: liveMovement.longitude }
     : exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
-  const guidedMapHeight = Math.max(520, windowHeight - insets.top - insets.bottom - 250);
+  const guidedMapHeight = Math.max(520, windowHeight - tabBarHeight);
   const tourRegion: Region = useMemo(
     () => ({
       latitude: 40.7097,
@@ -278,6 +279,14 @@ export function LiveScreen() {
     driveDiscoveryOn,
     overlayKind: liveOverlay?.kind ?? null,
   });
+  const mapFirstForeground =
+    mode === 'city_explorer' ||
+    foregroundPhase === 'guided_navigating' ||
+    foregroundPhase === 'guided_approaching' ||
+    foregroundPhase === 'guided_at_target' ||
+    foregroundPhase === 'guided_story_active' ||
+    foregroundPhase === 'guided_story_paused' ||
+    foregroundPhase === 'guided_story_complete';
   const exploreHomeViewModel = createExploreHomeViewModel({
     areaName: t('live.cityExplorer'),
     guideId: preferences.preferredGuideId,
@@ -325,6 +334,34 @@ export function LiveScreen() {
   const targetMedia = targetForArrival
     ? resolveTargetMedia(targetForArrival, activeGuideLanguage, false, targetImageSources)
     : {};
+  const fullGuideProfiles = {
+    dana: {
+      image: guideSelectionImages.dana,
+      name: t('guide.dana'),
+      role: getLocalizedGuideProfile('dana').role,
+      body: getLocalizedGuideProfile('dana').fullCopy,
+      interests: getLocalizedGuideProfile('dana').interests,
+      quote: guideProfiles.dana.sample,
+      chooseLabel: getLocalizedGuideProfile('dana').chooseLabel,
+      voiceGreeting:
+        preferences.appLanguage === 'ru'
+          ? 'Привет! Я Dana. Я помогу замечать характер города, его людей и детали, мимо которых легко пройти.'
+          : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
+    },
+    arthur: {
+      image: guideSelectionImages.arthur,
+      name: t('guide.arthur'),
+      role: getLocalizedGuideProfile('arthur').role,
+      body: getLocalizedGuideProfile('arthur').fullCopy,
+      interests: getLocalizedGuideProfile('arthur').interests,
+      quote: guideProfiles.arthur.sample,
+      chooseLabel: getLocalizedGuideProfile('arthur').chooseLabel,
+      voiceGreeting:
+        preferences.appLanguage === 'ru'
+          ? 'Здравствуйте. Я Arthur. Вместе мы разберёмся, как история, архитектура и решения людей сформировали город вокруг нас.'
+          : 'Hello. I’m Arthur. Together we’ll see how history, architecture, and human decisions shaped the city around us.',
+    },
+  };
   const openTourPreferences = () => setLiveOverlay({ kind: 'tour_preferences' });
   const openGuideQuickPreview = (
     guideId: GuidePreference,
@@ -585,16 +622,13 @@ export function LiveScreen() {
     <>
       <ScrollView
         style={styles.container}
-        scrollEnabled={mode !== 'city_explorer'}
+        scrollEnabled={!mapFirstForeground}
         contentContainerStyle={[
           styles.content,
           {
-            paddingHorizontal: mode === 'city_explorer' ? 0 : spacing.lg,
-            paddingTop:
-              mode === 'city_explorer'
-                ? 0
-                : insets.top + spacing.lg,
-            paddingBottom: mode === 'city_explorer' ? 0 : tabBarHeight + insets.bottom + 48,
+            paddingHorizontal: mapFirstForeground ? 0 : spacing.lg,
+            paddingTop: mapFirstForeground ? 0 : insets.top + spacing.lg,
+            paddingBottom: mapFirstForeground ? 0 : tabBarHeight + insets.bottom + 48,
           },
         ]}
       >
@@ -1036,59 +1070,30 @@ export function LiveScreen() {
         />
       )}
 
-      <Modal visible={Boolean(guideProfileOpen)} animationType="slide">
-        {guideProfileOpen && (
-          <View style={styles.profileScreen}>
-            <Image source={guideSelectionImages[guideProfileOpen]} style={styles.profileImage} resizeMode="cover" />
-            <View pointerEvents="none" style={styles.profileLowerShade} />
-            <View style={[styles.profileOverlay, { paddingTop: insets.top + spacing.md }]}>
-              <TouchableOpacity
-                style={styles.profileBackButton}
-                onPress={() => {
-                  setGuideProfileOpen(null);
-                  restoreGuideSurfaceOrigin(guideProfileReturnTo);
-                }}
-              >
-                <Text style={styles.profileBackText}>‹</Text>
-              </TouchableOpacity>
-              <View style={styles.profileCopy}>
-                <ScrollView style={styles.profileTextScroll} contentContainerStyle={styles.profileTextContent}>
-                  <Text style={styles.profileName}>{t(`guide.${guideProfileOpen}`)}</Text>
-                  <Text style={styles.profileRole}>{getLocalizedGuideProfile(guideProfileOpen).role}</Text>
-                  <Text style={styles.profileBody}>
-                    {getLocalizedGuideProfile(guideProfileOpen).fullCopy}
-                  </Text>
-                  <View style={styles.profileTagRow}>
-                    {getLocalizedGuideProfile(guideProfileOpen).interests.map((interest) => (
-                      <Text key={interest} style={styles.profileTag}>{interest}</Text>
-                    ))}
-                  </View>
-                  <Text style={styles.profileQuote}>"{guideProfiles[guideProfileOpen].sample}"</Text>
-                </ScrollView>
-                <TouchableOpacity
-                  style={[styles.completionButton, styles.completionButtonPrimary]}
-                  onPress={() => {
-                    void selectGuide(guideProfileOpen);
-                    setGuideProfileOpen(null);
-                    restoreGuideSurfaceOrigin(guideProfileReturnTo);
-                  }}
-                >
-                  <Text style={styles.completionButtonPrimaryText}>{getLocalizedGuideProfile(guideProfileOpen).chooseLabel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalPlainButton}
-                  onPress={() => {
-                    setGuideProfileOpen(null);
-                    restoreGuideSurfaceOrigin(guideProfileReturnTo);
-                  }}
-                >
-                  <Text style={styles.profileSecondaryText}>{t('guide.backToGuides')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
-      </Modal>
+      <GuideProfileModal
+        visible={Boolean(guideProfileOpen)}
+        topInset={insets.top}
+        initialGuideId={guideProfileOpen ?? preferences.preferredGuideId}
+        profiles={fullGuideProfiles}
+        backLabel={t('common.back')}
+        backToGuidesLabel={t('guide.backToGuides')}
+        voiceSampleLabel={t('guide.voiceSample')}
+        voicePlaceholderLabel={t('guide.voicePlaceholder')}
+        swipeLabel={t('guide.swipeHint')}
+        onChoose={(guideId) => {
+          void selectGuide(guideId);
+          setGuideProfileOpen(null);
+          restoreGuideSurfaceOrigin(guideProfileReturnTo);
+        }}
+        onBack={() => {
+          setGuideProfileOpen(null);
+          restoreGuideSurfaceOrigin(guideProfileReturnTo);
+        }}
+        onBackToGuides={() => {
+          setGuideProfileOpen(null);
+          setLiveOverlay({ kind: 'tour_preferences' });
+        }}
+      />
 
       <TranscriptSheet
         visible={liveOverlay?.kind === 'transcript'}
@@ -1723,49 +1728,6 @@ const styles = StyleSheet.create({
   },
   routeSummaryTitle: { ...typography.body, color: colors.foreground, fontWeight: '600' },
   routeSummaryMeta: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs },
-  profileScreen: { flex: 1, backgroundColor: colors.foreground },
-  profileImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  profileLowerShade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '58%',
-    backgroundColor: 'rgba(0,0,0,0.62)',
-  },
-  profileOverlay: {
-    flex: 1,
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-  },
-  profileBackButton: {
-    width: 52,
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-  },
-  profileBackText: { color: colors.foreground, fontSize: 34, lineHeight: 38, fontWeight: '600' },
-  profileCopy: { gap: spacing.md },
-  profileTextScroll: { maxHeight: '70%' },
-  profileTextContent: { gap: spacing.md, paddingBottom: spacing.sm },
-  profileName: { color: colors.surface, fontSize: 48, lineHeight: 54, fontWeight: '700' },
-  profileRole: { color: colors.primaryOrange, fontSize: 20, lineHeight: 26, fontWeight: '700' },
-  profileBody: { ...typography.body, color: colors.surface },
-  profileTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  profileTag: {
-    overflow: 'hidden',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(198,146,45,0.76)',
-    color: colors.surface,
-  },
-  profileQuote: { ...typography.body, color: colors.surface },
-  profileSecondaryText: { ...typography.caption, color: colors.surface },
   transcriptBody: { ...typography.body, color: colors.foreground },
   shareMapPreview: {
     height: 360,

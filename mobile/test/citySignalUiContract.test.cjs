@@ -13,6 +13,7 @@ const transcript = readFileSync(join(root, 'src/components/explore/TranscriptShe
 const tourPreferences = readFileSync(join(root, 'src/components/explore/TourPreferencesSheet.tsx'), 'utf8');
 const history = readFileSync(join(root, 'src/screens/HistoryScreen.tsx'), 'utf8');
 const settings = readFileSync(join(root, 'src/screens/SettingsScreen.tsx'), 'utf8');
+const guideProfile = readFileSync(join(root, 'src/components/explore/GuideProfileModal.tsx'), 'utf8');
 const routing = readFileSync(join(root, 'src/context/appIdentity.ts'), 'utf8');
 const liveSurface = [live, exploreHome, guidedNavigation, transcript, tourPreferences].join('\n');
 
@@ -38,7 +39,7 @@ assert.match(narrativeOverlay, /onSkip/, 'Walking story player exposes a real sk
 assert.match(exploreHome, /statusBanner/, 'Walking Mode renders a consumer-facing degraded state');
 assert.match(live, /onRetry=.*startSession/s, 'Walking degraded state retries the real discovery session');
 assert.doesNotMatch(exploreHome, /region=\{region\}/, 'Walking map is not locked by a controlled region');
-assert.match(live, /scrollEnabled=\{mode !== 'city_explorer'\}/, 'Walking map is not trapped in a scrolling parent');
+assert.match(live, /scrollEnabled=\{!mapFirstForeground\}/, 'Walking and guided maps are not trapped in a scrolling parent');
 assert.match(live, /returnTo: 'explore'/, 'Walking guide preview returns to the map');
 assert.match(liveSurface, /Start your walk/, 'Tour Preferences surface exists');
 assert.match(live, /guideProfileOpen/, 'Guide Profile surface exists');
@@ -65,5 +66,10 @@ assert.match(settings, /nestedScrollEnabled/, 'Settings explicitly enables neste
 assert.match(settings, /alwaysBounceVertical/, 'Settings exposes vertical scrolling on iOS');
 assert.match(settings, /flexGrow: 1/, 'Settings content owns a full-height scroll surface');
 assert.match(settings, /Welcome v2 · Settings scroll v2/, 'Settings exposes the current UI build marker');
+assert.match(settings, /setGuideProfileOpen\(guide\.id\)/, 'Settings guide images open the full profile');
+assert.match(guideProfile, /PanResponder\.create/, 'Full guide profile supports horizontal swipe');
+assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a voice sample placeholder');
+assert.match(guideProfile, /borderRadius: radius\.sm/, 'Full guide profile avoids pill-shaped primary controls');
+assert.doesNotMatch(guideProfile, /backgroundColor: 'rgba\(0,0,0/, 'Full guide profile does not cover the portrait with a dark overlay');
 
 console.log('citySignalUiContract tests passed');

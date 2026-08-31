@@ -1,7 +1,7 @@
 import React from 'react';
 import { type ImageSourcePropType, StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, type LatLng, type Region } from 'react-native-maps';
-import { colors, radius, spacing } from '../../theme';
+import { colors } from '../../theme';
 import { NarrativeOverlay } from './NarrativeOverlay';
 
 export type ActiveStoryMarker = {
@@ -88,10 +88,7 @@ export function ActiveStoryView({
 
 const styles = StyleSheet.create({
   mapWrap: {
-    borderRadius: radius.lg,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
+    backgroundColor: colors.background,
   },
 });
