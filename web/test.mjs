@@ -34,6 +34,13 @@ async function testLoginAndNavigation() {
   assert.match(dom.window.document.body.textContent, /Начать прогулку/);
   dom.window.document.querySelector('[data-tab="settings"]').click();
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
+  dom.window.document.querySelector('[data-guide="dana"]').click();
+  assert.match(dom.window.document.body.textContent, /Пример голоса/);
+  dom.window.document.querySelector('#switch-guide').click();
+  assert.match(dom.window.document.querySelector('#guide-profile').textContent, /Arthur/);
+  dom.window.document.querySelector('#close-profile').click();
+  dom.window.document.querySelector('[data-tab="stories"]').click();
+  assert.match(dom.window.document.body.textContent, /Ваша первая прогулка/);
 }
 
 async function testAdminDashboard() {
@@ -49,8 +56,22 @@ async function testAdminDashboard() {
   assert.match(dom.window.document.body.textContent, /Статистика/);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
   assert.match(dom.window.document.body.textContent, /Google Maps/);
+  assert.ok(dom.window.document.querySelector('#admin-back'));
+  assert.ok(dom.window.document.querySelector('#admin-logout'));
+  assert.equal(dom.window.document.querySelectorAll('.nav button').length, 3);
+  dom.window.document.querySelector('#admin-back').click();
+  assert.match(dom.window.document.body.textContent, /Начать прогулку/);
+}
+
+async function testMapConfiguration() {
+  assert.doesNotMatch(source, /mapId\s*:\s*['"]DEMO_MAP_ID/);
+  assert.match(source, /auth_referrer_policy=origin/);
+  const css = await readFile(new URL('./styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.screen\s*\{[^}]*overflow:auto/);
+  assert.match(css, /\.profile-content\s*\{[^}]*overflow:auto/);
 }
 
 await testLoginAndNavigation();
 await testAdminDashboard();
+await testMapConfiguration();
 console.log('web smoke tests passed');
