@@ -47,6 +47,9 @@ svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.8;
 .ambient-avatar { width:62px; height:62px; object-fit:cover; border-radius:12px; background:var(--green-soft); }
 .ambient-row h1 { margin:0 0 5px; font-size:25px; line-height:1.08; letter-spacing:-.035em; }
 .ambient-row p { margin:0; color:var(--muted); font-size:14px; line-height:1.4; }
+.story-audio { border-top:1px solid var(--line); padding:10px 0; }
+.audio-button { width:100%; min-height:42px; display:flex; align-items:center; justify-content:center; gap:9px; border:0; border-radius:8px; background:var(--green-soft); color:var(--green); font-weight:700; }
+.audio-button svg { width:19px; height:19px; }
 .sheet-actions { display:grid; grid-template-columns:1fr auto; gap:9px; }
 
 .page { min-height:100%; padding:max(30px,env(safe-area-inset-top)) 20px 40px; max-width:1000px; margin:auto; }

@@ -237,7 +237,7 @@ export const googleMaps = {
 
 export const openai = {
   apiKey: process.env.OPENAI_API_KEY || '',
-  textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna',
+  textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
   ttsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
   textInputUsdPerMillion: float('OPENAI_TEXT_INPUT_USD_PER_MILLION', 0.1),
   textOutputUsdPerMillion: float('OPENAI_TEXT_OUTPUT_USD_PER_MILLION', 0.6),

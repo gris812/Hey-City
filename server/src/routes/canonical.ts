@@ -7,7 +7,7 @@ import {
   getPoiCandidates,
   startSession,
 } from '../controllers/drive';
-import { generateNarration } from '../controllers/narration';
+import { generateNarration, generateVoiceSample } from '../controllers/narration';
 
 export const sessionsRouter = Router();
 sessionsRouter.use(requireAuth);
@@ -23,6 +23,7 @@ discoveryRouter.post('/active-poi', getPoiCandidates);
 export const storiesRouter = Router();
 storiesRouter.use(requireAuth);
 storiesRouter.post('/generate', generateNarration);
+storiesRouter.post('/voice-sample', generateVoiceSample);
 
 export const poisRouter = Router();
 poisRouter.use(requireAuth);

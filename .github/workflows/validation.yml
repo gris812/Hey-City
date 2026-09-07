@@ -1,11 +1,15 @@
-name: Validation
+name: Validate and deploy
 
 on:
   push:
+    branches: [main]
     paths:
       - 'mobile/**'
       - 'server/**'
       - 'shared/**'
+      - 'web/**'
+      - 'ops/**'
+      - 'docker-compose.production.yml'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/validation.yml'
@@ -14,15 +18,25 @@ on:
       - 'mobile/**'
       - 'server/**'
       - 'shared/**'
+      - 'web/**'
+      - 'ops/**'
+      - 'docker-compose.production.yml'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heycity-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  mobile-and-server:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,16 +45,62 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Mobile typecheck
-        run: npm run typecheck --workspace mobile
+      - name: Typecheck all workspaces
+        run: npm run typecheck
 
       - name: Mobile presentation tests
         run: npm run test:presentation --workspace mobile
 
       - name: Server tests
         run: npm run test --workspace server
+
+      - name: WebApp tests
+        run: npm run test:web
+
+      - name: Build production API image
+        run: docker build -f server/Dockerfile -t heycity-api-ci .
+
+      - name: Build production WebApp image
+        run: docker build --build-arg GOOGLE_MAPS_BROWSER_KEY=ci-placeholder -f web/Dockerfile -t heycity-web-ci .
+
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.VPS_HOST }}
+      DEPLOY_USER: ${{ secrets.VPS_USER }}
+      DEPLOY_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+    steps:
+      - name: Configure SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/heycity_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/heycity_deploy ~/.ssh/known_hosts
+
+      - name: Deploy and verify
+        run: |
+          ssh -i ~/.ssh/heycity_deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+          cd /opt/HeyCity-production
+          git fetch origin main
+          git merge --ff-only origin/main
+          docker compose --project-name heycity-production --env-file .env.production -f docker-compose.production.yml up -d --build --remove-orphans
+          for attempt in $(seq 1 18); do
+            if curl -fsS http://127.0.0.1:4100/health >/dev/null && curl -fsS http://127.0.0.1:4180/ >/dev/null; then
+              docker compose --project-name heycity-production --env-file .env.production -f docker-compose.production.yml ps
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose --project-name heycity-production --env-file .env.production -f docker-compose.production.yml logs --tail=100 api web
+          exit 1
+          REMOTE

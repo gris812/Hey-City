@@ -148,10 +148,18 @@ async function run(): Promise<void> {
       voiceId: 'artur',
       context: 'drive_discovery',
     });
-  assert.ok(story.transcriptText.includes('poi_federal_hall'));
+  assert.ok(story.transcriptText.length > 40);
   assert.ok(story.estimatedDurationSec >= 30);
   assert.ok(story.estimatedDurationSec <= 45);
   assert.ok(story.audioUrl.startsWith('https://example.com/tts/'));
+
+  const sample = await post<{ transcriptText: string; audioUrl: string }>(
+    app,
+    '/stories/voice-sample',
+    { voiceId: 'dana', lang: 'ru' }
+  );
+  assert.match(sample.transcriptText, /Я Dana/);
+  assert.ok(sample.audioUrl.startsWith('https://example.com/tts/dana/'));
 
   console.log('httpAliases tests passed');
 }

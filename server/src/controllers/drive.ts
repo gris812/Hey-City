@@ -31,6 +31,7 @@ export async function startSession(req: AuthRequest, res: Response): Promise<voi
       ? 'ru'
       : user.driveDiscovery.languageDefault;
   const params: DriveSessionParams = {
+    mode: body.mode === 'walking' ? 'walking' : 'vehicle',
     themeTags: Array.isArray(body.themeTags) ? body.themeTags : user?.driveDiscovery.themeTags ?? ['mixed'],
     narrationStyle: body.narrationStyle ?? user?.driveDiscovery.narrationStyle ?? 'documentary',
     lengthSec: typeof body.lengthSec === 'number' ? body.lengthSec : user?.driveDiscovery.lengthSec ?? 90,

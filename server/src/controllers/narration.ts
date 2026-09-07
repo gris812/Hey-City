@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import { generateNarration as generate } from '../services/narration';
+import { generateNarration as generate, generateVoiceSample as generateSample } from '../services/narration';
 
 const VOICES = [
   { voiceId: 'default', displayName: 'Default', lang: 'ru', gender: 'female', providerVoiceName: 'default', sampleUrl: '' },
@@ -40,5 +40,30 @@ export async function generateNarration(req: AuthRequest, res: Response): Promis
   } catch (e) {
     console.error('generateNarration', e);
     res.status(500).json({ error: 'Narration failed' });
+  }
+}
+
+export async function generateVoiceSample(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const lang = req.body?.lang === 'en' ? 'en' : 'ru';
+  const voiceId = req.body?.voiceId === 'artur' || req.body?.voiceId === 'arthur' ? 'artur' : 'dana';
+  const samples = {
+    ru: {
+      dana: 'Привет! Я Dana. Будем идти в вашем ритме — я заговорю, когда рядом появится место, которое действительно стоит заметить.',
+      artur: 'Здравствуйте. Я Arthur. Вместе мы увидим, как история, архитектура и человеческие решения сформировали город вокруг нас.',
+    },
+    en: {
+      dana: "Hi! I'm Dana. We'll move at your pace, and I'll speak when something nearby is genuinely worth noticing.",
+      artur: "Hello. I'm Arthur. Together we'll see how history, architecture, and human decisions shaped the city around us.",
+    },
+  } as const;
+  try {
+    res.json(await generateSample(samples[lang][voiceId], voiceId, lang, req.user.userId));
+  } catch (error) {
+    console.error('generateVoiceSample', error);
+    res.status(500).json({ error: 'Voice sample failed' });
   }
 }

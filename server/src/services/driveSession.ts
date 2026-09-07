@@ -2,6 +2,7 @@
  * Drive Discovery session state: active session per user, last story time, next POI, mute.
  */
 import type {
+  DiscoveryMode,
   DiscoveryDecision,
   DrivePingResult,
   NarrativePlan,
@@ -16,7 +17,8 @@ import { wasPoiListenedRecently } from './history';
 import { addToHistory } from './history';
 import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
-import { createMockNarration, createNarrativePlan } from './narrativePlan';
+import { createNarrativePlan } from './narrativePlan';
+import { generateNarration } from './narration';
 import {
   clearAheadDiscoverySession,
   createMovementContext,
@@ -24,6 +26,7 @@ import {
 } from './aheadDiscovery';
 
 export interface DriveSessionParams {
+  mode?: DiscoveryMode;
   themeTags: string[];
   narrationStyle: string;
   lengthSec: number;
@@ -139,11 +142,9 @@ export async function pingSession(
   });
   const userId = session.userId;
   const circuitOpen = isCircuitOpen(userId);
-  const skipReason = getPingSkipReason({
-    circuitOpen,
-    muted: session.muted,
-    speedKmh,
-  });
+  const skipReason = session.params.mode === 'walking'
+    ? (circuitOpen ? 'circuit_open' : session.muted ? 'muted' : null)
+    : getPingSkipReason({ circuitOpen, muted: session.muted, speedKmh });
   if (skipReason) {
     return {
       nextAction: 'NONE',
@@ -177,7 +178,7 @@ export async function pingSession(
   session.lastCandidates = localCandidates.map(localCandidateToNearbyPlace);
 
   const decision = evaluateDiscoveryDecision({
-    mode: 'vehicle',
+    mode: session.params.mode ?? 'vehicle',
     speedKmh,
     gpsAgeSeconds: 0,
     alreadyListening: session.alreadyListening,
@@ -203,7 +204,17 @@ export async function pingSession(
     storySeed: decision.narrativePlanInput.storySeed,
   });
   const narrativePlan = createNarrativePlan(decision.narrativePlanInput);
-  const narration = createMockNarration(narrativePlan);
+  const narration = await generateNarration({
+    poiId: decision.poiId,
+    placeName: decision.narrativePlanInput.placeName,
+    lang: session.params.language,
+    theme: session.params.themeTags[0] ?? 'mixed',
+    style: session.params.narrationStyle,
+    lengthSec: session.params.lengthSec,
+    voiceId: session.params.voiceId,
+    context: session.params.mode === 'walking' ? 'walking' : 'drive_discovery',
+    userId,
+  });
 
   session.nextPoi = {
     place,
@@ -219,7 +230,7 @@ export async function pingSession(
       type: 'poi_listened',
       placeId: place.place_id,
       poiId: place.place_id,
-      mode: 'drive_discovery',
+      mode: session.params.mode === 'walking' ? 'walking' : 'drive_discovery',
       theme: session.params.themeTags[0],
       style: session.params.narrationStyle,
     });
@@ -228,7 +239,7 @@ export async function pingSession(
   return {
     nextAction: 'PLAY',
     poi: place,
-    audioUrl: `mock://story/${decision.poiId}`,
+    audioUrl: narration.audioUrl,
     textPreview: narration.transcriptText.slice(0, 200),
     decision,
     narrativePlan,

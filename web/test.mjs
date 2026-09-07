@@ -16,15 +16,25 @@ async function settle() {
 async function testLoginAndNavigation() {
   const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
   let stoppedWatches = 0;
+  let voiceSampleRequest = null;
   Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
     watchPosition: () => 17,
     clearWatch: () => { stoppedWatches += 1; },
   } });
+  dom.window.HTMLMediaElement.prototype.play = async () => {};
+  dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: '' };
-  dom.window.fetch = async (url) => {
+  dom.window.fetch = async (url, options = {}) => {
     if (url.endsWith('/auth/otp/send')) return response({ ok: true, message: 'OTP sent' });
     if (url.endsWith('/auth/otp/verify')) return response({ token: 'test-token', user: { id: 'u1', email: 'tester@example.com', role: 'user' } });
-    if (url.endsWith('/sessions/start')) return response({ sessionId: 'session-1' });
+    if (url.endsWith('/sessions/start')) {
+      assert.equal(JSON.parse(options.body || '{}').mode, 'walking');
+      return response({ sessionId: 'session-1' });
+    }
+    if (url.endsWith('/stories/voice-sample')) {
+      voiceSampleRequest = JSON.parse(options.body || '{}');
+      return response({ audioUrl: 'https://api.example/media/dana.mp3', transcriptText: 'Hello' });
+    }
     if (url.endsWith('/sessions/session-1/end')) return response({ ok: true });
     throw new Error(`Unexpected request: ${url}`);
   };
@@ -52,20 +62,29 @@ async function testLoginAndNavigation() {
   dom.window.document.querySelector('#stop-walk').click();
   assert.equal(stoppedWatches, 1);
   dom.window.document.querySelector('[data-tab="settings"]').click();
+  await settle();
   dom.window.document.querySelector('[data-guide="dana"]').click();
   assert.match(dom.window.document.body.textContent, /Пример голоса/);
+  dom.window.document.querySelector('#voice-sample').click();
+  await settle();
+  assert.deepEqual(voiceSampleRequest, { voiceId: 'dana', lang: 'ru' });
   dom.window.document.querySelector('#switch-guide').click();
   assert.match(dom.window.document.querySelector('#guide-profile').textContent, /Arthur/);
   dom.window.document.querySelector('#choose-guide').click();
   assert.equal(dom.window.localStorage.getItem('heyCityGuide'), 'arthur');
   dom.window.document.querySelector('[data-language="en"]').click();
   assert.equal(dom.window.localStorage.getItem('heyCityLanguage'), 'en');
+  assert.match(dom.window.document.body.textContent, /App language/);
+  dom.window.document.querySelector('[data-guide-language="en"]').click();
+  assert.equal(dom.window.localStorage.getItem('heyCityGuideLanguage'), 'en');
   dom.window.document.querySelector('[data-tab="stories"]').click();
-  assert.match(dom.window.document.body.textContent, /Ваша первая прогулка/);
+  assert.match(dom.window.document.body.textContent, /Your first walk starts here/);
 }
 
 async function testAdminDashboard() {
   const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/admin', runScripts: 'dangerously' });
+  dom.window.HTMLMediaElement.prototype.play = async () => {};
+  dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.sessionStorage.setItem('heyCityToken', 'admin-token');
   dom.window.sessionStorage.setItem('heyCityUser', JSON.stringify({ id: 'admin', email: 'owner@example.com', role: 'admin' }));
   dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: '' };
