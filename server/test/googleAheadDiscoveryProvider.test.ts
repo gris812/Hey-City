@@ -31,9 +31,11 @@ async function run() {
   );
 
   const seenMasks: string[] = [];
+  let fetchCalls = 0;
   googleMaps.apiKey = 'test-key';
   googleMaps.placesNewFieldMask = 'places.id,places.displayName,places.location,places.types';
   global.fetch = (async (url: string, init?: RequestInit) => {
+    fetchCalls += 1;
     if (url.includes('geocode')) {
       return {
         ok: true,
@@ -83,13 +85,23 @@ async function run() {
   assert(candidates.some((candidate) => candidate.providerId === 'place-1'), 'Places New result normalizes');
   assert(!candidates.some((candidate) => candidate.providerId === 'bad-1'), 'malformed result is skipped safely');
   assert.equal(seenMasks[0], googleMaps.placesNewFieldMask, 'Places New minimal field mask is sent');
+  assert.equal(fetchCalls, 2, 'first discovery performs one geocode and one Nearby Search request');
+
+  const cachedCandidates = await googleAheadDiscoveryProvider.searchAhead({
+    movement,
+    projectedPoint: { latitude: 39.9, longitude: -89.65 },
+    radiusMeters: 12000,
+    limit: 10,
+  });
+  assert.equal(fetchCalls, 2, 'same geo cell is served from shared provider cache');
+  assert.deepEqual(cachedCandidates, candidates, 'cached discovery preserves provider result');
 
   global.fetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as Response) as typeof fetch;
   await assert.rejects(
     () =>
       googleAheadDiscoveryProvider.searchAhead({
         movement,
-        projectedPoint: { latitude: 39.9, longitude: -89.65 },
+        projectedPoint: { latitude: 40.9, longitude: -88.65 },
         radiusMeters: 12000,
         limit: 10,
       }),
