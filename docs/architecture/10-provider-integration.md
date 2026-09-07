@@ -100,6 +100,18 @@ Routing rules:
   and attribution.
 - Provider selection, budget limits, timeout, and fallback order are config-driven.
 
+## Cost-control rules
+
+Provider cost is part of architecture, not an after-the-fact billing concern.
+
+- Discovery provider results are cached by projected geographic cell, not by user session. A new login or session in the same area must not automatically trigger another Google discovery call.
+- `Nearby Search (New)` uses only the minimum discovery field mask: place ID, display name, location, and types. Rating and `userRatingCount` are intentionally excluded from the discovery request because they promote the request to a higher billing tier; popularity can be enriched later only for a selected target when product value justifies it.
+- Session-level refresh throttling remains in addition to the shared geographic cache.
+- Place Details is allowed only after deterministic ranking selects a target.
+- ETA/matrix requests are allowed only for the reduced candidate set and must use cache/deduplication.
+- Client-side Dynamic Map loads are tracked separately from backend Places/Geocoding usage.
+- LLM generation must remain behind a task router so deterministic tasks do not consume premium model inference. The current production drive path still uses deterministic mock narration; an OpenAI call must not be assumed merely because the provider is configured.
+
 ## Provider failure handling
 
 Every provider adapter must return safe degraded responses.
