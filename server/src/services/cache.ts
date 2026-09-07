@@ -35,6 +35,15 @@ export function nearbyCacheKey(geohash: string, headingBucket: number, speedBuck
   return getKey('nearby', [geohash, headingBucket, speedBucket, theme]);
 }
 
+export function aheadDiscoveryCacheKey(
+  geohash: string,
+  radiusMeters: number,
+  limit: number
+): string {
+  const radiusBucket = Math.ceil(radiusMeters / 1000) * 1000;
+  return getKey('ahead-discovery', [geohash, radiusBucket, limit]);
+}
+
 export function matrixCacheKey(originGeohash: string, destinationsHash: string, departureBucket: number): string {
   return getKey('matrix', [originGeohash, destinationsHash, departureBucket]);
 }
