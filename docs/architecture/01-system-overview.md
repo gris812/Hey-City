@@ -83,6 +83,9 @@ flowchart TD
 
 For early MVP:
 - local NYC Financial District POI seed is allowed
-- mock narration is preferred before LLM/TTS integration
+- Walking and Drive pass the deterministic `NarrativePlan` to the shared Narrative Generation boundary
+- OpenAI is the active production provider for final storytelling; deterministic mock narration is a test/outage fallback
+- `AITaskRouter` chooses a configured provider by task class; it never receives authority over POI, timing, ranking, safety, or budget policy
+- auxiliary AI tasks remain deterministic until a small-model benchmark is explicitly accepted
 - production providers should not be required for deterministic tests
 - all thresholds and provider limits must live in config/env

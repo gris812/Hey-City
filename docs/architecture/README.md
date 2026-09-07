@@ -20,6 +20,7 @@ These documents are intended for:
 8. `08-backend-api-boundaries.md`
 9. `09-repository-structure.md`
 10. `10-provider-integration.md`
+11. `11-cost-control.md`
 
 ## Codex instruction
 

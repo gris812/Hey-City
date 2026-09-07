@@ -8,8 +8,8 @@ Scope: current `main` production WebApp/backend paths.
 1. Google Maps is currently the primary variable-cost risk.
 2. Ahead Discovery correctly throttles provider refresh inside a session, but the cache is session-scoped. Starting a new session in the same place causes a fresh reverse-geocode + Nearby Search pair.
 3. Nearby Search (New) requested `rating` and `userRatingCount`. Those fields promote the request from Nearby Search Pro to Nearby Search Enterprise. Discovery does not need them.
-4. The WebApp constructs a new Google Map whenever the map view is rendered. Returning from Settings/Stories to Map therefore creates another Dynamic Map load.
-5. The current drive/walking discovery path in `driveSession.ts` uses `createMockNarration()`; it does not call the OpenAI text/TTS service. OpenAI is configured in `narration.ts`, but that service is not wired into the active discovery path.
+4. Cost Control v2 keeps one Google Map instance mounted for the authenticated browser lifecycle.
+5. Cost Control v2 routes Walking and Drive narration through the same plan-first generation boundary.
 
 ## Implemented in Cost Control v1
 
@@ -60,19 +60,39 @@ Existing usage telemetry already separates:
 
 This is sufficient for first-pass unit economics, but it should be extended with cache-hit metadata and per-session totals.
 
+## Implemented in Cost Control v2
+
+### Persistent Dynamic Map lifecycle
+
+The WebApp mounts the map host once and switches Map / Stories / Settings with view visibility.
+Returning to Map triggers a resize on the existing instance rather than constructing another map.
+
+Cost effect:
+
+- one Dynamic Map construction per authenticated browser lifecycle;
+- switching away and back adds zero new Dynamic Map constructions;
+- if a session previously returned to Map `N` times, map-construction count falls from `N + 1` to `1`.
+
+The location watch, last point, active session, audio, and map camera remain intact across tabs.
+
+### Narrative generation and AI task routing
+
+- Walking and Drive create `NarrativePlan` deterministically and pass the exact plan into `NarrativeGenerator`.
+- `AITaskRouter` maps task classes to registered `GenerativeProvider` adapters using env policy.
+- final storytelling and complex follow-up route to OpenAI;
+- normalization, classification, and evidence compression remain deterministic;
+- Gemma is not connected in production;
+- generated story cache keys include guide and prompt version, avoiding cross-persona cache reuse;
+- provider failure falls back to deterministic narration, while TTS failure returns text-only narration.
+
+Cost effect:
+
+- deterministic auxiliary tasks have zero LLM inference cost;
+- cached final stories avoid repeated text generation;
+- cached audio avoids repeated TTS generation;
+- future small-model adoption requires only a provider adapter and route change, not changes to Discovery.
+
 ## Remaining P1 work
-
-### Prevent repeated Dynamic Map construction
-
-Current WebApp rendering destroys the Map DOM node when changing tabs and constructs a new `google.maps.Map` when returning.
-
-Recommended change:
-
-- keep the map screen mounted;
-- switch top-level views using visibility/state rather than replacing the entire shell;
-- construct exactly one Google Map per browser application lifecycle unless an explicit hard reset occurs.
-
-Do not solve this by removing the map or degrading the map-first UX.
 
 ### Replace session memory cache with Redis-backed cache
 

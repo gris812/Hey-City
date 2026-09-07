@@ -52,8 +52,16 @@ export function placeDetailsCacheKey(placeId: string): string {
   return getKey('place', [placeId]);
 }
 
-export function storyTextCacheKey(poiId: string, lang: string, theme: string, style: string, lengthBucket: number): string {
-  return getKey('story', [poiId, lang, theme, style, lengthBucket]);
+export function storyTextCacheKey(
+  poiId: string,
+  lang: string,
+  theme: string,
+  style: string,
+  lengthBucket: number,
+  guideId: string,
+  promptVersion: string
+): string {
+  return getKey('story', [promptVersion, poiId, lang, theme, style, lengthBucket, guideId]);
 }
 
 export function ttsAudioCacheKey(storyHash: string, voiceId: string): string {

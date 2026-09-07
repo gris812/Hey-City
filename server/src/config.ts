@@ -246,6 +246,12 @@ export const openai = {
   ttsOutputUsdPerMillion: float('OPENAI_TTS_OUTPUT_USD_PER_MILLION', 12),
 };
 
+export const aiRouting = {
+  primaryProvider: process.env.AI_PRIMARY_PROVIDER || 'openai',
+  auxiliaryProvider: process.env.AI_AUXILIARY_PROVIDER || 'deterministic',
+  promptVersion: process.env.NARRATIVE_PROMPT_VERSION || 'v1',
+};
+
 export const media = {
   directory: process.env.MEDIA_DIRECTORY || './data/media',
   publicApiUrl: (process.env.PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, ''),

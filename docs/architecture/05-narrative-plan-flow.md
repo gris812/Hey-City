@@ -129,7 +129,7 @@ type NarrativePlan = {
 
 ## Mock generation rule
 
-Before LLM integration, `NarrativePlan` should be convertible into deterministic mock text.
+`NarrativePlan` must remain convertible into deterministic mock text for tests and provider outages.
 
 Example:
 
@@ -147,3 +147,23 @@ Story output should be checked for:
 - no invented facts beyond plan
 - persona consistency
 - no guide overlap
+
+## Implemented generation boundary
+
+The active Walking and Drive path uses one boundary:
+
+```ts
+NarrativePlan
+  -> NarrativeGenerator
+  -> AITaskRouter(final_storytelling)
+  -> GenerativeProvider(OpenAI)
+  -> TTS
+```
+
+`driveSession` creates the authoritative plan and passes that exact object forward. The generation
+layer does not rebuild the plan and cannot choose another POI, alter the trigger, change the mode,
+or recalculate duration.
+
+Text cache identity includes prompt version, POI, language, theme, style, duration bucket, and guide.
+This prevents Dana and Arthur from accidentally sharing cached prose and allows an intentional
+prompt-version bump without clearing unrelated caches.

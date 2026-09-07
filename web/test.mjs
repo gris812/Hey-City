@@ -17,13 +17,21 @@ async function testLoginAndNavigation() {
   const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
   let stoppedWatches = 0;
   let voiceSampleRequest = null;
+  let mapConstructions = 0;
+  let mapResizeEvents = 0;
+  let dynamicMapUsageEvents = 0;
   Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
     watchPosition: () => 17,
     clearWatch: () => { stoppedWatches += 1; },
   } });
   dom.window.HTMLMediaElement.prototype.play = async () => {};
   dom.window.HTMLMediaElement.prototype.pause = () => {};
-  dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: '' };
+  dom.window.google = { maps: {
+    Map: class { constructor() { mapConstructions += 1; } setCenter() {} },
+    Marker: class { setMap() {} },
+    event: { trigger: () => { mapResizeEvents += 1; } },
+  } };
+  dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: 'browser-key' };
   dom.window.fetch = async (url, options = {}) => {
     if (url.endsWith('/auth/otp/send')) return response({ ok: true, message: 'OTP sent' });
     if (url.endsWith('/auth/otp/verify')) return response({ token: 'test-token', user: { id: 'u1', email: 'tester@example.com', role: 'user' } });
@@ -35,6 +43,7 @@ async function testLoginAndNavigation() {
       voiceSampleRequest = JSON.parse(options.body || '{}');
       return response({ audioUrl: 'https://api.example/media/dana.mp3', transcriptText: 'Hello' });
     }
+    if (url.endsWith('/usage/client')) { dynamicMapUsageEvents += 1; return response({ ok: true }); }
     if (url.endsWith('/sessions/session-1/end')) return response({ ok: true });
     throw new Error(`Unexpected request: ${url}`);
   };
@@ -49,6 +58,8 @@ async function testLoginAndNavigation() {
   dom.window.document.querySelector('#auth-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
   await settle();
   assert.match(dom.window.document.body.textContent, /Начать прогулку/);
+  assert.equal(mapConstructions, 1);
+  const originalMapNode = dom.window.document.querySelector('#map');
   assert.equal(dom.window.localStorage.getItem('heyCityToken'), 'test-token');
   assert.match(dom.window.localStorage.getItem('heyCityUser'), /tester@example.com/);
   dom.window.document.querySelector('#start-walk').click();
@@ -57,6 +68,11 @@ async function testLoginAndNavigation() {
   assert.equal(stoppedWatches, 0);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
   dom.window.document.querySelector('[data-tab="map"]').click();
+  await settle();
+  assert.equal(dom.window.document.querySelector('#map'), originalMapNode);
+  assert.equal(mapConstructions, 1);
+  assert.equal(dynamicMapUsageEvents, 1);
+  assert.ok(mapResizeEvents >= 1);
   assert.equal(dom.window.document.querySelector('#stop-walk').hidden, false);
   assert.match(dom.window.document.body.textContent, /GPS активен/);
   dom.window.document.querySelector('#stop-walk').click();

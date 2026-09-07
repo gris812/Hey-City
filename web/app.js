@@ -5,7 +5,7 @@ const state = {
   token: persistedToken,
   user: storedUser ? JSON.parse(storedUser) : null,
   tab: location.pathname === '/admin' ? 'admin' : 'map',
-  sessionId: null, watchId: null, map: null, marker: null, profile: null, audioUrl: null,
+  sessionId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, profile: null, audioUrl: null,
   lastPoint: null, lastResult: null, walkStatus: '',
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
@@ -76,7 +76,7 @@ function icon(name) {
 
 function setPath(path) { if (location.pathname !== path) history.pushState({}, '', path); }
 function navigate(tab) { state.tab = tab; setPath(tab === 'admin' ? '/admin' : '/'); render(); }
-function logout() { stopWalking(false); localStorage.removeItem('heyCityToken'); localStorage.removeItem('heyCityUser'); sessionStorage.removeItem('heyCityToken'); sessionStorage.removeItem('heyCityUser'); state.token = null; state.user = null; state.profile = null; state.tab = 'map'; setPath('/'); render(); }
+function logout() { stopWalking(false); localStorage.removeItem('heyCityToken'); localStorage.removeItem('heyCityUser'); sessionStorage.removeItem('heyCityToken'); sessionStorage.removeItem('heyCityUser'); state.token = null; state.user = null; state.profile = null; state.map = null; state.mapLoadPromise = null; state.marker = null; state.tab = 'map'; setPath('/'); render(); }
 
 function loginView() {
   const adminLogin = location.pathname === '/admin';
@@ -101,10 +101,31 @@ function loginView() {
 }
 
 function shell(content, active = state.tab) {
-  state.map = null;
-  state.marker = null;
-  app.innerHTML = `<div class="shell"><section class="screen">${content}</section><nav class="nav" aria-label="Main navigation"><button data-tab="map" class="${active === 'map' ? 'active' : ''}">${icon('map')}<span>${t('nav.map')}</span></button><button data-tab="stories" class="${active === 'stories' ? 'active' : ''}">${icon('stories')}<span>${t('nav.stories')}</span></button><button data-tab="settings" class="${active === 'settings' ? 'active' : ''}">${icon('settings')}<span>${t('nav.settings')}</span></button></nav></div>`;
-  document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.tab)));
+  if (!app.querySelector('.shell')) {
+    app.innerHTML = `<div class="shell"><section class="screen"><div class="view-layer map-view" id="map-view" hidden></div><div class="view-layer page-view" id="page-view"></div></section><nav class="nav" aria-label="Main navigation"><button data-tab="map">${icon('map')}<span></span></button><button data-tab="stories">${icon('stories')}<span></span></button><button data-tab="settings">${icon('settings')}<span></span></button></nav></div>`;
+    app.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.tab)));
+  }
+  const mapHost = app.querySelector('#map-view');
+  const pageHost = app.querySelector('#page-view');
+  const showingMap = active === 'map';
+  mapHost.hidden = !showingMap;
+  pageHost.hidden = showingMap;
+  let mountedMap = false;
+  if (showingMap) {
+    if (mapHost.dataset.mounted !== 'true') {
+      mapHost.innerHTML = content;
+      mapHost.dataset.mounted = 'true';
+      mountedMap = true;
+    }
+  } else {
+    pageHost.innerHTML = content;
+    app.querySelector('.screen').scrollTop = 0;
+  }
+  app.querySelectorAll('[data-tab]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.tab === active);
+    button.querySelector('span').textContent = t(`nav.${button.dataset.tab}`);
+  });
+  return mountedMap;
 }
 
 function mapView() {
@@ -112,24 +133,65 @@ function mapView() {
   const walking = state.watchId !== null;
   const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
   const lastCopy = state.lastResult?.transcriptText;
-  shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-shade" aria-hidden="true"></div>
+  const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-shade" aria-hidden="true"></div>
     <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? t('map.listening') : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${guide.name}"><img src="${guide.image}" alt=""></button></header>
     <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
     <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? t('map.gps') : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${guide.image}" alt="${guide.name}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
-  document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', startWalking); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio); void loadMap();
+  if (mountedMap) {
+    document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', startWalking); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
+  }
+  refreshMapView();
+  void loadMap();
+}
+
+function refreshMapView() {
+  const host = document.querySelector('#map-view');
+  if (!host) return;
+  const guide = guideCopy();
+  const walking = state.watchId !== null;
+  const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
+  const lastCopy = state.lastResult?.transcriptText;
+  host.querySelector('.walking-status')?.classList.toggle('is-live', walking);
+  host.querySelector('#top-status').textContent = walking ? t('map.listening') : t('map.mode');
+  host.querySelector('#walk-status').textContent = walking ? state.walkStatus || t('map.listening') : t('map.ready');
+  host.querySelector('.area-label').textContent = walking ? t('map.gps') : t('map.nearby');
+  host.querySelector('#place-title').textContent = lastTitle || t('map.listening');
+  host.querySelector('#place-copy').textContent = lastCopy || t('map.copy', { guide: guide.name });
+  host.querySelector('#start-walk').hidden = walking;
+  host.querySelector('#start-walk').textContent = t('map.start');
+  host.querySelector('#stop-walk').hidden = !walking;
+  host.querySelector('#stop-walk').textContent = t('map.stop');
+  host.querySelector('#locate').setAttribute('aria-label', t('map.locate'));
+  host.querySelector('#open-menu').setAttribute('aria-label', t('nav.settings'));
+  const guideButton = host.querySelector('#open-guide');
+  guideButton.setAttribute('aria-label', guide.name);
+  guideButton.querySelector('img').src = guide.image;
+  const ambientAvatar = host.querySelector('.ambient-avatar');
+  ambientAvatar.src = guide.image;
+  ambientAvatar.alt = guide.name;
+  renderAudioControl();
 }
 
 async function loadMap() {
+  if (state.map) {
+    setTimeout(() => {
+      window.google?.maps?.event?.trigger?.(state.map, 'resize');
+      if (state.lastPoint) state.map.setCenter(state.lastPoint);
+    }, 0);
+    return;
+  }
+  if (state.mapLoadPromise) return state.mapLoadPromise;
   const status = document.querySelector('#map-state');
   if (!config.googleMapsBrowserKey) { if (status) status.textContent = t('map.keyMissing'); return; }
   window.gm_authFailure = () => { const node = document.querySelector('#map-state'); if (node) { node.hidden = false; node.textContent = t('map.keyRejected'); } };
-  try {
+  state.mapLoadPromise = (async () => { try {
     if (!window.google?.maps) await new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.googleMapsBrowserKey)}&v=weekly&auth_referrer_policy=origin`; script.onload = resolve; script.onerror = reject; document.head.appendChild(script); });
     const mapNode = document.querySelector('#map'); if (!mapNode) return;
     state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy' });
     if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint });
     document.querySelector('#map-state')?.setAttribute('hidden', ''); api('/usage/client', { method: 'POST', body: JSON.stringify({ operation: 'dynamic_map_load' }) }).catch(() => {});
-  } catch { if (status) status.textContent = t('map.loadFailed'); }
+  } catch { if (status) status.textContent = t('map.loadFailed'); } finally { state.mapLoadPromise = null; } })();
+  return state.mapLoadPromise;
 }
 
 async function startWalking() {

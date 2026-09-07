@@ -110,7 +110,31 @@ Provider cost is part of architecture, not an after-the-fact billing concern.
 - Place Details is allowed only after deterministic ranking selects a target.
 - ETA/matrix requests are allowed only for the reduced candidate set and must use cache/deduplication.
 - Client-side Dynamic Map loads are tracked separately from backend Places/Geocoding usage.
-- LLM generation must remain behind a task router so deterministic tasks do not consume premium model inference. The current production drive path still uses deterministic mock narration; an OpenAI call must not be assumed merely because the provider is configured.
+- LLM generation remains behind `AITaskRouter` so deterministic tasks do not consume premium model inference. Walking and Drive both pass their authoritative `NarrativePlan` to `NarrativeGenerator`; OpenAI is currently the only registered production `GenerativeProvider`.
+
+## AI task routing
+
+Routing is static, config-driven business policy. It is not an LLM decision.
+
+| Task | Current route | Future eligibility |
+|---|---|---|
+| `final_storytelling` | `openai` | quality-controlled primary model only |
+| `complex_follow_up` | `openai` | quality-controlled primary model |
+| `evidence_compression` | `deterministic` | benchmarked small/free model |
+| `poi_normalization` | `deterministic` | deterministic first; small model only if justified |
+| `relevance_classification` | `deterministic` | benchmarked small/free model |
+
+Production defaults:
+
+```text
+AI_PRIMARY_PROVIDER=openai
+AI_AUXILIARY_PROVIDER=deterministic
+NARRATIVE_PROMPT_VERSION=v1
+```
+
+Gemma is not registered and has no production credentials or route. Adding it later requires a
+`GenerativeProvider` adapter, corpus benchmark, explicit route change, and unchanged deterministic
+Discovery/NarrativePlan boundaries.
 
 ## Provider failure handling
 

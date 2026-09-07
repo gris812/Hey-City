@@ -18,7 +18,7 @@ import { addToHistory } from './history';
 import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
 import { createNarrativePlan } from './narrativePlan';
-import { generateNarration } from './narration';
+import { generateNarrationFromPlan } from './narration';
 import {
   clearAheadDiscoverySession,
   createMovementContext,
@@ -204,15 +204,9 @@ export async function pingSession(
     storySeed: decision.narrativePlanInput.storySeed,
   });
   const narrativePlan = createNarrativePlan(decision.narrativePlanInput);
-  const narration = await generateNarration({
-    poiId: decision.poiId,
-    placeName: decision.narrativePlanInput.placeName,
-    lang: session.params.language,
-    theme: session.params.themeTags[0] ?? 'mixed',
-    style: session.params.narrationStyle,
-    lengthSec: session.params.lengthSec,
-    voiceId: session.params.voiceId,
-    context: session.params.mode === 'walking' ? 'walking' : 'drive_discovery',
+  const narration = await generateNarrationFromPlan(narrativePlan, {
+    language: session.params.language,
+    narrationStyle: session.params.narrationStyle,
     userId,
   });
 

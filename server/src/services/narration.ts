@@ -1,12 +1,14 @@
 /**
  * Narration: LLM text by template + TTS. Cache text and audio. Place Details only when POI selected.
  */
-import { cacheGet, cacheSet, storyTextCacheKey, ttsAudioCacheKey, placeDetailsCacheKey } from './cache';
+import type { NarrativePlan } from '@heycity/shared';
+import { cacheGet, cacheSet, ttsAudioCacheKey, placeDetailsCacheKey } from './cache';
 import { cacheTtl, discoveryConfig, media, openai } from '../config';
 import { createHash } from 'crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createMockNarration, createNarrativePlan } from './narrativePlan';
+import { createNarrativePlan } from './narrativePlan';
+import { narrativeGenerator } from './narrativeGenerator';
 import { recordUsage } from './usage';
 
 export interface GenerateNarrationInput {
@@ -44,55 +46,7 @@ export async function generateVoiceSample(
   return { audioUrl, transcriptText: text };
 }
 
-function lengthBucket(sec: number): number {
-  if (sec <= 60) return 60;
-  if (sec <= 120) return 120;
-  return 180;
-}
-
 export async function generateNarration(input: GenerateNarrationInput): Promise<GenerateNarrationResult> {
-  const bucket = lengthBucket(input.lengthSec);
-  const textKey = storyTextCacheKey(
-    input.poiId,
-    input.lang,
-    input.theme,
-    input.style,
-    bucket
-  );
-  let text = await cacheGet<string>(textKey);
-  let textCached = !!text;
-
-  if (!text) {
-    text = await generateStoryText(input);
-    await cacheSet(textKey, text, cacheTtl.storyTextDays * 24 * 60 * 60);
-  }
-
-  const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
-  const audioKey = ttsAudioCacheKey(storyHash, input.voiceId);
-  let audioUrl = await cacheGet<string>(audioKey);
-  let audioCached = !!audioUrl;
-
-  if (!audioUrl) {
-    audioUrl = await synthesizeSpeech(text, input.voiceId, input.lang, input.userId);
-    await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 24 * 60 * 60);
-  }
-
-  return {
-    audioUrl,
-    transcriptText: text,
-    estimatedDurationSec:
-      input.context === 'drive_discovery'
-        ? clamp(
-            input.lengthSec,
-            discoveryConfig.vehicleStoryMinSeconds,
-            discoveryConfig.vehicleStoryMaxSeconds
-          )
-        : bucket,
-    cached: textCached && audioCached,
-  };
-}
-
-async function generateStoryText(input: GenerateNarrationInput): Promise<string> {
   const plan = createNarrativePlan({
     poiId: input.poiId,
     placeName: input.placeName,
@@ -101,24 +55,54 @@ async function generateStoryText(input: GenerateNarrationInput): Promise<string>
     themeTags: [input.theme],
     targetDurationSec: input.lengthSec,
   });
-  if (!openai.apiKey) return createMockNarration(plan).transcriptText;
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${openai.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: openai.textModel,
-      instructions: 'You are a concise city guide. Use only supplied facts, never invent dates or claims. Return narration only.',
-      input: `Language: ${input.lang}\nGuide: ${input.voiceId}\nStyle: ${input.style}\nTarget seconds: ${input.lengthSec}\nPlace: ${input.placeName}\nPlan: ${JSON.stringify(plan)}`,
-    }),
+  return generateNarrationFromPlan(plan, {
+    language: input.lang,
+    narrationStyle: input.style,
+    userId: input.userId,
   });
-  if (!response.ok) throw new Error(`OpenAI text error: ${response.status}`);
-  const data = await response.json() as { output_text?: string; usage?: { input_tokens?: number; output_tokens?: number } };
-  if (!data.output_text) throw new Error('OpenAI returned empty narration');
-  const inputTokens = data.usage?.input_tokens ?? 0;
-  const outputTokens = data.usage?.output_tokens ?? 0;
-  await recordUsage({ userId: input.userId, category: 'openai_text', operation: openai.textModel,
-    inputTokens, outputTokens, estimatedCostUsd: inputTokens / 1e6 * openai.textInputUsdPerMillion + outputTokens / 1e6 * openai.textOutputUsdPerMillion });
-  return data.output_text;
+}
+
+export async function generateNarrationFromPlan(
+  plan: NarrativePlan,
+  input: { language: string; narrationStyle: string; userId?: string }
+): Promise<GenerateNarrationResult> {
+  const generated = await narrativeGenerator.generate({
+    plan,
+    language: input.language,
+    narrationStyle: input.narrationStyle,
+    userId: input.userId,
+  });
+  const text = generated.text;
+
+  const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
+  const audioKey = ttsAudioCacheKey(storyHash, plan.guideId);
+  let audioUrl = await cacheGet<string>(audioKey);
+  let audioCached = !!audioUrl;
+
+  if (!audioUrl) {
+    try {
+      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId);
+      await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 24 * 60 * 60);
+    } catch (error) {
+      console.warn('TTS provider failed; returning text-only narration', error);
+      audioUrl = '';
+      audioCached = false;
+    }
+  }
+
+  return {
+    audioUrl,
+    transcriptText: text,
+    estimatedDurationSec:
+      plan.mode === 'vehicle'
+        ? clamp(
+            plan.targetDurationSec,
+            discoveryConfig.vehicleStoryMinSeconds,
+            discoveryConfig.vehicleStoryMaxSeconds
+          )
+        : plan.targetDurationSec,
+    cached: generated.cached && audioCached,
+  };
 }
 
 async function synthesizeSpeech(text: string, voiceId: string, lang: string, userId?: string): Promise<string> {
