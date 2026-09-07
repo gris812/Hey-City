@@ -39,6 +39,41 @@ export const server = {
   nodeEnv: process.env.NODE_ENV || 'development',
 };
 
+export const production = {
+  databaseUrl: process.env.DATABASE_URL || '',
+  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:8080,http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+};
+
+export const auth = {
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  fromEmail: process.env.AUTH_FROM_EMAIL || 'Hey City <login@heycity.stolbergco.com>',
+  adminEmail: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
+  adminCode: process.env.ADMIN_AUTH_CODE || '',
+  otpPepper: process.env.OTP_PEPPER || '',
+  testerAllowlist: (process.env.TESTER_EMAIL_ALLOWLIST || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+};
+
+export function assertProductionConfig(): void {
+  if (server.nodeEnv !== 'production') return;
+  const missing: string[] = [];
+  if (!production.databaseUrl) missing.push('DATABASE_URL');
+  if (jwt.secret.length < 32 || jwt.secret.startsWith('change-me')) missing.push('JWT_SECRET');
+  if (!auth.resendApiKey) missing.push('RESEND_API_KEY');
+  if (!googleMaps.apiKey) missing.push('GOOGLE_MAPS_API_KEY');
+  if (!openai.apiKey) missing.push('OPENAI_API_KEY');
+  if (!auth.adminEmail) missing.push('ADMIN_EMAIL');
+  if (!auth.adminCode) missing.push('ADMIN_AUTH_CODE');
+  if (auth.otpPepper.length < 32) missing.push('OTP_PEPPER');
+  if (auth.testerAllowlist.length === 0) missing.push('TESTER_EMAIL_ALLOWLIST');
+  if (missing.length) throw new Error(`Missing or unsafe production configuration: ${missing.join(', ')}`);
+}
+
 export const redis = {
   url: process.env.REDIS_URL || 'redis://localhost:6379',
 };
@@ -191,9 +226,32 @@ export const placeTypes = {
 
 export const googleMaps = {
   apiKey: process.env.GOOGLE_MAPS_API_KEY || '',
+  placesUsdPerThousand: float('GOOGLE_PLACES_USD_PER_THOUSAND', 32),
+  geocodingUsdPerThousand: float('GOOGLE_GEOCODING_USD_PER_THOUSAND', 5),
+  matrixElementUsdPerThousand: float('GOOGLE_MATRIX_ELEMENT_USD_PER_THOUSAND', 5),
+  dynamicMapUsdPerThousand: float('GOOGLE_DYNAMIC_MAP_USD_PER_THOUSAND', 7),
   placesNewFieldMask:
     process.env.GOOGLE_PLACES_NEW_FIELD_MASK ||
     'places.id,places.displayName,places.location,places.types,places.rating,places.userRatingCount',
+};
+
+export const openai = {
+  apiKey: process.env.OPENAI_API_KEY || '',
+  textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna',
+  ttsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+  textInputUsdPerMillion: float('OPENAI_TEXT_INPUT_USD_PER_MILLION', 0.1),
+  textOutputUsdPerMillion: float('OPENAI_TEXT_OUTPUT_USD_PER_MILLION', 0.6),
+  ttsInputUsdPerMillion: float('OPENAI_TTS_INPUT_USD_PER_MILLION', 0.6),
+  ttsOutputUsdPerMillion: float('OPENAI_TTS_OUTPUT_USD_PER_MILLION', 12),
+};
+
+export const media = {
+  directory: process.env.MEDIA_DIRECTORY || './data/media',
+  publicApiUrl: (process.env.PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, ''),
+};
+
+export const privacy = {
+  usageRetentionDays: num('USAGE_RETENTION_DAYS', 30),
 };
 
 export const narration = {

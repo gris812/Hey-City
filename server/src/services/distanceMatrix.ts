@@ -4,6 +4,7 @@
 import { googleMaps, poi, cacheTtl } from '../config';
 import { cacheGet, cacheSet, matrixCacheKey } from './cache';
 import { encodeGeohash, departureBucket } from './geo';
+import { recordUsage } from './usage';
 
 export interface MatrixResult {
   placeId: string;
@@ -44,6 +45,8 @@ export async function getEtas(
     mode: 'driving',
   });
   const res = await fetch(`https://maps.googleapis.com/maps/api/distancematrix/json?${params.toString()}`);
+  await recordUsage({ userId, category: 'google_maps', operation: 'distance_matrix', quantity: K,
+    estimatedCostUsd: K * googleMaps.matrixElementUsdPerThousand / 1000 });
   if (!res.ok) throw new Error(`Matrix API error: ${res.status}`);
 
   const data = (await res.json()) as {

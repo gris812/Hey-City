@@ -5,6 +5,7 @@ import type {
   SearchAheadInput,
 } from './aheadDiscoveryTypes';
 import { normalizeTargetType } from './aheadDiscoveryFiltering';
+import { recordUsage } from './usage';
 
 type GooglePlace = {
   id?: string;
@@ -111,6 +112,7 @@ async function searchGeocodedSettlements(
     status?: string;
     results?: GoogleGeocodeResult[];
   };
+  await recordUsage({ category: 'google_maps', operation: 'reverse_geocoding', estimatedCostUsd: googleMaps.geocodingUsdPerThousand / 1000 });
   if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
     throw safeProviderError(data.status === 'OVER_QUERY_LIMIT' ? 'quota_or_rate_limit' : 'geocode_error');
   }
@@ -161,6 +163,7 @@ async function searchPlacesNew(input: SearchAheadInput): Promise<ProviderDiscove
     },
     body: JSON.stringify(body),
   })) as { places?: GooglePlace[] };
+  await recordUsage({ category: 'google_maps', operation: 'places_nearby_new', estimatedCostUsd: googleMaps.placesUsdPerThousand / 1000 });
 
   return (data.places ?? [])
     .map((place) =>

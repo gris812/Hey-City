@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: heycity
+      POSTGRES_USER: heycity
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - heycity-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heycity -d heycity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://heycity:${POSTGRES_PASSWORD}@postgres:5432/heycity
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - heycity-media:/app/data/media
+    ports:
+      - "127.0.0.1:4100:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        GOOGLE_MAPS_BROWSER_KEY: ${GOOGLE_MAPS_BROWSER_KEY}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4180:80"
+
+volumes:
+  heycity-postgres:
+  heycity-media:

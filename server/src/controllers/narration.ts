@@ -34,6 +34,7 @@ export async function generateNarration(req: AuthRequest, res: Response): Promis
       lengthSec: typeof lengthSec === 'number' ? lengthSec : 90,
       voiceId: voiceId ?? 'default',
       context: context ?? 'drive_discovery',
+      userId: req.user.userId,
     });
     res.json(result);
   } catch (e) {

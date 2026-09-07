@@ -1,0 +1,7 @@
+heycity.stolbergco.com {
+  reverse_proxy 127.0.0.1:4180
+}
+
+api.heycity.stolbergco.com {
+  reverse_proxy 127.0.0.1:4100
+}

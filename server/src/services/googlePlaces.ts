@@ -5,6 +5,7 @@
 import { googleMaps, placeTypes, poi, cacheTtl, placesRadius } from '../config';
 import { cacheGet, cacheSet, nearbyCacheKey } from './cache';
 import { encodeGeohash, headingBucket, speedBucket, pointAhead } from './geo';
+import { recordUsage } from './usage';
 
 export interface NearbyPlace {
   place_id: string;
@@ -61,6 +62,7 @@ export async function fetchNearbyPlaces(
   url.searchParams.set('type', 'tourist_attraction');
 
   const res = await fetch(url.toString());
+  await recordUsage({ userId, category: 'google_maps', operation: 'places_nearby', estimatedCostUsd: googleMaps.placesUsdPerThousand / 1000 });
   if (!res.ok) throw new Error(`Places API error: ${res.status}`);
   const data = (await res.json()) as {
     results?: Array<{

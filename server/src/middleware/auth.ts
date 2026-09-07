@@ -5,6 +5,17 @@ import { jwt as jwtConfig } from '../config';
 export interface JwtPayload {
   userId: string;
   email: string;
+  role?: 'user' | 'admin';
+}
+
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  requireAuth(req, res, () => {
+    if (req.user?.role !== 'admin') {
+      res.status(403).json({ error: 'Administrator access required' });
+      return;
+    }
+    next();
+  });
 }
 
 export interface AuthRequest extends Request {

@@ -11,6 +11,7 @@ import {
   DriveSessionParams,
 } from '../services/driveSession';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from '../services/localPoi';
+import { recordUsage } from '../services/usage';
 
 export async function startSession(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -40,6 +41,7 @@ export async function startSession(req: AuthRequest, res: Response): Promise<voi
   };
 
   const session = createSession(req.user.userId, params);
+  await recordUsage({ userId: req.user.userId, category: 'product', operation: 'session_started' });
   res.json({ sessionId: session.id });
 }
 
@@ -59,6 +61,7 @@ export async function stopSessionHandler(req: AuthRequest, res: Response): Promi
     return;
   }
   stopSession(sessionId);
+  await recordUsage({ userId: req.user.userId, category: 'product', operation: 'session_ended' });
   res.json({ ok: true });
 }
 
