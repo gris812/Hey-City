@@ -12,6 +12,19 @@ async function run(): Promise<void> {
   const { createApp } = await import('../src/app');
   const app = createApp();
 
+  const listener = app.listen(0);
+  try {
+    const address = listener.address() as { port: number };
+    const missingMedia = await fetch(`http://127.0.0.1:${address.port}/media/missing.mp3`);
+    assert.equal(
+      missingMedia.headers.get('cross-origin-resource-policy'),
+      'cross-origin',
+      'WebApp may play media served from the API sibling origin'
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => listener.close((error) => error ? reject(error) : resolve()));
+  }
+
   process.env.AUTH_DISABLED = 'false';
   process.env.NODE_ENV = 'test';
   const guestHeaders = { 'x-hey-city-guest-id': 'guest_test123_abcdefg' };

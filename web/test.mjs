@@ -64,6 +64,7 @@ async function testLoginAndNavigation() {
   assert.match(dom.window.localStorage.getItem('heyCityUser'), /tester@example.com/);
   dom.window.document.querySelector('#start-walk').click();
   await settle();
+  assert.equal(dom.window.document.querySelector('#radar-scan').hidden, false);
   dom.window.document.querySelector('[data-tab="settings"]').click();
   assert.equal(stoppedWatches, 0);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
@@ -112,6 +113,8 @@ async function testAdminDashboard() {
   assert.match(dom.window.document.body.textContent, /Статистика/);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
   assert.match(dom.window.document.body.textContent, /Google Maps/);
+  assert.match(dom.window.document.body.textContent, /Из чего складывается расчёт/);
+  assert.match(dom.window.document.body.textContent, /не фактическая сумма счёта/);
   assert.ok(dom.window.document.querySelector('#admin-back'));
   assert.ok(dom.window.document.querySelector('#admin-logout'));
   assert.equal(dom.window.document.querySelectorAll('.nav button').length, 3);
@@ -123,7 +126,11 @@ async function testMapConfiguration() {
   assert.doesNotMatch(source, /mapId\s*:\s*['"]DEMO_MAP_ID/);
   assert.match(source, /auth_referrer_policy=origin/);
   const css = await readFile(new URL('./styles.css', import.meta.url), 'utf8');
-  assert.match(css, /\.screen\s*\{[^}]*overflow:auto/);
+  assert.match(css, /\.shell\s*\{[^}]*height:100dvh/);
+  assert.match(css, /\.screen\s*\{[^}]*overflow:hidden/);
+  assert.match(css, /\.page-view\s*\{[^}]*overflow-y:auto/);
+  assert.match(css, /\.settings-sticky\s*\{[^}]*position:sticky/);
+  assert.match(css, /\.radar-scan::before\s*\{[^}]*conic-gradient/);
   assert.match(css, /\.profile-content\s*\{[^}]*overflow:auto/);
 }
 

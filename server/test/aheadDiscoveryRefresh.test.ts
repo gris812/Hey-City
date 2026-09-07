@@ -35,6 +35,28 @@ function createProvider(delayMs = 0): DiscoveryDataProvider & { calls: number } 
   };
 }
 
+function createEmptyProvider(): DiscoveryDataProvider & { calls: number } {
+  return {
+    name: 'google',
+    calls: 0,
+    async searchAhead() {
+      this.calls += 1;
+      return [];
+    },
+  };
+}
+
+function createFailingProvider(): DiscoveryDataProvider & { calls: number } {
+  return {
+    name: 'google',
+    calls: 0,
+    async searchAhead() {
+      this.calls += 1;
+      throw new Error('provider_unavailable');
+    },
+  };
+}
+
 async function run() {
   const provider = createProvider();
   const first = await evaluateAheadDiscovery({
@@ -63,6 +85,36 @@ async function run() {
     nowMs: Date.parse('2026-07-25T12:00:40.000Z'),
   });
   assert.equal(provider.calls, 2, 'manual refresh forces provider call');
+
+  const emptyProvider = createEmptyProvider();
+  await evaluateAheadDiscovery({
+    sessionId: 'refresh-empty',
+    movement,
+    provider: emptyProvider,
+    nowMs: Date.parse(movement.timestamp),
+  });
+  await evaluateAheadDiscovery({
+    sessionId: 'refresh-empty',
+    movement: { ...movement, timestamp: '2026-07-25T12:00:20.000Z' },
+    provider: emptyProvider,
+    nowMs: Date.parse('2026-07-25T12:00:20.000Z'),
+  });
+  assert.equal(emptyProvider.calls, 1, 'empty results do not create a paid refresh loop');
+
+  const failingProvider = createFailingProvider();
+  await evaluateAheadDiscovery({
+    sessionId: 'refresh-failure',
+    movement,
+    provider: failingProvider,
+    nowMs: Date.parse(movement.timestamp),
+  });
+  await evaluateAheadDiscovery({
+    sessionId: 'refresh-failure',
+    movement: { ...movement, timestamp: '2026-07-25T12:00:20.000Z' },
+    provider: failingProvider,
+    nowMs: Date.parse('2026-07-25T12:00:20.000Z'),
+  });
+  assert.equal(failingProvider.calls, 1, 'provider failures respect the configured retry interval');
 
   const slowProvider = createProvider(40);
   const firstRefresh = evaluateAheadDiscovery({

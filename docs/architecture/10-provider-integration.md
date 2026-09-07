@@ -107,9 +107,11 @@ Provider cost is part of architecture, not an after-the-fact billing concern.
 - Discovery provider results are cached by projected geographic cell, not by user session. A new login or session in the same area must not automatically trigger another Google discovery call.
 - `Nearby Search (New)` uses only the minimum discovery field mask: place ID, display name, location, and types. Rating and `userRatingCount` are intentionally excluded from the discovery request because they promote the request to a higher billing tier; popularity can be enriched later only for a selected target when product value justifies it.
 - Session-level refresh throttling remains in addition to the shared geographic cache.
+- An empty provider result is a completed refresh, not permission to retry on the next GPS ping.
 - Place Details is allowed only after deterministic ranking selects a target.
 - ETA/matrix requests are allowed only for the reduced candidate set and must use cache/deduplication.
 - Client-side Dynamic Map loads are tracked separately from backend Places/Geocoding usage.
+- Generated TTS media is persisted and reused by content/voice hash across process restarts.
 - LLM generation remains behind `AITaskRouter` so deterministic tasks do not consume premium model inference. Walking and Drive both pass their authoritative `NarrativePlan` to `NarrativeGenerator`; OpenAI is currently the only registered production `GenerativeProvider`.
 
 ## AI task routing

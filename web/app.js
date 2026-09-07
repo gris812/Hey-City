@@ -5,7 +5,8 @@ const state = {
   token: persistedToken,
   user: storedUser ? JSON.parse(storedUser) : null,
   tab: location.pathname === '/admin' ? 'admin' : 'map',
-  sessionId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, profile: null, audioUrl: null,
+  sessionId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, candidateMarkers: [], profile: null, audioUrl: null,
+  contextInFlight: false, initialScanComplete: false,
   lastPoint: null, lastResult: null, walkStatus: '',
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
@@ -24,11 +25,11 @@ const messages = {
   ru: {
     'nav.map': 'Карта', 'nav.stories': 'Истории', 'nav.settings': 'Настройки',
     'login.field': 'Полевой доступ · beta', 'login.admin': 'Служебный доступ', 'login.copy': 'Город говорит, пока вы идёте. Выберите гида и начните прогулку.', 'login.adminCopy': 'Войдите с административным email и отдельным кодом.', 'login.code': 'Код доступа', 'login.send': 'Получить код', 'login.enter': 'Войти', 'login.sent': 'Код отправлен. Проверьте почту.', 'login.adminCode': 'Введите код администратора.',
-    'map.mode': 'Пешеходный режим', 'map.listening': 'Слушаю город', 'map.ready': 'Готов к прогулке', 'map.searching': 'Ищу интересное рядом', 'map.nearby': 'Рядом с вами', 'map.gps': 'GPS активен', 'map.start': 'Начать прогулку', 'map.stop': 'Завершить', 'map.copy': '{guide} заговорит, когда рядом появится место, которое действительно стоит заметить.', 'map.play': 'Слушать рассказ', 'map.pause': 'Пауза', 'map.tapPlay': 'Рассказ готов — нажмите «Слушать»', 'map.connecting': 'Подключаю карту…', 'map.locate': 'Показать моё местоположение', 'map.keyMissing': 'Ключ карты не настроен', 'map.keyRejected': 'Google Maps отклонил ключ для этого домена.', 'map.loadFailed': 'Не удалось загрузить карту. Повторите позже.', 'map.geoUnsupported': 'Геопозиция не поддерживается', 'map.geoPermission': 'Разрешите доступ к геопозиции', 'map.geoFailed': 'Не удалось определить позицию', 'map.speaking': '{guide} · аудио',
+    'map.mode': 'Пешеходный режим', 'map.listening': 'Слушаю город', 'map.ready': 'Готов к прогулке', 'map.searching': 'Сканирую пространство', 'map.nearby': 'Рядом с вами', 'map.gps': 'GPS активен', 'map.start': 'Начать прогулку', 'map.stop': 'Завершить', 'map.copy': '{guide} заговорит, когда рядом появится место, которое действительно стоит заметить.', 'map.play': 'Слушать рассказ', 'map.pause': 'Пауза', 'map.tapPlay': 'Рассказ готов — нажмите «Слушать»', 'map.connecting': 'Подключаю карту…', 'map.locate': 'Показать моё местоположение', 'map.keyMissing': 'Ключ карты не настроен', 'map.keyRejected': 'Google Maps отклонил ключ для этого домена.', 'map.loadFailed': 'Не удалось загрузить карту. Повторите позже.', 'map.geoUnsupported': 'Геопозиция не поддерживается', 'map.geoPermission': 'Разрешите доступ к геопозиции', 'map.geoFailed': 'Не удалось определить позицию', 'map.speaking': '{guide} · аудио',
     'stories.eyebrow': 'Личный архив', 'stories.title': 'Истории', 'stories.count': '{count} прогулок', 'stories.future': 'Будущий маршрут', 'stories.emptyTitle': 'Ваша первая прогулка начнётся здесь', 'stories.emptyCopy': 'Прослушанные места и завершённые маршруты будут собраны в личную историю города.', 'stories.first': 'Начать прогулку', 'stories.item': 'Городская история',
     'settings.eyebrow': 'Профиль', 'settings.title': 'Настройки', 'settings.account': 'Аккаунт', 'settings.logout': 'Выйти', 'settings.guide': 'Гид', 'settings.leads': '{guide} ведёт прогулку', 'settings.fullProfile': 'Нажмите для полного профиля', 'settings.appLanguage': 'Язык приложения', 'settings.guideLanguage': 'Язык гида', 'settings.privacy': 'История и приватность', 'settings.historyOn': 'Сохранять просмотренные объекты и прогулки', 'settings.historyOff': 'История отключена', 'settings.admin': 'Администрирование', 'settings.stats': 'Статистика полевого теста', 'settings.open': 'Открыть →',
     'guide.swipe': 'Свайпните для другого гида', 'guide.voice': 'Пример голоса', 'guide.voicePlaceholder': 'Приветствие и краткое знакомство', 'guide.voiceLoading': 'Готовлю голос…', 'guide.choose': 'Выбрать {guide}', 'guide.other': 'Другой гид →',
-    'admin.title': 'Статистика', 'admin.back': '← В приложение', 'admin.users': 'пользователи', 'admin.active': 'активные', 'admin.objects': 'объекты', 'admin.total': 'общий расход', 'admin.note': 'Расходы являются внутренней расчётной оценкой до бесплатных квот и скидок.', 'admin.days': '{count} дней', 'admin.tokens': 'Токены OpenAI', 'admin.email': 'Email', 'admin.lastSession': 'Последняя сессия', 'admin.cost': 'Расход',
+    'admin.title': 'Статистика', 'admin.back': '← В приложение', 'admin.users': 'пользователи', 'admin.active': 'активные', 'admin.objects': 'объекты', 'admin.total': 'расчёт без льгот', 'admin.note': 'Это внутренняя оценка по полной цене API, а не фактическая сумма счёта. Бесплатные ежемесячные квоты и скидки не вычтены. События сохраняются 30 дней.', 'admin.days': '{count} дней', 'admin.tokens': 'Токены OpenAI', 'admin.email': 'Email', 'admin.lastSession': 'Последняя сессия', 'admin.cost': 'Расчёт', 'admin.breakdown': 'Из чего складывается расчёт', 'admin.mapLoads': 'Загрузки карты', 'admin.nearby': 'Поиск объектов', 'admin.geocoding': 'Определение района', 'admin.textAi': 'Текст рассказов', 'admin.voiceAi': 'Голос и примеры', 'admin.calls': 'вызовов', 'admin.googleGross': 'Google Maps · без льгот',
   },
   en: {
     'nav.map': 'Map', 'nav.stories': 'Stories', 'nav.settings': 'Settings',
@@ -37,7 +38,7 @@ const messages = {
     'stories.eyebrow': 'Personal archive', 'stories.title': 'Stories', 'stories.count': '{count} walks', 'stories.future': 'Future route', 'stories.emptyTitle': 'Your first walk starts here', 'stories.emptyCopy': 'Places you hear and routes you complete will become your personal city archive.', 'stories.first': 'Start your first walk', 'stories.item': 'City story',
     'settings.eyebrow': 'Profile', 'settings.title': 'Settings', 'settings.account': 'Account', 'settings.logout': 'Sign out', 'settings.guide': 'Guide', 'settings.leads': '{guide} leads your walk', 'settings.fullProfile': 'Tap for the full profile', 'settings.appLanguage': 'App language', 'settings.guideLanguage': 'Guide language', 'settings.privacy': 'History & privacy', 'settings.historyOn': 'Save viewed places and completed walks', 'settings.historyOff': 'History is off', 'settings.admin': 'Administration', 'settings.stats': 'Field-test statistics', 'settings.open': 'Open →',
     'guide.swipe': 'Swipe to meet the other guide', 'guide.voice': 'Voice sample', 'guide.voicePlaceholder': 'A short greeting and introduction', 'guide.voiceLoading': 'Preparing the voice…', 'guide.choose': 'Choose {guide}', 'guide.other': 'Other guide →',
-    'admin.title': 'Statistics', 'admin.back': '← Back to app', 'admin.users': 'users', 'admin.active': 'active', 'admin.objects': 'places', 'admin.total': 'total cost', 'admin.note': 'Costs are internal estimates before free quotas and discounts.', 'admin.days': '{count} days', 'admin.tokens': 'OpenAI tokens', 'admin.email': 'Email', 'admin.lastSession': 'Last session', 'admin.cost': 'Cost',
+    'admin.title': 'Statistics', 'admin.back': '← Back to app', 'admin.users': 'users', 'admin.active': 'active', 'admin.objects': 'places', 'admin.total': 'gross estimate', 'admin.note': 'This is an internal full-list-price estimate, not the amount billed. Monthly free usage caps and discounts are not deducted. Events are retained for 30 days.', 'admin.days': '{count} days', 'admin.tokens': 'OpenAI tokens', 'admin.email': 'Email', 'admin.lastSession': 'Last session', 'admin.cost': 'Estimate', 'admin.breakdown': 'Estimate breakdown', 'admin.mapLoads': 'Map loads', 'admin.nearby': 'Place searches', 'admin.geocoding': 'Area lookups', 'admin.textAi': 'Story text', 'admin.voiceAi': 'Voice and samples', 'admin.calls': 'calls', 'admin.googleGross': 'Google Maps · gross',
   },
 };
 function t(key, values = {}) { const template = messages[state.appLanguage]?.[key] || messages.ru[key] || key; return Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), template); }
@@ -49,11 +50,26 @@ const guides = {
 function guideCopy(id = state.guide) { return { ...guides[id], ...guides[id][state.appLanguage] }; }
 const storyAudio = new Audio();
 storyAudio.preload = 'auto';
+storyAudio.crossOrigin = 'anonymous';
 storyAudio.addEventListener('play', updateAudioControl);
 storyAudio.addEventListener('pause', updateAudioControl);
 storyAudio.addEventListener('ended', updateAudioControl);
 const sampleAudio = new Audio();
 sampleAudio.preload = 'none';
+sampleAudio.crossOrigin = 'anonymous';
+
+const LIGHT_MAP_STYLES = [
+  { elementType: 'geometry', stylers: [{ color: '#eef1eb' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#435047' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f8faf7' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#cbd4cc' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#e7ece5' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#dcebd7' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#d9dfd9' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#e2e7e2' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#cfe6ec' }] },
+];
 
 async function api(path, options = {}) {
   const response = await fetch(`${config.apiUrl}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}), ...(options.headers || {}) } });
@@ -119,7 +135,7 @@ function shell(content, active = state.tab) {
     }
   } else {
     pageHost.innerHTML = content;
-    app.querySelector('.screen').scrollTop = 0;
+    pageHost.scrollTop = 0;
   }
   app.querySelectorAll('[data-tab]').forEach((button) => {
     button.classList.toggle('active', button.dataset.tab === active);
@@ -133,7 +149,7 @@ function mapView() {
   const walking = state.watchId !== null;
   const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
   const lastCopy = state.lastResult?.transcriptText;
-  const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-shade" aria-hidden="true"></div>
+  const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-shade" aria-hidden="true"></div><div class="radar-scan" id="radar-scan" hidden aria-hidden="true"><i class="radar-ring radar-ring-a"></i><i class="radar-ring radar-ring-b"></i></div>
     <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? t('map.listening') : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${guide.name}"><img src="${guide.image}" alt=""></button></header>
     <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
     <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? t('map.gps') : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${guide.image}" alt="${guide.name}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
@@ -169,6 +185,7 @@ function refreshMapView() {
   const ambientAvatar = host.querySelector('.ambient-avatar');
   ambientAvatar.src = guide.image;
   ambientAvatar.alt = guide.name;
+  setRadarScanning(walking && !state.initialScanComplete);
   renderAudioControl();
 }
 
@@ -187,8 +204,8 @@ async function loadMap() {
   state.mapLoadPromise = (async () => { try {
     if (!window.google?.maps) await new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.googleMapsBrowserKey)}&v=weekly&auth_referrer_policy=origin`; script.onload = resolve; script.onerror = reject; document.head.appendChild(script); });
     const mapNode = document.querySelector('#map'); if (!mapNode) return;
-    state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy' });
-    if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint });
+    state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
+    if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint, zIndex: 20 });
     document.querySelector('#map-state')?.setAttribute('hidden', ''); api('/usage/client', { method: 'POST', body: JSON.stringify({ operation: 'dynamic_map_load' }) }).catch(() => {});
   } catch { if (status) status.textContent = t('map.loadFailed'); } finally { state.mapLoadPromise = null; } })();
   return state.mapLoadPromise;
@@ -199,26 +216,72 @@ async function startWalking() {
   if (!navigator.geolocation) { status.textContent = t('map.geoUnsupported'); return; }
   try {
     if (!state.sessionId) { const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ mode: 'walking', themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide === 'arthur' ? 'artur' : 'dana', language: state.guideLanguage, autoplay: true }) }); state.sessionId = result.sessionId; }
-    state.walkStatus = t('map.searching'); document.querySelector('#start-walk').hidden = true; document.querySelector('#stop-walk').hidden = false; status.textContent = state.walkStatus; document.querySelector('#top-status').textContent = t('map.listening');
-    state.watchId = navigator.geolocation.watchPosition(updateLocation, (error) => { status.textContent = error.code === 1 ? t('map.geoPermission') : t('map.geoFailed'); }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
-  } catch (error) { status.textContent = error.message; }
+    state.initialScanComplete = false; state.walkStatus = t('map.searching'); setRadarScanning(true); document.querySelector('#start-walk').hidden = true; document.querySelector('#stop-walk').hidden = false; status.textContent = state.walkStatus; document.querySelector('#top-status').textContent = t('map.listening');
+    state.watchId = navigator.geolocation.watchPosition(updateLocation, (error) => { state.initialScanComplete = true; setRadarScanning(false); status.textContent = error.code === 1 ? t('map.geoPermission') : t('map.geoFailed'); }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
+  } catch (error) { state.initialScanComplete = true; setRadarScanning(false); status.textContent = error.message; }
 }
 
 async function updateLocation(position) {
   const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; state.lastPoint = point; state.map?.setCenter(point);
   if (state.map) { state.marker?.setMap(null); state.marker = new google.maps.Marker({ map: state.map, position: point }); }
+  if (state.contextInFlight) return;
+  state.contextInFlight = true;
+  const initialScan = !state.initialScanComplete;
+  if (initialScan) setRadarScanning(true);
   try {
     const result = await api(`/sessions/${state.sessionId}/context`, { method: 'POST', body: JSON.stringify({ lat, lng, heading: heading ?? 0, speed: (speed ?? 1.2) * 3.6, accuracyMeters: accuracy, timestamp: Date.now() }) });
     state.lastResult = result; state.walkStatus = result.nextAction === 'PLAY' ? t('map.speaking', { guide: guideCopy().name }) : t('map.listening');
+    renderCandidateMarkers(result.aheadDiscovery?.topCandidates || []);
     const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); if (statusNode) statusNode.textContent = state.walkStatus; if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText;
     if (result.audioUrl && result.nextAction === 'PLAY') { state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
   } catch (error) { state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
+  finally { state.contextInFlight = false; if (initialScan) { state.initialScanComplete = true; setRadarScanning(false); } }
+}
+
+function setRadarScanning(scanning) {
+  const radar = document.querySelector('#radar-scan');
+  if (radar) radar.hidden = !scanning;
+  document.querySelector('#map-view')?.classList.toggle('is-scanning', scanning);
+}
+
+function clearCandidateMarkers() {
+  state.candidateMarkers.forEach((marker) => marker.setMap(null));
+  state.candidateMarkers = [];
+}
+
+function markerCode(targetType) {
+  targetType = String(targetType || '');
+  if (targetType === 'museum') return 'M';
+  if (targetType.includes('park') || targetType === 'natural_feature') return 'P';
+  if (targetType === 'bridge') return 'B';
+  if (targetType === 'city' || targetType === 'town' || targetType === 'locality') return 'C';
+  if (targetType === 'university') return 'U';
+  return 'H';
+}
+
+function candidateIcon(targetType) {
+  const code = markerCode(targetType);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42"><path d="M17 1.5c-8.6 0-15.5 6.8-15.5 15.2C1.5 28 17 40.5 17 40.5S32.5 28 32.5 16.7C32.5 8.3 25.6 1.5 17 1.5Z" fill="#f8faf7" stroke="#0f7a3f" stroke-width="2"/><circle cx="17" cy="16.5" r="9" fill="#0f7a3f"/><text x="17" y="20" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="700" fill="white">${code}</text></svg>`;
+  return { url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}` };
+}
+
+function renderCandidateMarkers(candidates) {
+  if (!state.map || !window.google?.maps?.Marker) return;
+  clearCandidateMarkers();
+  state.candidateMarkers = candidates.slice(0, 5).map((candidate, index) => new google.maps.Marker({
+    map: state.map,
+    position: { lat: candidate.latitude, lng: candidate.longitude },
+    title: candidate.name,
+    icon: candidateIcon(candidate.targetType),
+    label: { text: candidate.name.length > 22 ? `${candidate.name.slice(0, 21)}…` : candidate.name, className: 'poi-map-label' },
+    zIndex: 10 - index,
+  }));
 }
 
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
 function updateAudioControl() { renderAudioControl(); }
 function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.paused) storyAudio.play().catch(() => {}); else storyAudio.pause(); }
-function stopWalking(refresh = true) { if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); if (refresh && state.tab === 'map') render(); }
+function stopWalking(refresh = true) { if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.contextInFlight = false; state.initialScanComplete = false; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
   const historyItems = state.profile?.history || [];
@@ -228,7 +291,7 @@ function storiesView() {
 
 function settingsView() {
   const selected = guideCopy();
-  shell(`<div class="page settings-page"><div class="eyebrow">${t('settings.eyebrow')}</div><h1>${t('settings.title')}</h1><section class="settings-section account-line"><div><span class="section-label">${t('settings.account')}</span><strong>${esc(state.user?.email)}</strong></div><button class="text-button" id="logout">${t('settings.logout')}</button></section>
+  shell(`<div class="page settings-page"><header class="settings-sticky"><div class="eyebrow">${t('settings.eyebrow')}</div><h1>${t('settings.title')}</h1></header><section class="settings-section account-line"><div><span class="section-label">${t('settings.account')}</span><strong>${esc(state.user?.email)}</strong></div><button class="text-button" id="logout">${t('settings.logout')}</button></section>
     <section class="settings-section"><div class="section-head"><div><span class="section-label">${t('settings.guide')}</span><h2>${t('settings.leads', { guide: selected.name })}</h2></div><span class="section-note">${t('settings.fullProfile')}</span></div><div class="guide-grid">${Object.keys(guides).map((id) => { const guide = guideCopy(id); return `<button class="guide-card ${state.guide === id ? 'selected' : ''}" data-guide="${id}"><img src="${guide.image}" alt="${guide.name}"><span><strong>${guide.name}</strong><small>${guide.role}</small></span></button>`; }).join('')}</div></section>
     <section class="settings-section settings-table"><div><span class="section-label">${t('settings.appLanguage')}</span><div class="segmented"><button data-language="ru" class="${state.appLanguage === 'ru' ? 'selected' : ''}">Русский</button><button data-language="en" class="${state.appLanguage === 'en' ? 'selected' : ''}">English</button></div></div><div><span class="section-label">${t('settings.guideLanguage')}</span><div class="segmented"><button data-guide-language="ru" class="${state.guideLanguage === 'ru' ? 'selected' : ''}">Русский</button><button data-guide-language="en" class="${state.guideLanguage === 'en' ? 'selected' : ''}">English</button></div></div><div><span class="section-label">${t('settings.privacy')}</span><p>${state.profile?.historyEnabled === false ? t('settings.historyOff') : t('settings.historyOn')}</p></div></section>
     ${state.user?.role === 'admin' ? `<section class="settings-section account-line"><div><span class="section-label">${t('settings.admin')}</span><strong>${t('settings.stats')}</strong></div><button class="text-button" id="open-admin">${t('settings.open')}</button></section>` : ''}<footer class="settings-footer">Hey City WebApp · beta</footer></div>`, 'settings');
@@ -271,8 +334,9 @@ async function adminView() {
 async function loadAdmin() {
   const node = document.querySelector('#admin-data'); if (!node) return;
   try {
-    const days = document.querySelector('#period')?.value || 30; const [summary, list] = await Promise.all([api(`/admin/summary?days=${days}`), api('/admin/users')]); const totals = summary.totals || []; const value = (category, field = 'quantity', operation) => totals.filter((item) => item.category === category && (!operation || item.operation === operation)).reduce((sum, item) => sum + Number(item[field] || 0), 0); const cost = totals.reduce((sum, item) => sum + Number(item.estimated_cost_usd || 0), 0); const tokens = value('openai_text', 'input_tokens') + value('openai_text', 'output_tokens') + value('openai_tts', 'input_tokens') + value('openai_tts', 'output_tokens'); const googleCost = value('google_maps', 'estimated_cost_usd');
-    node.className = ''; node.innerHTML = `<section class="metrics"><div class="metric"><b>${summary.users}</b><span>${t('admin.users')}</span></div><div class="metric"><b>${summary.activeUsers}</b><span>${t('admin.active')}</span></div><div class="metric"><b>${value('product', 'quantity', 'object_viewed')}</b><span>${t('admin.objects')}</span></div><div class="metric"><b>${tokens}</b><span>${t('admin.tokens')}</span></div><div class="metric"><b>$${googleCost.toFixed(2)}</b><span>Google Maps</span></div><div class="metric"><b>$${cost.toFixed(2)}</b><span>${t('admin.total')}</span></div></section><div class="table-wrap"><table><thead><tr><th>${t('admin.email')}</th><th>${t('admin.lastSession')}</th><th>${t('admin.objects')}</th><th>${t('admin.tokens')}</th><th>${t('admin.cost')}</th></tr></thead><tbody>${list.users.map((user) => `<tr><td>${esc(user.email)}</td><td>${new Date(user.last_seen_at).toLocaleString(state.appLanguage)}</td><td>${user.objects_viewed}</td><td>${user.tokens}</td><td>$${Number(user.estimated_cost_usd).toFixed(4)}</td></tr>`).join('')}</tbody></table></div><p class="footnote">${t('admin.note')}</p>`;
+    const days = document.querySelector('#period')?.value || 30; const [summary, list] = await Promise.all([api(`/admin/summary?days=${days}`), api('/admin/users')]); const totals = summary.totals || []; const matching = (category, operation) => totals.filter((item) => item.category === category && (!operation || item.operation === operation)); const value = (category, field = 'quantity', operation) => matching(category, operation).reduce((sum, item) => sum + Number(item[field] || 0), 0); const categoryCost = (category, operation) => value(category, 'estimated_cost_usd', operation); const cost = totals.reduce((sum, item) => sum + Number(item.estimated_cost_usd || 0), 0); const textTokens = value('openai_text', 'input_tokens') + value('openai_text', 'output_tokens'); const voiceTokens = value('openai_tts', 'input_tokens') + value('openai_tts', 'output_tokens'); const tokens = textTokens + voiceTokens; const googleCost = categoryCost('google_maps');
+    const costRow = (label, category, operation, tokenCount = null) => `<div><span>${label}</span><code>${value(category, 'quantity', operation)} ${t('admin.calls')}${tokenCount === null ? '' : ` · ${tokenCount} tokens`}</code><b>$${categoryCost(category, operation).toFixed(4)}</b></div>`;
+    node.className = ''; node.innerHTML = `<section class="metrics"><div class="metric"><b>${summary.users}</b><span>${t('admin.users')}</span></div><div class="metric"><b>${summary.activeUsers}</b><span>${t('admin.active')}</span></div><div class="metric"><b>${value('product', 'quantity', 'object_viewed')}</b><span>${t('admin.objects')}</span></div><div class="metric"><b>${tokens}</b><span>${t('admin.tokens')}</span></div><div class="metric"><b>$${googleCost.toFixed(2)}</b><span>${t('admin.googleGross')}</span></div><div class="metric"><b>$${cost.toFixed(2)}</b><span>${t('admin.total')}</span></div></section><section class="cost-breakdown"><h2>${t('admin.breakdown')}</h2>${costRow(t('admin.mapLoads'), 'google_maps', 'dynamic_map_load')}${costRow(t('admin.nearby'), 'google_maps', 'places_nearby_new')}${costRow(t('admin.geocoding'), 'google_maps', 'reverse_geocoding')}${costRow(t('admin.textAi'), 'openai_text', null, textTokens)}${costRow(t('admin.voiceAi'), 'openai_tts', null, voiceTokens)}</section><div class="table-wrap"><table><thead><tr><th>${t('admin.email')}</th><th>${t('admin.lastSession')}</th><th>${t('admin.objects')}</th><th>${t('admin.tokens')}</th><th>${t('admin.cost')}</th></tr></thead><tbody>${list.users.map((user) => `<tr><td>${esc(user.email)}</td><td>${new Date(user.last_seen_at).toLocaleString(state.appLanguage)}</td><td>${user.objects_viewed}</td><td>${user.tokens}</td><td>$${Number(user.estimated_cost_usd).toFixed(4)}</td></tr>`).join('')}</tbody></table></div><p class="footnote">${t('admin.note')}</p>`;
   } catch (error) { node.className = 'message'; node.textContent = error.message; }
 }
 

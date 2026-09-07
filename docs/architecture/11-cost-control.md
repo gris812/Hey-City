@@ -6,7 +6,7 @@ Scope: current `main` production WebApp/backend paths.
 ## Executive findings
 
 1. Google Maps is currently the primary variable-cost risk.
-2. Ahead Discovery correctly throttles provider refresh inside a session, but the cache is session-scoped. Starting a new session in the same place causes a fresh reverse-geocode + Nearby Search pair.
+2. Ahead Discovery uses both session refresh throttling and a shared geographic provider cache. Empty provider results count as completed refreshes and must not be retried on every GPS ping.
 3. Nearby Search (New) requested `rating` and `userRatingCount`. Those fields promote the request from Nearby Search Pro to Nearby Search Enterprise. Discovery does not need them.
 4. Cost Control v2 keeps one Google Map instance mounted for the authenticated browser lifecycle.
 5. Cost Control v2 routes Walking and Drive narration through the same plan-first generation boundary.
@@ -58,6 +58,8 @@ Existing usage telemetry already separates:
 - OpenAI text
 - OpenAI TTS
 
+The operations dashboard renders these categories as a cost breakdown instead of presenting an unexplained aggregate. OpenAI text and TTS tokens remain separate, so a guide voice preview cannot be mistaken for a generated POI story.
+
 This is sufficient for first-pass unit economics, but it should be extended with cache-hit metadata and per-session totals.
 
 ## Implemented in Cost Control v2
@@ -75,6 +77,13 @@ Cost effect:
 
 The location watch, last point, active session, audio, and map camera remain intact across tabs.
 
+### Empty-result refresh guard
+
+A successful Google response with zero candidates is still a completed, billable provider refresh.
+The session records its refresh timestamp and waits for the configured interval before trying again.
+This prevents the previous worst case: two paid Google calls on every GPS update when nothing was found.
+Provider failures use the same retry interval, preventing quota or configuration errors from becoming a tight retry loop.
+
 ### Narrative generation and AI task routing
 
 - Walking and Drive create `NarrativePlan` deterministically and pass the exact plan into `NarrativeGenerator`.
@@ -90,6 +99,7 @@ Cost effect:
 - deterministic auxiliary tasks have zero LLM inference cost;
 - cached final stories avoid repeated text generation;
 - cached audio avoids repeated TTS generation;
+- generated MP3 files are reused from the persistent media volume after API restarts, including guide voice samples;
 - future small-model adoption requires only a provider adapter and route change, not changes to Discovery.
 
 ## Remaining P1 work

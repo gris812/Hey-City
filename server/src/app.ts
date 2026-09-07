@@ -21,7 +21,11 @@ export function createApp(): express.Express {
     return callback(new Error('Origin not allowed'));
   } }));
   app.use(express.json({ limit: '256kb' }));
-  app.use('/media', express.static(media.directory, { maxAge: '30d', immutable: true }));
+  app.use('/media', (_req, res, next) => {
+    // Audio is intentionally consumed by the WebApp on a sibling origin.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  }, express.static(media.directory, { maxAge: '30d', immutable: true }));
 
   app.get('/', (_req, res) => {
     res.json({

@@ -5,7 +5,7 @@ import type { NarrativePlan } from '@heycity/shared';
 import { cacheGet, cacheSet, ttsAudioCacheKey, placeDetailsCacheKey } from './cache';
 import { cacheTtl, discoveryConfig, media, openai } from '../config';
 import { createHash } from 'crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createNarrativePlan } from './narrativePlan';
 import { narrativeGenerator } from './narrativeGenerator';
@@ -40,7 +40,7 @@ export async function generateVoiceSample(
   const audioKey = ttsAudioCacheKey(storyHash, voiceId);
   let audioUrl = await cacheGet<string>(audioKey);
   if (!audioUrl) {
-    audioUrl = await synthesizeSpeech(text, voiceId, lang, userId);
+    audioUrl = await synthesizeSpeech(text, voiceId, lang, userId, 'voice_sample');
     await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 24 * 60 * 60);
   }
   return { audioUrl, transcriptText: text };
@@ -81,7 +81,7 @@ export async function generateNarrationFromPlan(
 
   if (!audioUrl) {
     try {
-      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId);
+      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts');
       await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 24 * 60 * 60);
     } catch (error) {
       console.warn('TTS provider failed; returning text-only narration', error);
@@ -105,8 +105,22 @@ export async function generateNarrationFromPlan(
   };
 }
 
-async function synthesizeSpeech(text: string, voiceId: string, lang: string, userId?: string): Promise<string> {
+async function synthesizeSpeech(
+  text: string,
+  voiceId: string,
+  lang: string,
+  userId?: string,
+  usageOperation: 'voice_sample' | 'story_tts' = 'story_tts'
+): Promise<string> {
   const hash = createHash('sha256').update(`${voiceId}:${lang}:${text}`).digest('hex').slice(0, 24);
+  const filename = `${hash}.mp3`;
+  const filePath = join(media.directory, filename);
+  try {
+    await access(filePath);
+    return `${media.publicApiUrl}/media/${filename}`;
+  } catch {
+    // Generate once, then reuse the persistent media volume across API restarts.
+  }
   if (!openai.apiKey) return `https://example.com/tts/${voiceId}/${hash}.mp3`;
   const isArthur = voiceId === 'artur' || voiceId === 'arthur';
   const voice = isArthur ? 'onyx' : 'coral';
@@ -121,13 +135,13 @@ async function synthesizeSpeech(text: string, voiceId: string, lang: string, use
   });
   if (!response.ok) throw new Error(`OpenAI TTS error: ${response.status} ${(await response.text()).slice(0, 300)}`);
   await mkdir(media.directory, { recursive: true });
-  await writeFile(join(media.directory, `${hash}.mp3`), Buffer.from(await response.arrayBuffer()));
+  await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
   const inputTokens = Math.ceil(text.length / 4);
   const outputTokens = Math.ceil((text.length / 14) * 20);
-  await recordUsage({ userId, category: 'openai_tts', operation: openai.ttsModel, inputTokens, outputTokens,
+  await recordUsage({ userId, category: 'openai_tts', operation: usageOperation, inputTokens, outputTokens,
     estimatedCostUsd: inputTokens / 1e6 * openai.ttsInputUsdPerMillion + outputTokens / 1e6 * openai.ttsOutputUsdPerMillion,
-    metadata: { estimate: true } });
-  return `${media.publicApiUrl}/media/${hash}.mp3`;
+    metadata: { estimate: true, model: openai.ttsModel } });
+  return `${media.publicApiUrl}/media/${filename}`;
 }
 
 function clamp(value: number, min: number, max: number): number {

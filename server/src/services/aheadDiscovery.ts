@@ -10,6 +10,7 @@ type AheadDiscoverySessionState = {
   previousMovement: MovementContext | null;
   candidates: ProviderDiscoveryCandidate[];
   lastRefreshedAtMs: number | null;
+  lastAttemptedAtMs: number | null;
   refreshInProgress: boolean;
   selectedTarget?: DiscoveryCandidate;
   lastErrorCode?: string;
@@ -24,6 +25,7 @@ function getState(sessionId: string): AheadDiscoverySessionState {
     previousMovement: null,
     candidates: [],
     lastRefreshedAtMs: null,
+    lastAttemptedAtMs: null,
     refreshInProgress: false,
   };
   states.set(sessionId, state);
@@ -119,8 +121,10 @@ function isRefreshDue(
   forceRefresh: boolean
 ): boolean {
   if (forceRefresh) return true;
-  if (!state.lastRefreshedAtMs || state.candidates.length === 0) return true;
-  return nowMs - state.lastRefreshedAtMs >= aheadDiscovery.providerRefreshMinutes * 60 * 1000;
+  // An empty provider response is still a completed, billable refresh. Retrying it on
+  // every GPS ping creates a paid request loop precisely where no POIs were found.
+  if (!state.lastAttemptedAtMs) return true;
+  return nowMs - state.lastAttemptedAtMs >= aheadDiscovery.providerRefreshMinutes * 60 * 1000;
 }
 
 async function refreshProviderCandidates(
@@ -132,6 +136,7 @@ async function refreshProviderCandidates(
   forced: boolean
 ): Promise<void> {
   state.refreshInProgress = true;
+  state.lastAttemptedAtMs = nowMs;
   const startedAt = Date.now();
   logAheadDiscovery('ahead_discovery_provider_refresh_started', {
     sessionId,
@@ -337,9 +342,9 @@ function createDiagnostic(input: {
 }
 
 function nextRefreshIso(state: AheadDiscoverySessionState): string | null {
-  if (!state.lastRefreshedAtMs) return null;
+  if (!state.lastAttemptedAtMs) return null;
   return new Date(
-    state.lastRefreshedAtMs + aheadDiscovery.providerRefreshMinutes * 60 * 1000
+    state.lastAttemptedAtMs + aheadDiscovery.providerRefreshMinutes * 60 * 1000
   ).toISOString();
 }
 
