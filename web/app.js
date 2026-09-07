@@ -1,13 +1,21 @@
 const config = window.HEY_CITY_CONFIG || {};
-const storedUser = sessionStorage.getItem('heyCityUser');
+const persistedToken = localStorage.getItem('heyCityToken') || sessionStorage.getItem('heyCityToken');
+const storedUser = localStorage.getItem('heyCityUser') || sessionStorage.getItem('heyCityUser');
 const state = {
-  token: sessionStorage.getItem('heyCityToken'),
+  token: persistedToken,
   user: storedUser ? JSON.parse(storedUser) : null,
   tab: location.pathname === '/admin' ? 'admin' : 'map',
   sessionId: null, watchId: null, map: null, marker: null, profile: null,
+  lastPoint: null, lastResult: null, walkStatus: 'Готов к прогулке',
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
 };
+if (state.token && state.user) {
+  localStorage.setItem('heyCityToken', state.token);
+  localStorage.setItem('heyCityUser', JSON.stringify(state.user));
+  sessionStorage.removeItem('heyCityToken');
+  sessionStorage.removeItem('heyCityUser');
+}
 const app = document.querySelector('#app');
 const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 
@@ -36,8 +44,8 @@ function icon(name) {
 }
 
 function setPath(path) { if (location.pathname !== path) history.pushState({}, '', path); }
-function navigate(tab) { if (tab !== 'map') stopWalking(); state.tab = tab; setPath(tab === 'admin' ? '/admin' : '/'); render(); }
-function logout() { stopWalking(); sessionStorage.clear(); state.token = null; state.user = null; state.profile = null; state.tab = 'map'; setPath('/'); render(); }
+function navigate(tab) { state.tab = tab; setPath(tab === 'admin' ? '/admin' : '/'); render(); }
+function logout() { stopWalking(false); localStorage.removeItem('heyCityToken'); localStorage.removeItem('heyCityUser'); sessionStorage.removeItem('heyCityToken'); sessionStorage.removeItem('heyCityUser'); state.token = null; state.user = null; state.profile = null; state.tab = 'map'; setPath('/'); render(); }
 
 function loginView() {
   const adminLogin = location.pathname === '/admin';
@@ -55,23 +63,28 @@ function loginView() {
         sent = true; document.querySelector('#code-wrap').hidden = false; document.querySelector('#code').required = true; document.querySelector('#code').focus(); button.textContent = 'Войти'; message.dataset.tone = 'success'; message.textContent = result.message === 'Enter administrator access code' ? 'Введите код администратора.' : 'Код отправлен. Проверьте почту.';
       } else {
         const result = await api('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email, code: document.querySelector('#code').value }) });
-        state.token = result.token; state.user = result.user; sessionStorage.setItem('heyCityToken', state.token); sessionStorage.setItem('heyCityUser', JSON.stringify(state.user)); state.tab = state.user.role === 'admin' && location.pathname === '/admin' ? 'admin' : 'map'; render();
+        state.token = result.token; state.user = result.user; localStorage.setItem('heyCityToken', state.token); localStorage.setItem('heyCityUser', JSON.stringify(state.user)); state.tab = state.user.role === 'admin' && location.pathname === '/admin' ? 'admin' : 'map'; render();
       }
     } catch (error) { message.dataset.tone = 'error'; message.textContent = error.message; } finally { button.disabled = false; }
   });
 }
 
 function shell(content, active = state.tab) {
+  state.map = null;
+  state.marker = null;
   app.innerHTML = `<div class="shell"><section class="screen">${content}</section><nav class="nav" aria-label="Основная навигация"><button data-tab="map" class="${active === 'map' ? 'active' : ''}">${icon('map')}<span>Карта</span></button><button data-tab="stories" class="${active === 'stories' ? 'active' : ''}">${icon('stories')}<span>Истории</span></button><button data-tab="settings" class="${active === 'settings' ? 'active' : ''}">${icon('settings')}<span>Настройки</span></button></nav></div>`;
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.tab)));
 }
 
 function mapView() {
   const guide = guides[state.guide];
+  const walking = state.watchId !== null;
+  const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
+  const lastCopy = state.lastResult?.transcriptText;
   shell(`<div id="map" class="map"><div class="map-state" id="map-state">Подключаю карту…</div></div><div class="map-shade" aria-hidden="true"></div>
-    <header class="map-header"><button class="icon-button" id="open-menu" aria-label="Открыть настройки">${icon('menu')}</button><div class="walking-status"><i></i><span id="top-status">Пешеходный режим</span></div><button class="guide-avatar" id="open-guide" aria-label="Открыть профиль ${guide.name}"><img src="${guide.image}" alt=""></button></header>
+    <header class="map-header"><button class="icon-button" id="open-menu" aria-label="Открыть настройки">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? 'Слушаю город' : 'Пешеходный режим'}</span></div><button class="guide-avatar" id="open-guide" aria-label="Открыть профиль ${guide.name}"><img src="${guide.image}" alt=""></button></header>
     <button class="map-locate" id="locate" aria-label="Показать моё местоположение">${icon('locate')}</button>
-    <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">Готов к прогулке</span><span class="area-label">Рядом с вами</span></div><div class="ambient-row"><img class="ambient-avatar" src="${guide.image}" alt="${guide.name}"><div><h1 id="place-title">Слушаю город</h1><p id="place-copy">${guide.name} заговорит, когда рядом появится место, которое действительно стоит заметить.</p></div></div><div class="sheet-actions"><button class="primary" id="start-walk">Начать прогулку</button><button class="secondary" id="stop-walk" hidden>Завершить</button></div></article>`, 'map');
+    <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(state.walkStatus)}</span><span class="area-label">${walking ? 'GPS активен' : 'Рядом с вами'}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${guide.image}" alt="${guide.name}"><div><h1 id="place-title">${esc(lastTitle || 'Слушаю город')}</h1><p id="place-copy">${esc(lastCopy || `${guide.name} заговорит, когда рядом появится место, которое действительно стоит заметить.`)}</p></div></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>Начать прогулку</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>Завершить</button></div></article>`, 'map');
   document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', startWalking); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); void loadMap();
 }
 
@@ -82,7 +95,8 @@ async function loadMap() {
   try {
     if (!window.google?.maps) await new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.googleMapsBrowserKey)}&v=weekly&auth_referrer_policy=origin`; script.onload = resolve; script.onerror = reject; document.head.appendChild(script); });
     const mapNode = document.querySelector('#map'); if (!mapNode) return;
-    state.map = new google.maps.Map(mapNode, { center: { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy' });
+    state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy' });
+    if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint });
     document.querySelector('#map-state')?.setAttribute('hidden', ''); api('/usage/client', { method: 'POST', body: JSON.stringify({ operation: 'dynamic_map_load' }) }).catch(() => {});
   } catch { if (status) status.textContent = 'Не удалось загрузить карту. Повторите позже.'; }
 }
@@ -92,21 +106,22 @@ async function startWalking() {
   if (!navigator.geolocation) { status.textContent = 'Геопозиция не поддерживается'; return; }
   try {
     if (!state.sessionId) { const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide === 'arthur' ? 'artur' : 'dana', language: state.appLanguage, autoplay: true }) }); state.sessionId = result.sessionId; }
-    document.querySelector('#start-walk').hidden = true; document.querySelector('#stop-walk').hidden = false; status.textContent = 'Ищу интересное рядом'; document.querySelector('#top-status').textContent = 'Слушаю город';
+    state.walkStatus = 'Ищу интересное рядом'; document.querySelector('#start-walk').hidden = true; document.querySelector('#stop-walk').hidden = false; status.textContent = state.walkStatus; document.querySelector('#top-status').textContent = 'Слушаю город';
     state.watchId = navigator.geolocation.watchPosition(updateLocation, (error) => { status.textContent = error.code === 1 ? 'Разрешите доступ к геопозиции' : 'Не удалось определить позицию'; }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
   } catch (error) { status.textContent = error.message; }
 }
 
 async function updateLocation(position) {
-  const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; state.map?.setCenter(point);
+  const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; state.lastPoint = point; state.map?.setCenter(point);
   if (state.map) { state.marker?.setMap(null); state.marker = new google.maps.Marker({ map: state.map, position: point }); }
   try {
     const result = await api(`/sessions/${state.sessionId}/context`, { method: 'POST', body: JSON.stringify({ lat, lng, heading: heading ?? 0, speed: (speed ?? 1.2) * 3.6, accuracyMeters: accuracy, timestamp: Date.now() }) });
-    const title = result.poi?.name || result.target?.name || result.decision?.poiName; document.querySelector('#walk-status').textContent = result.nextAction === 'PLAY' ? `${guides[state.guide].name} рассказывает` : 'Слушаю город'; if (title) document.querySelector('#place-title').textContent = title; if (result.transcriptText) document.querySelector('#place-copy').textContent = result.transcriptText; if (result.audioUrl && result.nextAction === 'PLAY') new Audio(result.audioUrl).play().catch(() => {});
-  } catch (error) { document.querySelector('#walk-status').textContent = error.message; }
+    state.lastResult = result; state.walkStatus = result.nextAction === 'PLAY' ? `${guides[state.guide].name} рассказывает` : 'Слушаю город';
+    const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); if (statusNode) statusNode.textContent = state.walkStatus; if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText; if (result.audioUrl && result.nextAction === 'PLAY') new Audio(result.audioUrl).play().catch(() => {});
+  } catch (error) { state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
 }
 
-function stopWalking() { if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; }
+function stopWalking(refresh = true) { if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.walkStatus = 'Готов к прогулке'; if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
   const historyItems = state.profile?.history || [];

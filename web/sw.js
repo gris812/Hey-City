@@ -1,4 +1,4 @@
-const CACHE = 'hey-city-shell-v2';
+const CACHE = 'hey-city-shell-v3';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/config.js', '/manifest.webmanifest', '/assets/dana.webp', '/assets/arthur.webp', '/assets/trinity-church.webp'];
 self.addEventListener('install', (event) => event.waitUntil(Promise.all([
   caches.open(CACHE).then((cache) => cache.addAll(SHELL)),

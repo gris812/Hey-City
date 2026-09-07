@@ -15,10 +15,17 @@ async function settle() {
 
 async function testLoginAndNavigation() {
   const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  let stoppedWatches = 0;
+  Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
+    watchPosition: () => 17,
+    clearWatch: () => { stoppedWatches += 1; },
+  } });
   dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: '' };
   dom.window.fetch = async (url) => {
     if (url.endsWith('/auth/otp/send')) return response({ ok: true, message: 'OTP sent' });
     if (url.endsWith('/auth/otp/verify')) return response({ token: 'test-token', user: { id: 'u1', email: 'tester@example.com', role: 'user' } });
+    if (url.endsWith('/sessions/start')) return response({ sessionId: 'session-1' });
+    if (url.endsWith('/sessions/session-1/end')) return response({ ok: true });
     throw new Error(`Unexpected request: ${url}`);
   };
   dom.window.eval(source);
@@ -32,13 +39,27 @@ async function testLoginAndNavigation() {
   dom.window.document.querySelector('#auth-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
   await settle();
   assert.match(dom.window.document.body.textContent, /Начать прогулку/);
+  assert.equal(dom.window.localStorage.getItem('heyCityToken'), 'test-token');
+  assert.match(dom.window.localStorage.getItem('heyCityUser'), /tester@example.com/);
+  dom.window.document.querySelector('#start-walk').click();
+  await settle();
   dom.window.document.querySelector('[data-tab="settings"]').click();
+  assert.equal(stoppedWatches, 0);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
+  dom.window.document.querySelector('[data-tab="map"]').click();
+  assert.equal(dom.window.document.querySelector('#stop-walk').hidden, false);
+  assert.match(dom.window.document.body.textContent, /GPS активен/);
+  dom.window.document.querySelector('#stop-walk').click();
+  assert.equal(stoppedWatches, 1);
+  dom.window.document.querySelector('[data-tab="settings"]').click();
   dom.window.document.querySelector('[data-guide="dana"]').click();
   assert.match(dom.window.document.body.textContent, /Пример голоса/);
   dom.window.document.querySelector('#switch-guide').click();
   assert.match(dom.window.document.querySelector('#guide-profile').textContent, /Arthur/);
-  dom.window.document.querySelector('#close-profile').click();
+  dom.window.document.querySelector('#choose-guide').click();
+  assert.equal(dom.window.localStorage.getItem('heyCityGuide'), 'arthur');
+  dom.window.document.querySelector('[data-language="en"]').click();
+  assert.equal(dom.window.localStorage.getItem('heyCityLanguage'), 'en');
   dom.window.document.querySelector('[data-tab="stories"]').click();
   assert.match(dom.window.document.body.textContent, /Ваша первая прогулка/);
 }
