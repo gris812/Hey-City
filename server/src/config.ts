@@ -129,6 +129,7 @@ export function getAheadDiscoveryConfig(env: NodeJS.ProcessEnv = process.env) {
     headingGraceSeconds: num('AHEAD_DISCOVERY_HEADING_GRACE_SECONDS', 30),
     minGpsAccuracyMeters: num('AHEAD_DISCOVERY_MAX_GPS_ACCURACY_M', 100),
     providerTimeoutMs: num('AHEAD_DISCOVERY_PROVIDER_TIMEOUT_MS', 4500),
+    providerCacheTtlSeconds: num('AHEAD_DISCOVERY_PROVIDER_CACHE_TTL_SECONDS', 900),
     providerLimit: num('AHEAD_DISCOVERY_PROVIDER_LIMIT', 12),
     searchRadiusMeters: num('AHEAD_DISCOVERY_SEARCH_RADIUS_M', 12000),
     projectedSearchDistanceMeters: num('AHEAD_DISCOVERY_PROJECTED_DISTANCE_M', 10000),
@@ -232,7 +233,7 @@ export const googleMaps = {
   dynamicMapUsdPerThousand: float('GOOGLE_DYNAMIC_MAP_USD_PER_THOUSAND', 7),
   placesNewFieldMask:
     process.env.GOOGLE_PLACES_NEW_FIELD_MASK ||
-    'places.id,places.displayName,places.location,places.types,places.rating,places.userRatingCount',
+    'places.id,places.displayName,places.location,places.types',
 };
 
 export const openai = {
