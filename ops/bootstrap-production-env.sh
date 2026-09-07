@@ -21,7 +21,7 @@ read_secret() {
 
   while [[ -z "${value}" ]]; do
     read -r -s -p "${prompt}: " value
-    echo
+    echo >&2
   done
 
   printf '%s' "${value}"

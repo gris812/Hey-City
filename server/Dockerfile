@@ -18,6 +18,7 @@ COPY shared/package.json shared/package.json
 COPY mobile/package.json mobile/package.json
 RUN npm ci --omit=dev --ignore-scripts
 COPY --from=build /app/server/dist server/dist
+COPY data /data
 RUN mkdir -p /app/data/media && chown -R node:node /app/data
 USER node
 EXPOSE 4000
