@@ -38,6 +38,14 @@ flowchart TD
 
 ## Core inputs
 
+### Automatic movement mode
+
+An active WebApp session with `autoMode: true` starts in walking mode and switches deterministically from GPS speed. Explicit native Walking and Drive sessions remain fixed. Two
+consecutive readings at or above 15 km/h select vehicle mode; two readings at or below 7 km/h
+return to walking mode. The gap between thresholds is deliberate hysteresis, preventing mode
+flicker in traffic or from a single inaccurate GPS reading. The server owns this decision and
+returns the active mode to the client; no LLM participates in mode selection.
+
 | Input | Description |
 |---|---|
 | latitude / longitude | User position |

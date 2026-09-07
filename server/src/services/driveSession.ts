@@ -9,7 +9,7 @@ import type {
   StoryFinishReason,
   StoryFinishResult,
 } from '@heycity/shared';
-import { poi } from '../config';
+import { discoveryConfig, poi } from '../config';
 import { getUserById } from './user';
 import { NearbyPlace } from './googlePlaces';
 import { isCircuitOpen } from './budget';
@@ -27,6 +27,7 @@ import {
 
 export interface DriveSessionParams {
   mode?: DiscoveryMode;
+  autoMode?: boolean;
   themeTags: string[];
   narrationStyle: string;
   lengthSec: number;
@@ -47,6 +48,8 @@ export interface DriveSession {
   lastStoryStartedAt: number;
   lastCandidates: NearbyPlace[];
   alreadyListening: boolean;
+  pendingMode?: DiscoveryMode;
+  pendingModeSamples: number;
   nextPoi?: {
     place: NearbyPlace;
     etaSec: number;
@@ -69,9 +72,40 @@ export function createSession(userId: string, params: DriveSessionParams): Drive
     lastStoryStartedAt: 0,
     lastCandidates: [],
     alreadyListening: false,
+    pendingModeSamples: 0,
   };
   sessions.set(id, session);
   return session;
+}
+
+export function updateSessionMode(session: DriveSession, speedKmh: number): DiscoveryMode {
+  const currentMode = session.params.mode ?? 'vehicle';
+  if (!session.params.autoMode) return currentMode;
+  if (!Number.isFinite(speedKmh) || speedKmh < 0) return currentMode;
+
+  const candidateMode = currentMode === 'walking'
+    ? (speedKmh >= discoveryConfig.vehicleMinSpeedKmh ? 'vehicle' : 'walking')
+    : (speedKmh <= discoveryConfig.walkingMaxSpeedKmh ? 'walking' : 'vehicle');
+
+  if (candidateMode === currentMode) {
+    session.pendingMode = undefined;
+    session.pendingModeSamples = 0;
+    return currentMode;
+  }
+
+  if (session.pendingMode === candidateMode) {
+    session.pendingModeSamples += 1;
+  } else {
+    session.pendingMode = candidateMode;
+    session.pendingModeSamples = 1;
+  }
+
+  if (session.pendingModeSamples < discoveryConfig.modeSwitchConfirmSamples) return currentMode;
+
+  session.params.mode = candidateMode;
+  session.pendingMode = undefined;
+  session.pendingModeSamples = 0;
+  return candidateMode;
 }
 
 export function getSession(sessionId: string): DriveSession | null {
@@ -126,6 +160,7 @@ export async function pingSession(
   }
 
   const now = timestamp || Date.now();
+  const activeMode = updateSessionMode(session, speedKmh);
   const movement = createMovementContext({
     latitude: lat,
     longitude: lng,
@@ -140,14 +175,19 @@ export async function pingSession(
     forceRefresh: forceAheadRefresh,
     nowMs: now,
   });
+  if (session.pendingMode) {
+    return { nextAction: 'NONE', mode: activeMode, speedKmh, aheadDiscovery };
+  }
   const userId = session.userId;
   const circuitOpen = isCircuitOpen(userId);
-  const skipReason = session.params.mode === 'walking'
+  const skipReason = activeMode === 'walking'
     ? (circuitOpen ? 'circuit_open' : session.muted ? 'muted' : null)
     : getPingSkipReason({ circuitOpen, muted: session.muted, speedKmh });
   if (skipReason) {
     return {
       nextAction: 'NONE',
+      mode: activeMode,
+      speedKmh,
       circuitLimited: skipReason === 'circuit_open',
       decision: {
         type: 'hold',
@@ -178,7 +218,7 @@ export async function pingSession(
   session.lastCandidates = localCandidates.map(localCandidateToNearbyPlace);
 
   const decision = evaluateDiscoveryDecision({
-    mode: session.params.mode ?? 'vehicle',
+    mode: activeMode,
     speedKmh,
     gpsAgeSeconds: 0,
     alreadyListening: session.alreadyListening,
@@ -193,7 +233,7 @@ export async function pingSession(
   });
 
   if (decision.type === 'hold') {
-    return { nextAction: 'NONE', decision, aheadDiscovery };
+    return { nextAction: 'NONE', mode: activeMode, speedKmh, decision, aheadDiscovery };
   }
 
   const place = localCandidateToNearbyPlace({
@@ -224,7 +264,7 @@ export async function pingSession(
       type: 'poi_listened',
       placeId: place.place_id,
       poiId: place.place_id,
-      mode: session.params.mode === 'walking' ? 'walking' : 'drive_discovery',
+      mode: activeMode === 'walking' ? 'walking' : 'drive_discovery',
       theme: session.params.themeTags[0],
       style: session.params.narrationStyle,
     });
@@ -232,6 +272,8 @@ export async function pingSession(
 
   return {
     nextAction: 'PLAY',
+    mode: activeMode,
+    speedKmh,
     poi: place,
     audioUrl: narration.audioUrl,
     textPreview: narration.transcriptText.slice(0, 200),

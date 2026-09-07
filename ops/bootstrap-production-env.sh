@@ -55,6 +55,7 @@ TESTER_EMAIL_ALLOWLIST=slepak@stolbergco.com,g.slepak@icloud.com,albert.slepak@g
 USAGE_RETENTION_DAYS=30
 GOOGLE_MAPS_API_KEY=${google_server_key}
 GOOGLE_MAPS_BROWSER_KEY=${google_browser_key}
+MODE_SWITCH_CONFIRM_SAMPLES=2
 OPENAI_API_KEY=${openai_key}
 OPENAI_TEXT_MODEL=gpt-4o-mini
 OPENAI_TTS_MODEL=gpt-4o-mini-tts

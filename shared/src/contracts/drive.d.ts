@@ -155,6 +155,8 @@ export interface DrivePoi {
 
 export interface DrivePingResult {
   nextAction: 'PLAY' | 'NONE';
+  mode?: DiscoveryMode;
+  speedKmh?: number;
   poi?: DrivePoi;
   audioUrl?: string;
   textPreview?: string;

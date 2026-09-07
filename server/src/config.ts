@@ -102,6 +102,7 @@ export const discoveryConfig = {
   pingIntervalSeconds: num('PING_INTERVAL_SECONDS', 10),
   vehicleMinSpeedKmh: num('VEHICLE_MIN_SPEED_KMH', 15),
   walkingMaxSpeedKmh: num('WALKING_MAX_SPEED_KMH', 7),
+  modeSwitchConfirmSamples: num('MODE_SWITCH_CONFIRM_SAMPLES', 2),
   vehicleStoryMinSeconds: num('VEHICLE_STORY_MIN_SECONDS', 30),
   vehicleStoryMaxSeconds: num('VEHICLE_STORY_MAX_SECONDS', 45),
   discoveryCooldownSeconds: num('DISCOVERY_COOLDOWN_SECONDS', 150),

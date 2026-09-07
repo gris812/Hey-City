@@ -20,8 +20,9 @@ async function testLoginAndNavigation() {
   let mapConstructions = 0;
   let mapResizeEvents = 0;
   let dynamicMapUsageEvents = 0;
+  let locationCallback = null;
   Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
-    watchPosition: () => 17,
+    watchPosition: (callback) => { locationCallback = callback; return 17; },
     clearWatch: () => { stoppedWatches += 1; },
   } });
   dom.window.HTMLMediaElement.prototype.play = async () => {};
@@ -36,8 +37,13 @@ async function testLoginAndNavigation() {
     if (url.endsWith('/auth/otp/send')) return response({ ok: true, message: 'OTP sent' });
     if (url.endsWith('/auth/otp/verify')) return response({ token: 'test-token', user: { id: 'u1', email: 'tester@example.com', role: 'user' } });
     if (url.endsWith('/sessions/start')) {
-      assert.equal(JSON.parse(options.body || '{}').mode, 'walking');
+      assert.deepEqual(JSON.parse(options.body || '{}').mode, 'walking');
+      assert.equal(JSON.parse(options.body || '{}').autoMode, true);
       return response({ sessionId: 'session-1' });
+    }
+    if (url.endsWith('/sessions/session-1/context')) {
+      const request = JSON.parse(options.body || '{}');
+      return response({ nextAction: 'NONE', mode: request.speed >= 15 ? 'vehicle' : 'walking', speedKmh: request.speed, aheadDiscovery: { topCandidates: [] } });
     }
     if (url.endsWith('/stories/voice-sample')) {
       voiceSampleRequest = JSON.parse(options.body || '{}');
@@ -57,7 +63,7 @@ async function testLoginAndNavigation() {
   dom.window.document.querySelector('#code').value = '123456';
   dom.window.document.querySelector('#auth-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
   await settle();
-  assert.match(dom.window.document.body.textContent, /Начать прогулку/);
+  assert.match(dom.window.document.body.textContent, /Начать/);
   assert.equal(mapConstructions, 1);
   const originalMapNode = dom.window.document.querySelector('#map');
   assert.equal(dom.window.localStorage.getItem('heyCityToken'), 'test-token');
@@ -65,6 +71,10 @@ async function testLoginAndNavigation() {
   dom.window.document.querySelector('#start-walk').click();
   await settle();
   assert.equal(dom.window.document.querySelector('#radar-scan').hidden, false);
+  await locationCallback({ coords: { latitude: 40.7, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });
+  await settle();
+  assert.match(dom.window.document.querySelector('#top-status').textContent, /автомобиле/);
+  assert.match(dom.window.document.querySelector('.area-label').textContent, /22 км\/ч/);
   dom.window.document.querySelector('[data-tab="settings"]').click();
   assert.equal(stoppedWatches, 0);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);
@@ -75,7 +85,7 @@ async function testLoginAndNavigation() {
   assert.equal(dynamicMapUsageEvents, 1);
   assert.ok(mapResizeEvents >= 1);
   assert.equal(dom.window.document.querySelector('#stop-walk').hidden, false);
-  assert.match(dom.window.document.body.textContent, /GPS активен/);
+  assert.match(dom.window.document.body.textContent, /22 км\/ч/);
   dom.window.document.querySelector('#stop-walk').click();
   assert.equal(stoppedWatches, 1);
   dom.window.document.querySelector('[data-tab="settings"]').click();
@@ -119,12 +129,13 @@ async function testAdminDashboard() {
   assert.ok(dom.window.document.querySelector('#admin-logout'));
   assert.equal(dom.window.document.querySelectorAll('.nav button').length, 3);
   dom.window.document.querySelector('#admin-back').click();
-  assert.match(dom.window.document.body.textContent, /Начать прогулку/);
+  assert.match(dom.window.document.body.textContent, /Начать/);
 }
 
 async function testMapConfiguration() {
   assert.doesNotMatch(source, /mapId\s*:\s*['"]DEMO_MAP_ID/);
-  assert.match(source, /auth_referrer_policy=origin/);
+  assert.doesNotMatch(source, /auth_referrer_policy=origin/);
+  assert.match(source, /loading=async/);
   const css = await readFile(new URL('./styles.css', import.meta.url), 'utf8');
   assert.match(css, /\.shell\s*\{[^}]*height:100dvh/);
   assert.match(css, /\.screen\s*\{[^}]*overflow:hidden/);
