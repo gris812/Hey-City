@@ -5,6 +5,8 @@ import type {
   SearchAheadInput,
 } from './aheadDiscoveryTypes';
 import { normalizeTargetType } from './aheadDiscoveryFiltering';
+import { aheadDiscoveryCacheKey, cacheGet, cacheSet } from './cache';
+import { encodeGeohash } from './geo';
 import { recordUsage } from './usage';
 
 type GooglePlace = {
@@ -84,6 +86,15 @@ export const googleAheadDiscoveryProvider: DiscoveryDataProvider = {
   async searchAhead(input: SearchAheadInput): Promise<ProviderDiscoveryCandidate[]> {
     if (!googleMaps.apiKey) throw safeProviderError('missing_google_key');
 
+    const geohash = encodeGeohash(
+      input.projectedPoint.latitude,
+      input.projectedPoint.longitude,
+      7
+    );
+    const cacheKey = aheadDiscoveryCacheKey(geohash, input.radiusMeters, input.limit);
+    const cached = await cacheGet<ProviderDiscoveryCandidate[]>(cacheKey);
+    if (cached) return cached;
+
     const [settlements, places] = await Promise.all([
       searchGeocodedSettlements(input),
       searchPlacesNew(input),
@@ -93,7 +104,9 @@ export const googleAheadDiscoveryProvider: DiscoveryDataProvider = {
     for (const candidate of [...settlements, ...places]) {
       byId.set(candidate.providerId, candidate);
     }
-    return [...byId.values()].slice(0, input.limit);
+    const results = [...byId.values()].slice(0, input.limit);
+    await cacheSet(cacheKey, results, aheadDiscovery.providerCacheTtlSeconds);
+    return results;
   },
 };
 
@@ -173,8 +186,6 @@ async function searchPlacesNew(input: SearchAheadInput): Promise<ProviderDiscove
         latitude: place.location?.latitude,
         longitude: place.location?.longitude,
         providerTypes: place.types,
-        rating: place.rating,
-        userRatingCount: place.userRatingCount,
       })
     )
     .filter((candidate): candidate is ProviderDiscoveryCandidate => Boolean(candidate));
