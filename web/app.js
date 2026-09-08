@@ -204,7 +204,18 @@ async function loadMap() {
   if (!config.googleMapsBrowserKey) { if (status) status.textContent = t('map.keyMissing'); return; }
   window.gm_authFailure = () => { const node = document.querySelector('#map-failure'); if (node) { node.hidden = false; node.textContent = t('map.keyRejected'); } };
   state.mapLoadPromise = (async () => { try {
-    if (!window.google?.maps) await new Promise((resolve, reject) => { const script = document.createElement('script'); script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.googleMapsBrowserKey)}&v=weekly&loading=async`; script.onload = resolve; script.onerror = reject; document.head.appendChild(script); });
+    if (typeof window.google?.maps?.Map !== 'function') await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      // loading=async signals readiness through callback, not the script load event.
+      window.heyCityMapsReady = () => {
+        if (typeof window.google?.maps?.Map === 'function') resolve();
+        else reject(new Error('Google Maps callback returned without Map constructor'));
+      };
+      script.async = true;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.googleMapsBrowserKey)}&v=weekly&loading=async&callback=heyCityMapsReady`;
+      script.onerror = () => { script.remove(); reject(new Error('Google Maps script failed to load')); };
+      document.head.appendChild(script);
+    });
     const mapNode = document.querySelector('#map'); if (!mapNode) return;
     state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
     if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint, zIndex: 20 });

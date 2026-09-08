@@ -145,6 +145,33 @@ async function testMapConfiguration() {
   assert.match(css, /\.profile-content\s*\{[^}]*overflow:auto/);
 }
 
+async function testDelayedMapsCallback() {
+  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  dom.window.HTMLMediaElement.prototype.pause = () => {};
+  dom.window.localStorage.setItem('heyCityToken', 'test-token');
+  dom.window.localStorage.setItem('heyCityUser', JSON.stringify({ id: 'test', role: 'user' }));
+  dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: 'test-key' };
+  dom.window.fetch = async () => response({});
+  dom.window.google = { maps: {} };
+  let constructions = 0;
+  dom.window.eval(source);
+  const script = dom.window.document.querySelector('script');
+  assert.equal(new URL(script.src).searchParams.get('callback'), 'heyCityMapsReady');
+  script.dispatchEvent(new dom.window.Event('load'));
+  await settle();
+  assert.equal(constructions, 0);
+  assert.equal(dom.window.document.querySelector('#map-failure').hidden, true);
+  dom.window.google.maps.Map = class { constructor() { constructions++; } };
+  dom.window.heyCityMapsReady();
+  await settle();
+  assert.equal(constructions, 1);
+  assert.equal(dom.window.document.querySelector('#map-failure').hidden, true);
+  dom.window.gm_authFailure();
+  assert.equal(dom.window.document.querySelector('#map-failure').hidden, false);
+  dom.window.close();
+}
+
+await testDelayedMapsCallback();
 await testLoginAndNavigation();
 await testAdminDashboard();
 await testMapConfiguration();
