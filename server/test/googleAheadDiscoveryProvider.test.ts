@@ -96,6 +96,34 @@ async function run() {
   assert.equal(fetchCalls, 2, 'same geo cell is served from shared provider cache');
   assert.deepEqual(cachedCandidates, candidates, 'cached discovery preserves provider result');
 
+  let areaCalls = 0;
+  let placeCalls = 0;
+  global.fetch = (async (url: string) => {
+    if (url.includes('geocode')) { areaCalls++; return { ok: true, json: async () => ({ status: 'ZERO_RESULTS', results: [] }) } as Response; }
+    placeCalls++; return { ok: false, status: 500 } as Response;
+  }) as typeof fetch;
+  const failedInput = { movement, projectedPoint: { latitude: 41.1, longitude: -87.1 }, radiusMeters: 12000, limit: 10 };
+  await Promise.allSettled([
+    googleAheadDiscoveryProvider.searchAhead(failedInput),
+    googleAheadDiscoveryProvider.searchAhead(failedInput),
+  ]);
+  assert.equal(areaCalls, 1, 'concurrent area requests are deduplicated');
+  assert.equal(placeCalls, 1, 'concurrent Places requests are deduplicated');
+  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead(failedInput), /http_500/);
+  assert.equal(areaCalls, 1, 'successful empty area survives Places failure');
+  assert.equal(placeCalls, 1, 'failed requests respect backoff');
+  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, limit: 11 }), /http_500/);
+  assert.equal(areaCalls, 1, 'area cache independent of Places limit');
+
+  let deniedCalls = 0;
+  global.fetch = (async (url: string) => {
+    if (url.includes('geocode')) { deniedCalls++; return { ok: true, json: async () => ({ status: 'REQUEST_DENIED' }) } as Response; }
+    return { ok: true, json: async () => ({ places: [] }) } as Response;
+  }) as typeof fetch;
+  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, projectedPoint: { latitude: 42, longitude: -86 } }), /REQUEST_DENIED/);
+  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, projectedPoint: { latitude: 43, longitude: -85 } }), /REQUEST_DENIED/);
+  assert.equal(deniedCalls, 1, 'access failure blocks area requests across cells');
+
   global.fetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as Response) as typeof fetch;
   await assert.rejects(
     () =>
@@ -105,7 +133,7 @@ async function run() {
         radiusMeters: 12000,
         limit: 10,
       }),
-    /quota_or_rate_limit/,
+    /REQUEST_DENIED|quota_or_rate_limit/,
     'quota response becomes safe provider error'
   );
 }

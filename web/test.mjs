@@ -21,6 +21,8 @@ async function testLoginAndNavigation() {
   let mapResizeEvents = 0;
   let dynamicMapUsageEvents = 0;
   let locationCallback = null;
+  let markerConstructions = 0;
+  let markerMoves = 0;
   Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
     watchPosition: (callback) => { locationCallback = callback; return 17; },
     clearWatch: () => { stoppedWatches += 1; },
@@ -29,7 +31,7 @@ async function testLoginAndNavigation() {
   dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.google = { maps: {
     Map: class { constructor() { mapConstructions += 1; } setCenter() {} },
-    Marker: class { setMap() {} },
+    Marker: class { constructor() { markerConstructions++; } setMap() {} setPosition() { markerMoves++; } },
     event: { trigger: () => { mapResizeEvents += 1; } },
   } };
   dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: 'browser-key' };
@@ -42,6 +44,7 @@ async function testLoginAndNavigation() {
       return response({ sessionId: 'session-1' });
     }
     if (url.endsWith('/sessions/session-1/context')) {
+      assert.equal(dom.window.document.querySelector('#radar-scan').hidden, false, 'radar scans at actual GPS position during initial request');
       const request = JSON.parse(options.body || '{}');
       return response({ nextAction: 'NONE', mode: request.speed >= 15 ? 'vehicle' : 'walking', speedKmh: request.speed, aheadDiscovery: { topCandidates: [] } });
     }
@@ -70,11 +73,17 @@ async function testLoginAndNavigation() {
   assert.match(dom.window.localStorage.getItem('heyCityUser'), /tester@example.com/);
   dom.window.document.querySelector('#start-walk').click();
   await settle();
-  assert.equal(dom.window.document.querySelector('#radar-scan').hidden, false);
-  await locationCallback({ coords: { latitude: 40.7, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });
+  assert.equal(dom.window.document.querySelector('#radar-scan').hidden, true);
+  assert.match(dom.window.document.querySelector('#open-guide img').src, /dana-avatar.png$/);
+  const firstFix = locationCallback({ coords: { latitude: 40.7, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });
+  await locationCallback({ coords: { latitude: 40.7001, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });
+  await firstFix;
   await settle();
   assert.match(dom.window.document.querySelector('#top-status').textContent, /автомобиле/);
   assert.match(dom.window.document.querySelector('.area-label').textContent, /22 км\/ч/);
+  assert.equal(markerConstructions, 1);
+  assert.equal(markerConstructions, 1, 'GPS does not recreate marker');
+  assert.equal(markerMoves, 1);
   dom.window.document.querySelector('[data-tab="settings"]').click();
   assert.equal(stoppedWatches, 0);
   assert.match(dom.window.document.body.textContent, /tester@example.com/);

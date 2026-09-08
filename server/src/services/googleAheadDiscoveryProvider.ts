@@ -18,6 +18,38 @@ type GooglePlace = {
   userRatingCount?: number;
 };
 
+const pending = new Map<string, Promise<ProviderDiscoveryCandidate[]>>();
+
+// Separate operation caches preserve a successful area lookup when Places fails.
+async function cachedOperation(key: string, operation: string, ttl: number,
+  request: () => Promise<ProviderDiscoveryCandidate[]>): Promise<ProviderDiscoveryCandidate[]> {
+  const cached = await cacheGet<ProviderDiscoveryCandidate[]>(key);
+  if (cached) return cached;
+  const blocked = await cacheGet<string>(`blocked:${operation}`);
+  const failed = await cacheGet<string>(`failed:${key}`);
+  if (blocked || failed) throw safeProviderError(blocked || failed!);
+  const existing = pending.get(key);
+  if (existing) return existing;
+  const task = (async () => {
+    await recordUsage({ category: 'product', operation: `${operation}_attempt` });
+    try {
+      const result = await request();
+      await cacheSet(key, result, ttl);
+      return result;
+    } catch (error) {
+      const code = (error as Error).message;
+      await cacheSet(`failed:${key}`, code, aheadDiscovery.providerErrorBackoffSeconds);
+      if (/http_40[13]|REQUEST_DENIED|quota_or_rate_limit/.test(code)) {
+        await cacheSet(`blocked:${operation}`, code, aheadDiscovery.providerErrorBackoffSeconds);
+      }
+      await recordUsage({ category: 'product', operation: `${operation}_error`, metadata: { code } });
+      throw error;
+    }
+  })();
+  pending.set(key, task);
+  try { return await task; } finally { pending.delete(key); }
+}
+
 type GoogleGeocodeResult = {
   place_id?: string;
   formatted_address?: string;
@@ -96,8 +128,10 @@ export const googleAheadDiscoveryProvider: DiscoveryDataProvider = {
     if (cached) return cached;
 
     const [settlements, places] = await Promise.all([
-      searchGeocodedSettlements(input),
-      searchPlacesNew(input),
+      cachedOperation(`area:${encodeGeohash(input.projectedPoint.latitude, input.projectedPoint.longitude, aheadDiscovery.areaCachePrecision)}`,
+        'reverse_geocoding', aheadDiscovery.areaCacheTtlSeconds, () => searchGeocodedSettlements(input)),
+      cachedOperation(`places:${cacheKey}`, 'places_nearby_new', aheadDiscovery.providerCacheTtlSeconds,
+        () => searchPlacesNew(input)),
     ]);
 
     const byId = new Map<string, ProviderDiscoveryCandidate>();
@@ -125,10 +159,10 @@ async function searchGeocodedSettlements(
     status?: string;
     results?: GoogleGeocodeResult[];
   };
-  await recordUsage({ category: 'google_maps', operation: 'reverse_geocoding', estimatedCostUsd: googleMaps.geocodingUsdPerThousand / 1000 });
   if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    throw safeProviderError(data.status === 'OVER_QUERY_LIMIT' ? 'quota_or_rate_limit' : 'geocode_error');
+    throw safeProviderError(data.status === 'OVER_QUERY_LIMIT' ? 'quota_or_rate_limit' : `geocode_${data.status}`);
   }
+  await recordUsage({ category: 'google_maps', operation: 'reverse_geocoding', estimatedCostUsd: googleMaps.geocodingUsdPerThousand / 1000, metadata: { status: data.status } });
 
   return (data.results ?? [])
     .map((result) =>
