@@ -26,6 +26,12 @@ historical events are not rewritten. Error events carry a safe error code only.
 
 Web: start radar only after a location fix while the first context request is
 pending; retain one user marker and call setPosition for subsequent fixes.
-Location button recenters an existing watch instead of creating another watch.
-Compact guide images use the existing mobile Dana.png and Artur.png assets;
-profile photography is unchanged. Dana v3.0 is absent from this checkout.
+Map mounting and the location button request a one-shot GPS fix independently of
+API session creation. Starting discovery first obtains a fix, then creates the
+session and one watch. GPS failures release the watch so retry remains possible.
+Late callbacks/responses from ended sessions are ignored.
+
+The September 10 supplied Dana and Arthur v3 images replace both mobile source
+images and WebApp portraits. Top-right avatars use transparent portraits over a
+white circular CSS frame, cropped to head and shoulders. Profile images use the
+supplied city photographs; originals are copied without generative alterations.

@@ -6,7 +6,7 @@ const state = {
   user: storedUser ? JSON.parse(storedUser) : null,
   tab: location.pathname === '/admin' ? 'admin' : 'map',
   sessionId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, candidateMarkers: [], profile: null, audioUrl: null,
-  contextInFlight: false, initialScanComplete: false,
+  contextInFlight: false, initialScanComplete: false, starting: false, locationPromise: null, runId: 0,
   lastPoint: null, lastResult: null, walkStatus: '', movementMode: 'walking', speedKmh: null,
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
@@ -46,8 +46,8 @@ function movementModeLabel() { return t(state.movementMode === 'vehicle' ? 'map.
 function movementMetaLabel() { return Number.isFinite(state.speedKmh) ? t('map.speed', { speed: Math.round(state.speedKmh) }) : t('map.gps'); }
 
 const guides = {
-  dana: { avatar: '/assets/dana-avatar.png', image: '/assets/dana.webp', ru: { name: 'Dana', role: 'Городской проводник', body: 'Живая, наблюдательная и любопытная. Dana замечает характер города, локальную жизнь и детали, мимо которых легко пройти.', interests: ['Скрытые места', 'Локальная жизнь', 'Атмосфера'], greeting: 'Привет! Я Dana. Будем идти в вашем ритме — я заговорю, когда рядом появится место, которое действительно стоит заметить.' }, en: { name: 'Dana', role: 'City companion', body: 'Lively, observant and curious. Dana notices the city’s character, local life and details that are easy to walk past.', interests: ['Hidden gems', 'Local life', 'Atmosphere'], greeting: 'Hi! I’m Dana. We’ll move at your pace, and I’ll speak when something nearby is genuinely worth noticing.' } },
-  arthur: { avatar: '/assets/arthur-avatar.png', image: '/assets/arthur.webp', ru: { name: 'Arthur', role: 'Историк', body: 'Структурный, точный и внимательный. Arthur объясняет город через историю, архитектуру и решения людей.', interests: ['История', 'Архитектура', 'Контекст'], greeting: 'Здравствуйте. Я Arthur. Вместе мы увидим, как история, архитектура и человеческие решения сформировали город вокруг нас.' }, en: { name: 'Arthur', role: 'Historian', body: 'Structured, precise and attentive. Arthur explains the city through history, architecture and human decisions.', interests: ['History', 'Architecture', 'Context'], greeting: 'Hello. I’m Arthur. Together we’ll see how history, architecture and human decisions shaped the city around us.' } },
+  dana: { avatar: '/assets/dana-v3-avatar.png', image: '/assets/dana-v3-profile.png', ru: { name: 'Dana', role: 'Городской проводник', body: 'Живая, наблюдательная и любопытная. Dana замечает характер города, локальную жизнь и детали, мимо которых легко пройти.', interests: ['Скрытые места', 'Локальная жизнь', 'Атмосфера'], greeting: 'Привет! Я Dana. Будем идти в вашем ритме — я заговорю, когда рядом появится место, которое действительно стоит заметить.' }, en: { name: 'Dana', role: 'City companion', body: 'Lively, observant and curious. Dana notices the city’s character, local life and details that are easy to walk past.', interests: ['Hidden gems', 'Local life', 'Atmosphere'], greeting: 'Hi! I’m Dana. We’ll move at your pace, and I’ll speak when something nearby is genuinely worth noticing.' } },
+  arthur: { avatar: '/assets/arthur-v3-avatar.png', image: '/assets/arthur-v3-profile.png', ru: { name: 'Arthur', role: 'Историк', body: 'Структурный, точный и внимательный. Arthur объясняет город через историю, архитектуру и решения людей.', interests: ['История', 'Архитектура', 'Контекст'], greeting: 'Здравствуйте. Я Arthur. Вместе мы увидим, как история, архитектура и человеческие решения сформировали город вокруг нас.' }, en: { name: 'Arthur', role: 'Historian', body: 'Structured, precise and attentive. Arthur explains the city through history, architecture and human decisions.', interests: ['History', 'Architecture', 'Context'], greeting: 'Hello. I’m Arthur. Together we’ll see how history, architecture and human decisions shaped the city around us.' } },
 };
 function guideCopy(id = state.guide) { return { ...guides[id], ...guides[id][state.appLanguage] }; }
 const storyAudio = new Audio();
@@ -156,10 +156,11 @@ function mapView() {
     <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
     <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${guide.avatar}" alt="${guide.name}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
   if (mountedMap) {
-    document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', startWalking); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
+    document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', () => { void locateUser().catch(showLocationError); }); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
   }
   refreshMapView();
   void loadMap();
+  if (mountedMap && !state.lastPoint) void locateUser().catch(showLocationError);
 }
 
 function refreshMapView() {
@@ -224,22 +225,73 @@ async function loadMap() {
   return state.mapLoadPromise;
 }
 
+function showLocationError(error) {
+  state.walkStatus = error.message || t('map.geoFailed');
+  const node = document.querySelector('#walk-status');
+  if (node) node.textContent = state.walkStatus;
+}
+
+function applyPosition(position) {
+  const { latitude: lat, longitude: lng } = position.coords;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error(t('map.geoFailed'));
+  state.lastPoint = { lat, lng };
+  state.map?.setCenter(state.lastPoint);
+  if (state.map) {
+    if (state.marker) state.marker.setPosition(state.lastPoint);
+    else state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint });
+  }
+}
+
+function locateUser() {
+  if (state.locationPromise) return state.locationPromise;
+  if (!state.sessionId) showLocationError({ message: t('map.gps') });
+  state.locationPromise = new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error(t('map.geoUnsupported'))); return; }
+    navigator.geolocation.getCurrentPosition(resolve, (error) => reject(new Error(error.code === 1 ? t('map.geoPermission') : t('map.geoFailed'))),
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
+  }).then((position) => {
+    applyPosition(position);
+    if (!state.sessionId) showLocationError({ message: t('map.ready') });
+    return position;
+  }).finally(() => { state.locationPromise = null; });
+  return state.locationPromise;
+}
+
 async function startWalking() {
-  const status = document.querySelector('#walk-status');
-  if (state.watchId !== null) { if (state.lastPoint) state.map?.setCenter(state.lastPoint); return; }
-  if (!navigator.geolocation) { status.textContent = t('map.geoUnsupported'); return; }
+  if (state.starting || state.watchId !== null) return;
+  state.starting = true;
+  const runId = ++state.runId;
   try {
-    if (!state.sessionId) { const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ mode: 'walking', autoMode: true, themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide === 'arthur' ? 'artur' : 'dana', language: state.guideLanguage, autoplay: true }) }); state.sessionId = result.sessionId; }
-    state.initialScanComplete = false; state.walkStatus = t('map.searching'); state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); document.querySelector('#start-walk').hidden = true; document.querySelector('#stop-walk').hidden = false; status.textContent = state.walkStatus; document.querySelector('#top-status').textContent = movementModeLabel();
-    state.watchId = navigator.geolocation.watchPosition(updateLocation, (error) => { state.initialScanComplete = true; setRadarScanning(false); status.textContent = error.code === 1 ? t('map.geoPermission') : t('map.geoFailed'); }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
-  } catch (error) { state.initialScanComplete = true; setRadarScanning(false); status.textContent = error.message; }
+    const position = await locateUser();
+    if (runId !== state.runId) return;
+    const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ mode: 'walking', autoMode: true, themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide === 'arthur' ? 'artur' : 'dana', language: state.guideLanguage, autoplay: true }) });
+    if (runId !== state.runId) { void api(`/sessions/${result.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); return; }
+    state.sessionId = result.sessionId;
+    state.initialScanComplete = false;
+    state.walkStatus = t('map.searching');
+    state.watchId = navigator.geolocation.watchPosition((fix) => {
+      if (runId === state.runId) void updateLocation(fix);
+    }, (error) => {
+      if (runId !== state.runId) return;
+      stopWalking(false);
+      refreshMapView();
+      showLocationError(new Error(error.code === 1 ? t('map.geoPermission') : t('map.geoFailed')));
+    }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
+    refreshMapView();
+    await updateLocation(position);
+  } catch (error) {
+    if (runId === state.runId) {
+      stopWalking(false);
+      refreshMapView();
+      showLocationError(error);
+    }
+  } finally { if (runId === state.runId) state.starting = false; }
 }
 
 async function updateLocation(position) {
   if (!state.sessionId || state.watchId === null) return;
   const sessionId = state.sessionId;
-  const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; const measuredSpeedKmh = Math.max(0, (speed ?? 0) * 3.6); state.lastPoint = point; state.speedKmh = measuredSpeedKmh; state.map?.setCenter(point);
-  if (state.map) { if (state.marker) state.marker.setPosition(point); else state.marker = new google.maps.Marker({ map: state.map, position: point }); }
+  const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; const measuredSpeedKmh = Math.max(0, (speed ?? 0) * 3.6); state.speedKmh = measuredSpeedKmh; applyPosition(position);
   if (state.contextInFlight) return;
   state.contextInFlight = true;
   const initialScan = !state.initialScanComplete;
@@ -248,11 +300,14 @@ async function updateLocation(position) {
     const result = await api(`/sessions/${state.sessionId}/context`, { method: 'POST', body: JSON.stringify({ lat, lng, heading: heading ?? 0, speed: measuredSpeedKmh, accuracyMeters: accuracy, timestamp: Date.now() }) });
     if (state.sessionId !== sessionId) return;
     state.lastResult = result; state.movementMode = result.mode === 'vehicle' ? 'vehicle' : 'walking'; state.speedKmh = Number.isFinite(result.speedKmh) ? result.speedKmh : measuredSpeedKmh; state.walkStatus = result.nextAction === 'PLAY' ? t('map.speaking', { guide: guideCopy().name }) : t('map.listening');
+    if (result.aheadDiscovery?.providerRefresh?.errorCode) {
+      state.walkStatus = state.appLanguage === 'ru' ? 'Поиск объектов недоступен. Попробуйте позже.' : 'Place search is unavailable. Try again later.';
+    }
     renderCandidateMarkers(result.aheadDiscovery?.topCandidates || []);
     const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); const modeNode = document.querySelector('#top-status'); const metaNode = document.querySelector('.area-label'); if (statusNode) statusNode.textContent = state.walkStatus; if (modeNode) modeNode.textContent = movementModeLabel(); if (metaNode) metaNode.textContent = movementMetaLabel(); if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText;
     if (result.audioUrl && result.nextAction === 'PLAY') { state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
-  } catch (error) { state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
-  finally { state.contextInFlight = false; if (initialScan) { state.initialScanComplete = true; setRadarScanning(false); } }
+  } catch (error) { if (state.sessionId !== sessionId) return; state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
+  finally { if (state.sessionId !== sessionId) return; state.contextInFlight = false; if (initialScan) { state.initialScanComplete = true; setRadarScanning(false); } }
 }
 
 function setRadarScanning(scanning) {
@@ -298,7 +353,7 @@ function renderCandidateMarkers(candidates) {
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
 function updateAudioControl() { renderAudioControl(); }
 function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.paused) storyAudio.play().catch(() => {}); else storyAudio.pause(); }
-function stopWalking(refresh = true) { if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); if (refresh && state.tab === 'map') render(); }
+function stopWalking(refresh = true) { state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
   const historyItems = state.profile?.history || [];
