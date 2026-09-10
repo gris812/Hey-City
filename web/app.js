@@ -74,8 +74,17 @@ const LIGHT_MAP_STYLES = [
 ];
 
 async function api(path, options = {}) {
+  const requestToken = state.token;
   const response = await fetch(`${config.apiUrl}${path}`, { ...options, headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}), ...(options.headers || {}) } });
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && !path.startsWith('/auth/') && requestToken && state.token === requestToken) {
+    const email = state.user?.email || '';
+    const message = state.appLanguage === 'ru' ? 'Срок входа истёк. Войдите снова, чтобы начать прогулку. Ваши настройки сохранены.' : 'Your sign-in expired. Sign in again to start exploring. Your settings are saved.';
+    logout();
+    document.querySelector('#email').value = email;
+    document.querySelector('#auth-message').textContent = message;
+    throw new Error(message);
+  }
   if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
   return body;
 }

@@ -237,6 +237,55 @@ async function testLocationRecovery() {
   dom.window.close();
 }
 
+async function testExpiredLoginRecovery() {
+  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  dom.window.HTMLMediaElement.prototype.pause = () => {};
+  dom.window.localStorage.setItem('heyCityToken', 'expired');
+  dom.window.localStorage.setItem('heyCityUser', JSON.stringify({ email: 'tester@example.com', role: 'user' }));
+  dom.window.localStorage.setItem('heyCityGuide', 'arthur');
+  dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: 'test' };
+  let watch, contexts = 0, center;
+  const fix = { coords: { latitude: 42, longitude: -88, heading: 90, speed: 6, accuracy: 10 } };
+  Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
+    getCurrentPosition: (ok) => ok(fix), watchPosition: (ok) => { watch = ok; return 1; }, clearWatch() {},
+  } });
+  dom.window.google = { maps: { Map: class { setCenter(p) { center = p; } }, Marker: class { setPosition() {} }, event: { trigger() {} } } };
+  dom.window.fetch = async (url, options) => {
+    if (url.endsWith('/sessions/start')) return options.headers.Authorization === 'Bearer expired'
+      ? { status: 401, ok: false, json: async () => ({ error: 'Invalid or expired token' }) }
+      : response({ sessionId: 'fresh' });
+    if (url.endsWith('/auth/otp/send')) return response({ message: 'OTP sent' });
+    if (url.endsWith('/auth/otp/verify')) return response({ token: 'fresh-token', user: { email: 'tester@example.com', role: 'user' } });
+    if (url.endsWith('/context')) { contexts++; return response({ nextAction: 'NONE', aheadDiscovery: { topCandidates: [] } }); }
+    return response({});
+  };
+  dom.window.eval(source);
+  await settle();
+  dom.window.document.querySelector('#start-walk').click();
+  await settle();
+  assert.match(dom.window.document.querySelector('#auth-message').textContent, /Срок входа истёк/);
+  assert.equal(dom.window.document.querySelector('#email').value, 'tester@example.com');
+  assert.equal(dom.window.localStorage.getItem('heyCityToken'), null);
+  assert.equal(dom.window.localStorage.getItem('heyCityGuide'), 'arthur');
+  assert.equal(contexts, 0);
+  const form = dom.window.document.querySelector('#auth-form');
+  form.dispatchEvent(new dom.window.Event('submit', { cancelable: true }));
+  await settle();
+  dom.window.document.querySelector('#code').value = '123456';
+  form.dispatchEvent(new dom.window.Event('submit', { cancelable: true }));
+  await settle();
+  dom.window.document.querySelector('#start-walk').click();
+  await settle();
+  assert.equal(dom.window.document.querySelector('#start-walk').hidden, true);
+  assert.equal(contexts, 1, 'reauthenticated user can start discovery');
+  watch({ coords: { ...fix.coords, latitude: 42.001 } });
+  await settle();
+  assert.equal(center.lat, 42.001, 'watch moves marker without another button click');
+  assert.equal(contexts, 2);
+  dom.window.close();
+}
+
+await testExpiredLoginRecovery();
 await testLocationRecovery();
 await testDelayedMapsCallback();
 await testLoginAndNavigation();
