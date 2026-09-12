@@ -102,14 +102,18 @@ svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.8;
 .segmented button.selected { background:var(--green); color:var(--white); border-color:var(--green); }
 .settings-footer,.footnote { margin-top:26px; color:var(--muted); font:11px ui-monospace,SFMono-Regular,monospace; }
 
-.guide-profile { position:fixed; z-index:100; inset:0; background:var(--paper); display:grid; grid-template-rows:minmax(210px,34dvh) minmax(0,1fr); }
+.guide-profile { position:fixed; z-index:100; inset:0; background:#111b16; color:#fff; }
 .profile-photo { position:relative; overflow:hidden; background:var(--green-soft); }
-.profile-photo > img { width:100%; height:100%; object-fit:contain; object-position:center top; }
-.profile-photo { background:#fff; padding-top:env(safe-area-inset-top,0px); }
+.profile-photo > img { width:100%; height:100%; object-fit:cover; object-position:center top; }
+.profile-photo { position:absolute; inset:0; padding-top:env(safe-area-inset-top,0px); }
 .guide-card img { object-position:center top; }
 .profile-back { position:absolute; left:16px; top:max(14px,env(safe-area-inset-top)); width:44px; height:44px; border-radius:10px; display:grid; place-items:center; padding:0; }
 .swipe-hint { position:absolute; right:16px; top:max(18px,env(safe-area-inset-top)); background:rgba(255,255,255,.94); border:1px solid var(--line); padding:8px 10px; border-radius:8px; font-size:11px; }
-.profile-content { overflow:auto; padding:22px 22px max(42px,env(safe-area-inset-bottom)); }
+.profile-content { position:absolute; bottom:0; left:0; right:0; max-height:33.333%; overflow:auto; padding:18px 22px max(24px,env(safe-area-inset-bottom)); background:linear-gradient(rgba(11,23,17,.88),#0b1711); }
+.guide-profile .profile-title span,.guide-profile .text-button { color:#94dbad; }
+.guide-profile .primary { background:#fff; color:#0b1711; }
+.guide-profile .interest-line { border-color:rgba(255,255,255,.3); }
+.guide-profile .voice-sample { color:#0b1711; }
 .profile-title { display:flex; align-items:start; justify-content:space-between; gap:20px; }
 .profile-title h1 { margin:0; font-size:42px; line-height:.95; letter-spacing:-.055em; }
 .profile-title span { display:block; margin-top:7px; color:var(--green); text-transform:uppercase; letter-spacing:.1em; font:650 11px ui-monospace,SFMono-Regular,monospace; }

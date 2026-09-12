@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createSession, finishActiveStory, pingSession } from '../src/services/driveSession';
+import { googleMaps } from '../src/config';
+import { discoveryStorySeed } from '../src/services/discoveryKnowledge';
 
 async function run(): Promise<void> {
   const session = createSession('gris', {
@@ -86,6 +88,30 @@ async function run(): Promise<void> {
   assert.equal(walkingResult.narrativePlan?.safety.vehicleSafe, false);
   assert.match(walkingResult.audioUrl ?? '', /^https:\/\/example\.com\/tts\/dana\//);
 
+  const originalFetch = globalThis.fetch;
+  const originalKey = googleMaps.apiKey;
+  googleMaps.apiKey = 'test-only';
+  globalThis.fetch = async (url) => {
+    const address = String(url);
+    if (address.includes('geocode')) return new Response(JSON.stringify({ status: 'OK', results: [{ place_id: 'st-louis', formatted_address: 'St. Louis, MO, USA', types: ['locality'], geometry: { location: { lat: 38.627, lng: -90.1994 } } }] }));
+    if (address.includes('places.googleapis')) return new Response(JSON.stringify({ places: [] }));
+    if (address.includes('wikipedia')) return new Response(JSON.stringify({ query: { pages: { '1': { pageid: 1, title: 'St. Louis', coordinates: [{ lat: 38.627, lon: -90.1994 }], extract: 'St. Louis is a city in Missouri on the western bank of the Mississippi River. The city developed as a trading centre and river port. Its Gateway Arch commemorates the westward expansion of the United States.' } } } }));
+    throw new Error('Unexpected external request');
+  };
+  try {
+    const city = createSession('city-test', { ...session.params, mode: 'vehicle' });
+    const result = await pingSession(city.id, 38.64, -90.1994, 0, 40, 1_000_000);
+    assert.equal(result.nextAction, 'PLAY', 'city context outside NYC reaches narration even when city centre is behind');
+    assert.equal(result.poi?.place_id, 'st-louis');
+    assert.equal(result.poi?.geometry.location.lat, 38.627, 'provider coordinates survive conversion');
+    assert.match(result.narrativePlan?.storySeed ?? '', /Mississippi/);
+    const cityCandidate = result.aheadDiscovery!.topCandidates.find(candidate => candidate.providerId === 'st-louis')!;
+    const unrelated = await discoveryStorySeed({ ...cityCandidate, providerId: 'wrong-city', latitude: 40, longitude: -74 });
+    assert.equal(unrelated, null, 'a same-name article with wrong geography cannot seed a story');
+    finishActiveStory(city.id);
+    const repeat = await pingSession(city.id, 38.64, -90.1994, 0, 40, 1_600_000);
+    assert.equal(repeat.nextAction, 'NONE', 'city introduction does not repeat within the session');
+  } finally { globalThis.fetch = originalFetch; googleMaps.apiKey = originalKey; }
   console.log('driveSessionLocal tests passed');
 }
 

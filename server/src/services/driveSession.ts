@@ -9,7 +9,9 @@ import type {
   StoryFinishReason,
   StoryFinishResult,
 } from '@heycity/shared';
-import { discoveryConfig, poi } from '../config';
+import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings } from '../config';
+import { discoveryStorySeed } from './discoveryKnowledge';
+import type { DiscoveryCandidate as StoryCandidate } from './driveDecision';
 import { getUserById } from './user';
 import { NearbyPlace } from './googlePlaces';
 import { isCircuitOpen } from './budget';
@@ -48,6 +50,7 @@ export interface DriveSession {
   lastStoryStartedAt: number;
   lastCandidates: NearbyPlace[];
   alreadyListening: boolean;
+  spokenProviderIds?: Set<string>;
   pendingMode?: DiscoveryMode;
   pendingModeSamples: number;
   nextPoi?: {
@@ -215,7 +218,30 @@ export async function pingSession(
     }))
   );
 
-  session.lastCandidates = localCandidates.map(localCandidateToNearbyPlace);
+  const live = [...aheadDiscovery.topCandidates].sort((a, b) =>
+    Number(b.targetType === 'city') - Number(a.targetType === 'city'));
+  const livePlaces = new Map(live.map(candidate => [candidate.providerId, {
+    place_id: candidate.providerId, name: candidate.name, types: candidate.providerTypes,
+    geometry: { location: { lat: candidate.latitude, lng: candidate.longitude } },
+  }]));
+  const storyCandidates: StoryCandidate[] = [];
+  // Retrieve facts only for a bounded shortlist when a new story can start.
+  if (!session.alreadyListening && (!session.lastStoryStartedAt || now - session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds * 1000)) {
+    for (const candidate of live.slice(0, discoverySettings.knowledgeCandidateLimit)) {
+      if (session.spokenProviderIds?.has(candidate.providerId) || await wasPoiListenedRecently(userId, candidate.providerId, poi.repeatCooldownHours)) continue;
+      const isCityContext = candidate.targetType === 'city' && candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters;
+      const eta = candidate.distanceMeters / Math.max(speedKmh / 3.6, 1);
+      if (!isCityContext && candidate.distanceMeters > driveDiscovery.fallbackDistanceM && eta > leadTimeSec) continue;
+      const storySeed = await discoveryStorySeed(candidate);
+      if (!storySeed) continue;
+      storyCandidates.push({ poiId: candidate.providerId, placeName: candidate.name,
+        distanceMeters: isCityContext ? 0 : candidate.distanceMeters,
+        etaSeconds: isCityContext ? undefined : eta, storySeed });
+      break;
+    }
+  }
+  storyCandidates.push(...localCandidates);
+  session.lastCandidates = [...livePlaces.values(), ...localCandidates.map(localCandidateToNearbyPlace)];
 
   const decision = evaluateDiscoveryDecision({
     mode: activeMode,
@@ -228,7 +254,7 @@ export async function pingSession(
     leadTimeSec,
     guideId: session.params.voiceId,
     themeTags: session.params.themeTags,
-    candidates: localCandidates,
+    candidates: storyCandidates,
     targetDurationSec: session.params.lengthSec,
   });
 
@@ -236,7 +262,7 @@ export async function pingSession(
     return { nextAction: 'NONE', mode: activeMode, speedKmh, decision, aheadDiscovery };
   }
 
-  const place = localCandidateToNearbyPlace({
+  const place = livePlaces.get(decision.poiId) ?? localCandidateToNearbyPlace({
     poiId: decision.poiId,
     placeName: decision.narrativePlanInput.placeName,
     distanceMeters: decision.distanceMeters,
@@ -256,7 +282,8 @@ export async function pingSession(
     distanceM: decision.distanceMeters,
   };
   session.lastStoryStartedAt = now;
-  session.alreadyListening = true;
+  session.alreadyListening = Boolean(narration.audioUrl);
+  (session.spokenProviderIds ??= new Set()).add(decision.poiId);
 
   const user = await getUserById(userId);
   if (user?.historyEnabled) {

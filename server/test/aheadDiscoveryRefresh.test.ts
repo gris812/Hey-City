@@ -138,6 +138,15 @@ async function run() {
     'refresh_in_progress'
   );
 
+  const movingProvider = createProvider();
+  await evaluateAheadDiscovery({ sessionId: 'moving-refresh', movement, provider: movingProvider, nowMs: Date.parse(movement.timestamp) });
+  const relocated = { ...movement, latitude: movement.latitude + 0.1, timestamp: '2026-07-25T12:01:00.000Z' };
+  await evaluateAheadDiscovery({ sessionId: 'moving-refresh', movement: relocated, provider: movingProvider, nowMs: Date.parse(relocated.timestamp) });
+  assert.equal(movingProvider.calls, 1, 'moving respects minimum paid-call interval');
+  relocated.timestamp = '2026-07-25T12:04:00.000Z';
+  await evaluateAheadDiscovery({ sessionId: 'moving-refresh', movement: relocated, provider: movingProvider, nowMs: Date.parse(relocated.timestamp) });
+  assert.equal(movingProvider.calls, 2, 'leaving search area refreshes before an hour passes');
+
   assert.throws(
     () => getAheadDiscoveryConfig({ AHEAD_DISCOVERY_PROVIDER_REFRESH_MINUTES: '5' }),
     /between 15 and 240/,

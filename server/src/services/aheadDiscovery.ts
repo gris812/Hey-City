@@ -1,5 +1,6 @@
 import type { AheadDiscoveryDiagnostic, MovementContext } from '@heycity/shared';
 import { aheadDiscovery } from '../config';
+import { distanceMeters } from './geo';
 import { createCandidateGeometry, deriveHeadingFromMovement, projectedSearchPoint, validateMovementContext } from './aheadDiscoveryGeometry';
 import { filterAheadCandidates } from './aheadDiscoveryFiltering';
 import { chooseBestCandidate, scoreCandidate } from './aheadDiscoveryScoring';
@@ -14,6 +15,7 @@ type AheadDiscoverySessionState = {
   refreshInProgress: boolean;
   selectedTarget?: DiscoveryCandidate;
   lastErrorCode?: string;
+  searchedMovement?: MovementContext;
 };
 
 const states = new Map<string, AheadDiscoverySessionState>();
@@ -72,7 +74,7 @@ export async function evaluateAheadDiscovery(input: {
   state.previousMovement = movement;
 
   const validationHold = validateMovementContext(movement, nowMs);
-  if (validationHold) {
+  if (validationHold && validationHold !== 'missing_heading') {
     logAheadDiscovery('ahead_discovery_hold', {
       sessionId: input.sessionId,
       holdReason: validationHold,
@@ -87,7 +89,9 @@ export async function evaluateAheadDiscovery(input: {
     });
   }
 
-  const refreshDue = isRefreshDue(state, nowMs, Boolean(input.forceRefresh));
+  const moved = state.searchedMovement && distanceMeters(state.searchedMovement.latitude, state.searchedMovement.longitude, movement.latitude, movement.longitude) >= aheadDiscovery.movementRefreshMeters;
+  const movementRefresh = Boolean(moved && nowMs - (state.lastAttemptedAtMs ?? 0) >= aheadDiscovery.movementRefreshSeconds * 1000);
+  const refreshDue = isRefreshDue(state, nowMs, Boolean(input.forceRefresh) || movementRefresh);
   if (refreshDue) {
     if (state.refreshInProgress) {
       logAheadDiscovery('ahead_discovery_hold', {
@@ -124,6 +128,7 @@ function isRefreshDue(
   // An empty provider response is still a completed, billable refresh. Retrying it on
   // every GPS ping creates a paid request loop precisely where no POIs were found.
   if (!state.lastAttemptedAtMs) return true;
+  if (state.lastErrorCode) return nowMs - state.lastAttemptedAtMs >= aheadDiscovery.providerErrorBackoffSeconds * 1000;
   return nowMs - state.lastAttemptedAtMs >= aheadDiscovery.providerRefreshMinutes * 60 * 1000;
 }
 
@@ -137,6 +142,7 @@ async function refreshProviderCandidates(
 ): Promise<void> {
   state.refreshInProgress = true;
   state.lastAttemptedAtMs = nowMs;
+  state.searchedMovement = movement;
   const startedAt = Date.now();
   logAheadDiscovery('ahead_discovery_provider_refresh_started', {
     sessionId,
@@ -182,6 +188,10 @@ function evaluateCandidateSet(input: {
     ...candidate,
     ...createCandidateGeometry(input.movement, candidate),
   }));
+  // A current-city context is relevant even when its centre is behind the user.
+  for (const candidate of candidates) {
+    if (candidate.targetType === 'city' && candidate.distanceMeters <= aheadDiscovery.cityContextRadiusMeters) candidate.isAhead = true;
+  }
   const filtered = filterAheadCandidates(candidates);
 
   for (const excluded of filtered.excluded) {
@@ -334,7 +344,7 @@ function createDiagnostic(input: {
     exclusionReasonsSummary: input.filtered?.summary ?? {},
     topCandidates: included
       .map((candidate) => scoreCandidate(candidate, input.state.selectedTarget?.providerId))
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => Number(b.candidate.targetType === 'city') - Number(a.candidate.targetType === 'city') || b.score - a.score)
       .slice(0, 5)
       .map((item) => ({ ...item.candidate, score: item.score, reasons: item.reasons })),
     excludedCandidates: excluded.slice(0, 8),
@@ -350,6 +360,7 @@ function nextRefreshIso(state: AheadDiscoverySessionState): string | null {
 
 function safeErrorCode(error: unknown): string {
   const message = (error as Error).message || 'provider_unavailable';
+  if ((error as Error).name === 'AheadDiscoveryProviderError' && /^[a-zA-Z0-9_]+$/.test(message)) return message;
   if (message.includes('missing_google_key')) return 'missing_google_key';
   if (message.includes('quota_or_rate_limit')) return 'quota_or_rate_limit';
   if (message.includes('timeout')) return 'timeout';

@@ -102,6 +102,8 @@ async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
       if (res.status === 429) throw safeProviderError('quota_or_rate_limit');
+      const failure = typeof res.json === 'function' ? await res.json().catch(() => null) as { error?: { message?: string } } | null : null;
+      if (/API key expired/i.test(failure?.error?.message ?? '')) throw safeProviderError('api_key_expired');
       throw safeProviderError(`http_${res.status}`);
     }
     return res.json();
@@ -123,12 +125,12 @@ export const googleAheadDiscoveryProvider: DiscoveryDataProvider = {
       input.projectedPoint.longitude,
       7
     );
-    const cacheKey = aheadDiscoveryCacheKey(geohash, input.radiusMeters, input.limit);
+    const cacheKey = `${aheadDiscoveryCacheKey(geohash, input.radiusMeters, input.limit)}:at:${encodeGeohash(input.movement.latitude, input.movement.longitude, aheadDiscovery.areaCachePrecision)}`;
     const cached = await cacheGet<ProviderDiscoveryCandidate[]>(cacheKey);
     if (cached) return cached;
 
     const [settlements, places] = await Promise.all([
-      cachedOperation(`area:${encodeGeohash(input.projectedPoint.latitude, input.projectedPoint.longitude, aheadDiscovery.areaCachePrecision)}`,
+      cachedOperation(`area-current:${encodeGeohash(input.movement.latitude, input.movement.longitude, aheadDiscovery.areaCachePrecision)}`,
         'reverse_geocoding', aheadDiscovery.areaCacheTtlSeconds, () => searchGeocodedSettlements(input)),
       cachedOperation(`places:${cacheKey}`, 'places_nearby_new', aheadDiscovery.providerCacheTtlSeconds,
         () => searchPlacesNew(input)),
@@ -151,7 +153,7 @@ async function searchGeocodedSettlements(
   url.searchParams.set('key', googleMaps.apiKey);
   url.searchParams.set(
     'latlng',
-    `${input.projectedPoint.latitude},${input.projectedPoint.longitude}`
+    `${input.movement.latitude},${input.movement.longitude}`
   );
   url.searchParams.set('result_type', 'locality|administrative_area_level_2|administrative_area_level_1');
 

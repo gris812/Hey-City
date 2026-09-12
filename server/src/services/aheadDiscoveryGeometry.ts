@@ -1,4 +1,4 @@
-import { aheadDiscovery } from '../config';
+import { aheadDiscovery, speedThresholds } from '../config';
 import { distanceMeters, pointAhead } from './geo';
 import type { CandidateGeometry, MovementContext, ProviderDiscoveryCandidate } from './aheadDiscoveryTypes';
 
@@ -55,11 +55,12 @@ export function createCandidateGeometry(
     distanceMeters: Math.round(distance),
     bearingDegrees: Math.round(bearing),
     headingDeltaDegrees: Math.round(delta),
-    isAhead: delta <= aheadDiscovery.maxHeadingDeltaDegrees,
+    isAhead: movement.headingDegrees === null || delta <= aheadDiscovery.maxHeadingDeltaDegrees,
   };
 }
 
 export function projectedSearchPoint(movement: MovementContext): { latitude: number; longitude: number } {
+  if (movement.headingDegrees === null || (movement.speedMps ?? 0) * 3.6 < speedThresholds.minVehicleKmh) return { latitude: movement.latitude, longitude: movement.longitude };
   const heading = movement.headingDegrees ?? 0;
   const point = pointAhead(
     movement.latitude,

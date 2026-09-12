@@ -56,6 +56,12 @@ storyAudio.crossOrigin = 'anonymous';
 storyAudio.addEventListener('play', updateAudioControl);
 storyAudio.addEventListener('pause', updateAudioControl);
 storyAudio.addEventListener('ended', updateAudioControl);
+storyAudio.addEventListener('ended', () => {
+  if (state.sessionId) api('/drive/session/story/finish', { method: 'POST', body: JSON.stringify({ sessionId: state.sessionId, reason: 'ended' }) }).catch(() => {
+    state.walkStatus = state.appLanguage === 'ru' ? 'Не удалось завершить рассказ. Перезапустите прогулку.' : 'Could not finish the story. Restart the walk.';
+    const status = document.querySelector('#walk-status'); if (status) status.textContent = state.walkStatus;
+  });
+});
 const sampleAudio = new Audio();
 sampleAudio.preload = 'none';
 sampleAudio.crossOrigin = 'anonymous';
@@ -306,7 +312,7 @@ async function updateLocation(position) {
   const initialScan = !state.initialScanComplete;
   if (initialScan) setRadarScanning(true);
   try {
-    const result = await api(`/sessions/${state.sessionId}/context`, { method: 'POST', body: JSON.stringify({ lat, lng, heading: heading ?? 0, speed: measuredSpeedKmh, accuracyMeters: accuracy, timestamp: Date.now() }) });
+    const result = await api(`/sessions/${state.sessionId}/context`, { method: 'POST', body: JSON.stringify({ lat, lng, heading: heading ?? null, speed: measuredSpeedKmh, accuracyMeters: accuracy, timestamp: Date.now() }) });
     if (state.sessionId !== sessionId) return;
     state.lastResult = result; state.movementMode = result.mode === 'vehicle' ? 'vehicle' : 'walking'; state.speedKmh = Number.isFinite(result.speedKmh) ? result.speedKmh : measuredSpeedKmh; state.walkStatus = result.nextAction === 'PLAY' ? t('map.speaking', { guide: guideCopy().name }) : t('map.listening');
     if (result.aheadDiscovery?.providerRefresh?.errorCode) {
@@ -314,6 +320,10 @@ async function updateLocation(position) {
     }
     renderCandidateMarkers(result.aheadDiscovery?.topCandidates || []);
     const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); const modeNode = document.querySelector('#top-status'); const metaNode = document.querySelector('.area-label'); if (statusNode) statusNode.textContent = state.walkStatus; if (modeNode) modeNode.textContent = movementModeLabel(); if (metaNode) metaNode.textContent = movementMetaLabel(); if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText;
+    if (result.nextAction === 'PLAY' && copyNode) {
+      const source = result.narrativePlan?.storySeed?.match(/https:\/\/en\.wikipedia\.org\/\?curid=\d+/)?.[0];
+      if (source) { const link = document.createElement('a'); link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = ' Wikipedia · CC BY-SA'; copyNode.append(link); }
+    }
     if (result.audioUrl && result.nextAction === 'PLAY') { state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
   } catch (error) { if (state.sessionId !== sessionId) return; state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
   finally { if (state.sessionId !== sessionId) return; state.contextInFlight = false; if (initialScan) { state.initialScanComplete = true; setRadarScanning(false); } }

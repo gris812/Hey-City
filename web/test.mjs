@@ -24,6 +24,7 @@ async function testLoginAndNavigation() {
   let markerConstructions = 0;
   let markerMoves = 0;
   let contextCalls = 0;
+  let finishedStory = null;
   let center = null;
   Object.defineProperty(dom.window.navigator, 'geolocation', { value: {
     getCurrentPosition: (success) => success({ coords: { latitude: 42.1, longitude: -88.3, heading: 90, speed: 6, accuracy: 8 } }),
@@ -32,6 +33,9 @@ async function testLoginAndNavigation() {
   } });
   dom.window.HTMLMediaElement.prototype.play = async () => {};
   dom.window.HTMLMediaElement.prototype.pause = () => {};
+  const NativeAudio = dom.window.Audio;
+  const audioElements = [];
+  dom.window.Audio = function () { const audio = new NativeAudio(); audioElements.push(audio); return audio; };
   dom.window.google = { maps: {
     Map: class { constructor() { mapConstructions += 1; } setCenter(point) { center = point; } },
     Marker: class { constructor() { markerConstructions++; } setMap() {} setPosition() { markerMoves++; } },
@@ -39,6 +43,7 @@ async function testLoginAndNavigation() {
   } };
   dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: 'browser-key' };
   dom.window.fetch = async (url, options = {}) => {
+    if (url.endsWith('/drive/session/story/finish')) { finishedStory = JSON.parse(options.body); return response({ ok: true }); }
     if (url.endsWith('/auth/otp/send')) return response({ ok: true, message: 'OTP sent' });
     if (url.endsWith('/auth/otp/verify')) return response({ token: 'test-token', user: { id: 'u1', email: 'tester@example.com', role: 'user' } });
     if (url.endsWith('/sessions/start')) {
@@ -79,6 +84,9 @@ async function testLoginAndNavigation() {
   dom.window.document.querySelector('#start-walk').click();
   await settle();
   assert.equal(dom.window.document.querySelector('#radar-scan').hidden, true);
+  audioElements[0].dispatchEvent(new dom.window.Event('ended'));
+  await settle();
+  assert.deepEqual(finishedStory, { sessionId: 'session-1', reason: 'ended' }, 'audio completion releases backend story gate');
   assert.match(dom.window.document.querySelector('#open-guide img').src, /dana-v3-avatar.png$/);
   const firstFix = locationCallback({ coords: { latitude: 40.7, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });
   await locationCallback({ coords: { latitude: 40.7001, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });

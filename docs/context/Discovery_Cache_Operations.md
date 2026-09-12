@@ -1,5 +1,37 @@
 # Discovery request cost control
 
+## September 12: production discovery-to-narration repair
+
+The session story path previously consumed only the NYC seed pack, even though
+Google discovery ran on each context evaluation. Live candidates now feed the
+same deterministic decision and NarrativePlan boundary, with real coordinates.
+Local seeds remain a fallback. A bounded shortlist (default 3) is enriched by
+an exact-title Wikipedia lookup with redirect, disambiguation and coordinate
+checks. Insufficient or unmatched evidence is skipped, never expanded from a
+name alone. Source URL and CC BY-SA provenance accompany the seed. Knowledge
+results are cached for 24 hours; failures back off for 5 minutes. No LLM performs
+discovery, ranking or timing decisions.
+
+Area lookup now uses the user's current position. A returned locality within
+20 km can provide city context even behind the heading; this is an approximate
+context radius, not proof of being inside a city boundary or a population filter.
+Cities are considered first and narrated at most once per session. Unknown
+heading is preserved as null: discovery starts around the fix, without a
+fictional northward projection. Vehicle targets still use heading when available.
+
+The 60-minute stationary refresh stays in place. Moving at least 3 km allows a
+refresh after a minimum 180 seconds. Provider failures retry after the configured
+error backoff. These thresholds increase useful discovery while bounding paid
+calls; operation caches and request deduplication remain active. The combined
+cache includes both projected cell and current area cell.
+
+Known limits: exact Wikipedia titles can miss valid POIs; no population-based
+major-city catalogue or verified administrative polygon containment yet.
+Knowledge failures skip stories and need operational monitoring. Live VPS keys,
+Wikipedia reachability and iPhone autoplay require production verification.
+Web playback now acknowledges story completion to the session API, releasing
+the already-listening gate. Text-only results do not lock that gate.
+
 Area and Places operation caches are independent. Successful empty responses are
 cached too; a failure in the other operation cannot discard a successful result.
 Concurrent identical operation requests share one promise. Discovery selection,

@@ -102,7 +102,7 @@ async function run() {
     if (url.includes('geocode')) { areaCalls++; return { ok: true, json: async () => ({ status: 'ZERO_RESULTS', results: [] }) } as Response; }
     placeCalls++; return { ok: false, status: 500 } as Response;
   }) as typeof fetch;
-  const failedInput = { movement, projectedPoint: { latitude: 41.1, longitude: -87.1 }, radiusMeters: 12000, limit: 10 };
+  const failedInput = { movement: { ...movement, latitude: 41.1, longitude: -87.1 }, projectedPoint: { latitude: 41.1, longitude: -87.1 }, radiusMeters: 12000, limit: 10 };
   await Promise.allSettled([
     googleAheadDiscoveryProvider.searchAhead(failedInput),
     googleAheadDiscoveryProvider.searchAhead(failedInput),
@@ -120,8 +120,8 @@ async function run() {
     if (url.includes('geocode')) { deniedCalls++; return { ok: true, json: async () => ({ status: 'REQUEST_DENIED' }) } as Response; }
     return { ok: true, json: async () => ({ places: [] }) } as Response;
   }) as typeof fetch;
-  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, projectedPoint: { latitude: 42, longitude: -86 } }), /REQUEST_DENIED/);
-  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, projectedPoint: { latitude: 43, longitude: -85 } }), /REQUEST_DENIED/);
+  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, movement: { ...movement, latitude: 42, longitude: -86 }, projectedPoint: { latitude: 42, longitude: -86 } }), /REQUEST_DENIED/);
+  await assert.rejects(() => googleAheadDiscoveryProvider.searchAhead({ ...failedInput, movement: { ...movement, latitude: 43, longitude: -85 }, projectedPoint: { latitude: 43, longitude: -85 } }), /REQUEST_DENIED/);
   assert.equal(deniedCalls, 1, 'access failure blocks area requests across cells');
 
   global.fetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as Response) as typeof fetch;
