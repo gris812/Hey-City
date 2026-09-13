@@ -7,7 +7,7 @@ const state = {
   tab: location.pathname === '/admin' ? 'admin' : 'map',
   sessionId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, candidateMarkers: [], profile: null, audioUrl: null,
   contextInFlight: false, initialScanComplete: false, starting: false, locationPromise: null, runId: 0,
-  lastPoint: null, lastResult: null, walkStatus: '', movementMode: 'walking', speedKmh: null,
+  followPosition: true, selectingPlace: false, lastPoint: null, lastResult: null, walkStatus: '', movementMode: 'walking', speedKmh: null,
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
   guideLanguage: localStorage.getItem('heyCityGuideLanguage') || 'ru',
@@ -92,7 +92,7 @@ async function api(path, options = {}) {
     document.querySelector('#auth-message').textContent = message;
     throw new Error(message);
   }
-  if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+  if (!response.ok) { const error = new Error(body.error || `HTTP ${response.status}`); error.status = response.status; throw error; }
   return body;
 }
 
@@ -170,8 +170,9 @@ function mapView() {
   const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-failure" id="map-failure" hidden>${t('map.keyRejected')}</div><div class="map-shade" aria-hidden="true"></div><div class="radar-scan" id="radar-scan" hidden aria-hidden="true"><i class="radar-ring radar-ring-a"></i><i class="radar-ring radar-ring-b"></i></div>
     <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? movementModeLabel() : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${esc(guide.name)}"><img src="${esc(guide.avatar)}" alt=""></button></header>
     <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
-    <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${esc(guide.avatar)}" alt="${esc(guide.name)}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
+    <article class="walking-sheet"><button class="sheet-handle" aria-label="Свернуть или раскрыть список" aria-expanded="true"></button><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${esc(guide.avatar)}" alt="${esc(guide.name)}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
   if (mountedMap) {
+    document.querySelector('.sheet-handle').onclick = event => { const sheet = event.currentTarget.closest('.walking-sheet'); const collapsed = sheet.classList.toggle('is-collapsed'); event.currentTarget.setAttribute('aria-expanded', String(!collapsed)); if (state.followPosition) frameUserPosition(); };
     document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', toggleMapOrientation); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
   }
   refreshMapView();
@@ -237,6 +238,7 @@ async function loadMap() {
     });
     const mapNode = document.querySelector('#map'); if (!mapNode) return;
     state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, renderingType: 'VECTOR', heading: 0, tilt: 0, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
+    state.map.addListener?.('dragstart', () => { state.followPosition = false; });
     if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint, zIndex: 20 });
     document.querySelector('#map-state')?.setAttribute('hidden', ''); document.querySelector('#map-failure')?.setAttribute('hidden', ''); api('/usage/client', { method: 'POST', body: JSON.stringify({ operation: 'dynamic_map_load' }) }).catch(() => {});
   } catch { const failure = document.querySelector('#map-failure'); if (failure) { failure.hidden = false; failure.textContent = t('map.loadFailed'); } else if (status) status.textContent = t('map.loadFailed'); } finally { state.mapLoadPromise = null; } })();
@@ -256,7 +258,7 @@ function applyPosition(position) {
   state.lastPosition = position;
   state.lastPoint = { lat, lng };
   applyMapOrientation();
-  state.map?.setCenter(state.lastPoint);
+  if (state.followPosition) frameUserPosition();
   if (state.map) {
     if (state.marker) state.marker.setPosition(state.lastPoint);
     else state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint });
@@ -321,7 +323,7 @@ async function updateLocation(position) {
   const sessionId = state.sessionId;
   const requestedGuide = state.guide;
   const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; const measuredSpeedKmh = Math.max(0, (speed ?? 0) * 3.6); state.speedKmh = measuredSpeedKmh; applyPosition(position);
-  if (state.contextInFlight) return;
+  if (state.contextInFlight || state.selectingPlace) return;
   if (Date.now() - state.lastContextAt < 5000) return;
   state.lastContextAt = Date.now();
   state.contextInFlight = true;
@@ -342,7 +344,7 @@ async function updateLocation(position) {
       if (source) { const link = document.createElement('a'); link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = ' Wikipedia · CC BY-SA'; copyNode.append(link); }
     }
     if (result.audioUrl && result.nextAction === 'PLAY') { state.audioGuideId = requestedGuide; state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
-  } catch (error) { if (state.sessionId !== sessionId) return; state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
+  } catch (error) { if (state.sessionId !== sessionId) return; if (error.status === 404 && error.message === 'Session not found') { stopWalking(false); refreshMapView(); showLocationError({message: state.appLanguage === 'ru' ? 'Сессия завершена на сервере. Нажмите «Начать» для продолжения.' : 'Session ended on server. Tap Start to continue.'}); return; } state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
   finally { if (state.sessionId !== sessionId) return; state.contextInFlight = false; if (initialScan) { state.initialScanComplete = true; setRadarScanning(false); } }
 }
 
@@ -505,9 +507,10 @@ function applyMapOrientation() {
   button.querySelector('svg').style.transform = `rotate(${course && vector ? -(state.heading ?? 0) : 0}deg)`;
 }
 function toggleMapOrientation() {
+  state.followPosition = true;
   state.mapOrientation = state.mapOrientation === 'course' ? 'north' : 'course';
   applyMapOrientation();
-  if (state.lastPoint) state.map?.setCenter(state.lastPoint);
+  if (state.lastPoint) frameUserPosition();
   else void locateUser().catch(showLocationError);
 }
 function displayDistance(meters) {
@@ -523,7 +526,9 @@ function renderNearbyList() {
   sheet.querySelector('.ambient-row').hidden = candidates.length > 0 && !narration;
   node.hidden = !candidates.length;
   const categories = { city: ['Город','City'], museum: ['Музей','Museum'], historical_landmark: ['Историческое место','Historic landmark'], cultural_landmark: ['Достопримечательность','Landmark'], national_park: ['Национальный парк','National park'], park: ['Парк','Park'], monument: ['Монумент','Monument'], university: ['Университет','University'], region: ['Регион','Region'] };
-  node.innerHTML = `<h2>${state.appLanguage === 'ru' ? 'Ближайшие места' : 'Nearby places'}</h2><ul>${candidates.map(c => `<li><span><strong>${esc(c.name)}</strong><small>${esc((categories[c.targetType] || ['Место','Place'])[state.appLanguage === 'ru' ? 0 : 1])}</small></span><span>${displayDistance(c.distanceMeters)}</span></li>`).join('')}</ul>`;
+  node.innerHTML = `<h2>${state.appLanguage === 'ru' ? 'Ближайшие места' : 'Nearby places'}</h2><ul>${candidates.map(c => `<li><button class="nearby-place" data-poi="${esc(c.providerId)}"><span><strong>${esc(c.name)}</strong><small>${esc((categories[c.targetType] || ['Место','Place'])[state.appLanguage === 'ru' ? 0 : 1])}</small></span><span>${displayDistance(c.distanceMeters)}</span></button></li>`).join('')}</ul>`;
+  node.querySelectorAll('[data-poi]').forEach(button => button.onclick = () => selectNearbyPlace(button.dataset.poi));
+  if (state.followPosition) frameUserPosition();
 }
 
 const activityClientId = globalThis.crypto?.randomUUID?.() || `client_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -662,3 +667,36 @@ document.addEventListener('visibilitychange', () => {
     if (state.sessionId === sessionId) void updateLocation(position);
   }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
 });
+
+function frameUserPosition() {
+  if (!state.map || !state.lastPoint) return;
+  state.map.setCenter(state.lastPoint);
+  const height = document.querySelector('.walking-sheet')?.getBoundingClientRect().height || 0;
+  state.map.panBy?.(0, Math.min(height / 2, innerHeight * .25));
+}
+async function selectNearbyPlace(poiId) {
+  if (!state.sessionId) return;
+  if (state.selectingPlace || state.contextInFlight) {
+    showLocationError({message: state.appLanguage === 'ru' ? 'Дождитесь завершения текущего запроса и нажмите ещё раз.' : 'Wait for the current request, then tap again.'}); return;
+  }
+  const sessionId = state.sessionId;
+  state.selectingPlace = true;
+  storyAudio.pause();
+  showLocationError({message: state.appLanguage === 'ru' ? 'Готовлю рассказ…' : 'Preparing story…'});
+  try {
+    const result = await api('/sessions/' + sessionId + '/select', {method:'POST',body:JSON.stringify({poiId})});
+    if (state.sessionId !== sessionId) return;
+    state.audioUrl = result.audioUrl; state.audioGuideId = state.guide;
+    document.querySelector('.ambient-row').hidden = false;
+    document.querySelector('#place-title').textContent = result.name;
+    document.querySelector('#place-copy').textContent = result.transcriptText;
+    if (result.audioUrl) { storyAudio.src = result.audioUrl; renderAudioControl(); showLocationError({message:t('map.speaking', {guide:guideCopy().name})}); await storyAudio.play().catch(() => showLocationError({message:t('map.tapPlay')})); }
+    else showLocationError({message: state.appLanguage === 'ru' ? 'Текст готов. Озвучка временно недоступна.' : 'Text ready. Audio unavailable.'});
+  } catch(error) {
+    if (error.status === 404 && error.message === 'Session not found') {
+      stopWalking(false); refreshMapView();
+      showLocationError({message: state.appLanguage === 'ru' ? 'Сессия завершена. Нажмите «Начать» и выберите объект снова.' : 'Session ended. Tap Start and choose the place again.'});
+    } else showLocationError(error);
+  }
+  finally { state.selectingPlace = false; }
+}

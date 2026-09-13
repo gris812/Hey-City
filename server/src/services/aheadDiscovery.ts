@@ -21,6 +21,13 @@ type AheadDiscoverySessionState = {
 
 const states = new Map<string, AheadDiscoverySessionState>();
 
+export function sessionDiscoveryCandidate(sessionId: string, providerId: string): DiscoveryCandidate | undefined {
+  const state = states.get(sessionId);
+  const candidate = state?.candidates.find(c => c.providerId === providerId);
+  if (!candidate || !state?.previousMovement) return undefined;
+  return filterAheadCandidates([{ ...candidate, ...createCandidateGeometry(state.previousMovement, candidate), isAhead: true }]).included[0];
+}
+
 function getState(sessionId: string): AheadDiscoverySessionState {
   const existing = states.get(sessionId);
   if (existing) return existing;

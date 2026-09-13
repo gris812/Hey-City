@@ -71,6 +71,19 @@ async function run() {
     assert.equal(catalog.guides.length,2); assert(!('personality' in catalog.guides[0]));
     assert.equal((await request('/admin/guides/dana','slepak@stolbergco.com','admin','PUT',{...dana,id:'different'})).status,400);
     assert.equal((await request('/admin/accounts','slepak@stolbergco.com')).status,200);
+
+    const { createSession } = await import('../src/services/driveSession');
+    const { evaluateAheadDiscovery } = await import('../src/services/aheadDiscovery');
+    const session = createSession('u1', {mode:'walking',themeTags:['mixed'],narrationStyle:'documentary',lengthSec:60,leadTimeMin:2,voiceId:'dana',language:'en',autoplay:true});
+    await evaluateAheadDiscovery({sessionId:session.id,movement:{latitude:38.627,longitude:-90.1994,headingDegrees:0,speedMps:1,accuracyMeters:10,timestamp:new Date().toISOString()},provider:{name:'google',searchAhead:async()=>[{providerId:'manual-museum',provider:'google',name:'Test Museum',targetType:'museum',latitude:38.627,longitude:-90.1994,providerTypes:['museum']}]}});
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => String(url).includes('wikipedia.org') ? new Response(JSON.stringify({query:{pages:{'123':{pageid:123,title:'Test Museum',coordinates:[{lat:38.627,lon:-90.1994}],extract:'The museum documents the history of this city and its river trade. Its collection includes architectural drawings and objects illustrating the development of transport and local industries.'}}}})) : savedFetch(url,options);
+    try {
+      const selected = await request('/sessions/'+session.id+'/select','slepak@stolbergco.com','admin','POST',{poiId:'manual-museum'});
+      assert.equal(selected.status,200,'known discovery object can be selected explicitly');
+      assert.equal((await selected.json() as {name:string}).name,'Test Museum');
+      assert.equal((await request('/sessions/'+session.id+'/select','slepak@stolbergco.com','admin','POST',{poiId:'invented-id'})).status,404,'arbitrary IDs cannot seed stories');
+    } finally { globalThis.fetch = savedFetch; }
     console.log('admin catalog, SQL migrations, activity, attribution and access tests passed');
   } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); await pg.close(); }
 }

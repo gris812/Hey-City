@@ -335,6 +335,21 @@ async function testCatalogUnitsAndCompass() {
   dom.window.inspectApp('state.sessionId=null');
   await dom.window.inspectApp('syncScreenLock()');
   assert.equal(releases, 2, 'finishing releases screen lock');
+  let centres = 0;
+  dom.window.mapStub.setCenter = () => { centres++; };
+  dom.window.inspectApp('state.marker={setPosition(){}}; state.followPosition=false; applyPosition({coords:{latitude:40,longitude:-74,accuracy:10}})');
+  assert.equal(centres,0,'GPS must not undo manual map panning');
+  dom.window.inspectApp('state.followPosition=true; frameUserPosition()');
+  assert.equal(centres,1,'follow can be restored explicitly');
+  dom.window.document.querySelector('#app').innerHTML = '<article class="walking-sheet"><div class="ambient-row"><h1 id="place-title"></h1><p id="place-copy"></p></div><span id="walk-status"></span><div id="story-audio"><button id="audio-toggle"></button></div></article>';
+  let selectedId;
+  dom.window.fetch = async (url, options) => { if(url.endsWith('/select')) { selectedId=JSON.parse(options.body).poiId; return response({name:'Museum',transcriptText:'Verified story',audioUrl:''}); } return response({}); };
+  dom.window.inspectApp("state.sessionId='select-test'; state.lastResult={aheadDiscovery:{nearbyCandidates:[{providerId:'museum-id',name:'Museum',targetType:'museum',distanceMeters:100}]}}; renderNearbyList()");
+  dom.window.document.querySelector('[data-poi]').click();
+  await settle();
+  assert.equal(selectedId,'museum-id','list click requests the selected provider ID');
+  assert.equal(dom.window.document.querySelector('#place-copy').textContent,'Verified story');
+
 
   dom.window.close();
 }

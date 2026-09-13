@@ -205,3 +205,8 @@ th { color:var(--muted); text-transform:uppercase; font:650 10px ui-monospace,SF
 .editor-images canvas { display: block; }
 #editor-message { color: #8a342c; }
 @media (max-width: 600px) { .editor-images { grid-template-columns: 1fr; } .admin-head { flex-wrap: wrap; } .admin-page { padding-left: 16px; padding-right: 16px; } }
+.nearby-place { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:0; text-align:left; background:none; border:0; color:inherit; }
+.nearby-place > span:last-child { white-space:nowrap; font-size:13px; }
+.walking-sheet { max-height:48dvh; overflow:auto; }
+.walking-sheet.is-collapsed .ambient-row,.walking-sheet.is-collapsed #nearby-list,.walking-sheet.is-collapsed .sheet-actions { display:none; }
+button.sheet-handle { display:block; border:0; padding:0; cursor:pointer; min-width:56px; height:8px; margin:0 auto 12px; }

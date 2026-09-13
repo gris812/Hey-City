@@ -47,3 +47,9 @@ Routes: GET `/admin/accounts?days=30`; POST `/usage/activity`; GET/PUT `/admin/g
 The persistent map is retained across tabs. Course-up uses vector-map heading and the compass toggles north-up. Raster fallback cannot rotate and reports that limitation. Units persist locally and convert presentation only. GPS marker updates independently of the five-second API throttle. Nearby places replace the idle guide message; a playing/ready story keeps its controls.
 
 Validation covers PostgreSQL-compatible migrations and transactions using PGlite, HTTP admin authorization, catalogue lifecycle, usage attribution, concurrent heartbeat handling, search geometry, provider partial failures, and WebApp navigation/catalogue/units/compass. Device GPS, iOS background execution and actual audio playback still require an on-device check after deployment. Docker-image builds belong to GitHub Actions because Docker is unavailable in the editing environment.
+
+## Manual exploration update
+
+Dragging the map disables automatic centring until the compass is pressed. Follow mode offsets the user marker into the unobscured map area; the results sheet is height-limited and collapsible. GPS updates continue without snapping a manually moved map back.
+
+POST `/sessions/:sessionId/select` accepts only a provider ID already discovered for the caller's session. Explicit selection bypasses the automatic heading/timing choice, but not source validation: insufficient evidence returns 422 rather than invented narration. One manual generation per session can run at a time. The existing narrative provider, guide choice, usage accounting and TTS cache are reused. Server session loss restores the Start control and explains that a new session is required; sessions are still held in process memory and do not survive an API restart.
