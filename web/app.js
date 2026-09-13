@@ -288,6 +288,7 @@ async function startWalking() {
     const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ mode: 'walking', autoMode: true, themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide, language: state.guideLanguage, autoplay: true }) });
     if (runId !== state.runId) { void api(`/sessions/${result.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); return; }
     state.sessionId = result.sessionId;
+    void syncScreenLock();
     state.initialScanComplete = false;
     state.lastContextAt = 0;
     state.walkStatus = t('map.searching');
@@ -295,6 +296,11 @@ async function startWalking() {
       if (runId === state.runId) void updateLocation(fix);
     }, (error) => {
       if (runId !== state.runId) return;
+      // A background timeout is recoverable; permission revocation is not.
+      if (error.code !== 1) {
+        if (!document.hidden) showLocationError(new Error(t('map.geoFailed')));
+        return;
+      }
       stopWalking(false);
       refreshMapView();
       showLocationError(new Error(error.code === 1 ? t('map.geoPermission') : t('map.geoFailed')));
@@ -383,7 +389,7 @@ function renderCandidateMarkers(candidates) {
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
 function updateAudioControl() { renderAudioControl(); renderNearbyList(); }
 function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.paused) storyAudio.play().catch(() => {}); else storyAudio.pause(); }
-function stopWalking(refresh = true) { state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); if (refresh && state.tab === 'map') render(); }
+function stopWalking(refresh = true) { state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; void syncScreenLock(); state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); syncMediaSession(); if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
   const historyItems = state.profile?.history || [];
@@ -609,3 +615,50 @@ function prepareGuideImage(file, kind, draft) {
   image.onerror = () => { URL.revokeObjectURL(url);container.textContent='Не удалось прочитать изображение'; };
   image.src=url;
 }
+
+// The browser may suspend hidden pages. Keep active exploration visible and
+// expose real audio to the OS; never emulate background execution with silence.
+let screenLock = null;
+let screenLockPending = false;
+async function syncScreenLock() {
+  const wanted = !!state.sessionId && document.visibilityState === 'visible';
+  if (!wanted) {
+    const lock = screenLock; screenLock = null;
+    if (lock) await lock.release().catch(() => {});
+    return;
+  }
+  if (screenLock || screenLockPending || !navigator.wakeLock) return;
+  screenLockPending = true;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (!state.sessionId || document.visibilityState !== 'visible') { await lock.release(); return; }
+    screenLock = lock;
+    lock.addEventListener('release', () => { if (screenLock === lock) screenLock = null; });
+  } catch { /* Battery saver or browser policy can deny a wake lock. */ }
+  finally { screenLockPending = false; }
+}
+function syncMediaSession() {
+  if (!navigator.mediaSession) return;
+  navigator.mediaSession.playbackState = !state.audioUrl ? 'none' : storyAudio.paused ? 'paused' : 'playing';
+  if (!state.audioUrl) { navigator.mediaSession.metadata = null; return; }
+  if (window.MediaMetadata) navigator.mediaSession.metadata = new MediaMetadata({
+    title: state.lastResult?.poi?.name || state.lastResult?.target?.name || 'Hey City',
+    artist: guideCopy(state.audioGuideId || state.guide).name, album: 'Hey City',
+  });
+}
+if (navigator.mediaSession) {
+  for (const [action, handler] of Object.entries({
+    play: () => { if (state.audioUrl) void storyAudio.play().catch(() => {}); },
+    pause: () => storyAudio.pause(),
+    stop: () => stopWalking(),
+  })) { try { navigator.mediaSession.setActionHandler(action, handler); } catch {} }
+}
+for (const event of ['play', 'pause', 'ended', 'loadedmetadata']) storyAudio.addEventListener(event, syncMediaSession);
+document.addEventListener('visibilitychange', () => {
+  void syncScreenLock();
+  if (document.visibilityState !== 'visible' || !state.sessionId) return;
+  const sessionId = state.sessionId;
+  navigator.geolocation?.getCurrentPosition(position => {
+    if (state.sessionId === sessionId) void updateLocation(position);
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
+});

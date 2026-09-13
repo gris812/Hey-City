@@ -240,10 +240,12 @@ async function testLocationRecovery() {
   assert.equal(contexts, 1);
   assert.match(dom.window.document.querySelector('#walk-status').textContent, /Поиск объектов недоступен/);
   watchError({ code: 3 });
-  assert.equal(dom.window.document.querySelector('#start-walk').hidden, false, 'GPS timeout releases watch');
+  assert.equal(dom.window.document.querySelector('#start-walk').hidden, true, 'temporary GPS timeout preserves session');
+  watchError({ code: 1 });
+  assert.equal(dom.window.document.querySelector('#start-walk').hidden, false, 'permission revocation releases watch');
   dom.window.document.querySelector('#start-walk').click();
   await settle();
-  assert.equal(watches, 2, 'watch can restart after timeout');
+  assert.equal(watches, 2, 'watch can restart after permission recovery');
   assert.equal(contexts, 2);
   dom.window.close();
 }
@@ -317,6 +319,23 @@ async function testCatalogUnitsAndCompass() {
   assert.equal(headings.at(-1), 90);
   dom.window.inspectApp("state.mapOrientation='north'; applyMapOrientation()");
   assert.equal(headings.at(-1), 0);
+  let requests = 0, releases = 0;
+  Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, value: 'visible' });
+  Object.defineProperty(dom.window.navigator, 'wakeLock', { value: { request: async () => { requests++; return { release: async () => { releases++; }, addEventListener() {} }; } } });
+  dom.window.inspectApp("state.sessionId='wake-test'");
+  await dom.window.inspectApp('syncScreenLock()');
+  await dom.window.inspectApp('syncScreenLock()');
+  assert.equal(requests, 1, 'one lock per active session');
+  Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, value: 'hidden' });
+  await dom.window.inspectApp('syncScreenLock()');
+  assert.equal(releases, 1, 'hidden document releases screen lock');
+  Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, value: 'visible' });
+  await dom.window.inspectApp('syncScreenLock()');
+  assert.equal(requests, 2, 'returning to the app reacquires screen lock');
+  dom.window.inspectApp('state.sessionId=null');
+  await dom.window.inspectApp('syncScreenLock()');
+  assert.equal(releases, 2, 'finishing releases screen lock');
+
   dom.window.close();
 }
 
