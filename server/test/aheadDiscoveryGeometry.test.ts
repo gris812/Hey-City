@@ -7,6 +7,7 @@ import {
   validateMovementContext,
 } from '../src/services/aheadDiscoveryGeometry';
 import type { MovementContext } from '@heycity/shared';
+import { discoverySearchProfile } from '../src/services/discoverySearchProfile';
 
 const now = Date.parse('2026-07-25T12:00:00.000Z');
 const movement: MovementContext = {
@@ -54,3 +55,14 @@ const derived = deriveHeadingFromMovement(
 assert(derived !== null && derived < 5, 'missing native heading derives from consecutive points');
 
 console.log('aheadDiscoveryGeometry tests passed');
+
+const walking = { ...movement, speedMps: 1 };
+const urban = { ...movement, speedMps: 11 };
+const beside = { latitude: movement.latitude, longitude: movement.longitude + 0.01 };
+assert.equal(createCandidateGeometry(walking, { latitude: 39.77, longitude: -89.65 }).isAhead, true, 'walking searches behind as well as ahead');
+assert.equal(createCandidateGeometry(urban, beside).isAhead, true, 'urban driving retains a landmark beside the street');
+assert.equal(createCandidateGeometry(movement, beside).isAhead, false, 'highway keeps a forward corridor');
+assert.equal(discoverySearchProfile(walking).projectionMeters, 0);
+assert.equal(discoverySearchProfile(urban).projectionMeters, 1500);
+assert.equal(discoverySearchProfile(urban).rankPreference, 'DISTANCE');
+assert.equal(discoverySearchProfile(movement).rankPreference, 'POPULARITY');

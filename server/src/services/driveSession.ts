@@ -51,6 +51,7 @@ export interface DriveSession {
   lastCandidates: NearbyPlace[];
   alreadyListening: boolean;
   spokenProviderIds?: Set<string>;
+  knowledgeOffset?: number;
   pendingMode?: DiscoveryMode;
   pendingModeSamples: number;
   nextPoi?: {
@@ -227,11 +228,16 @@ export async function pingSession(
   const storyCandidates: StoryCandidate[] = [];
   // Retrieve facts only for a bounded shortlist when a new story can start.
   if (!session.alreadyListening && (!session.lastStoryStartedAt || now - session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds * 1000)) {
-    for (const candidate of live.slice(0, discoverySettings.knowledgeCandidateLimit)) {
+    const offset = session.knowledgeOffset ?? 0;
+    const pendingKnowledge = [...live.slice(offset), ...live.slice(0, offset)];
+    let attempts = 0;
+    for (const candidate of pendingKnowledge) {
       if (session.spokenProviderIds?.has(candidate.providerId) || await wasPoiListenedRecently(userId, candidate.providerId, poi.repeatCooldownHours)) continue;
       const isCityContext = candidate.targetType === 'city' && candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters;
       const eta = candidate.distanceMeters / Math.max(speedKmh / 3.6, 1);
       if (!isCityContext && candidate.distanceMeters > driveDiscovery.fallbackDistanceM && eta > leadTimeSec) continue;
+      if (attempts++ >= discoverySettings.knowledgeCandidateLimit) break;
+      session.knowledgeOffset = (live.indexOf(candidate) + 1) % Math.max(1, live.length);
       const storySeed = await discoveryStorySeed(candidate);
       if (!storySeed) continue;
       storyCandidates.push({ poiId: candidate.providerId, placeName: candidate.name,

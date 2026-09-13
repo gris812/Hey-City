@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { jwt as jwtConfig } from '../config';
+import { requestContext } from '../services/requestContext';
 
 export interface JwtPayload {
   userId: string;
@@ -10,7 +11,7 @@ export interface JwtPayload {
 
 export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
-    if (req.user?.role !== 'admin') {
+    if (req.user?.role !== 'admin' || req.user.email.toLowerCase() !== 'slepak@stolbergco.com') {
       res.status(403).json({ error: 'Administrator access required' });
       return;
     }
@@ -32,7 +33,7 @@ export function requireAuthOrGuest(req: AuthRequest, res: Response, next: NextFu
       return;
     }
     req.user = { userId: guestId, email: '' };
-    next();
+    requestContext.run({ userId: guestId }, next);
     return;
   }
 
@@ -45,7 +46,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   // ✅ DEV/BYPASS: фиксированный пользователь для тестирования
   if (AUTH_DISABLED || process.env.NODE_ENV === 'development') {
     req.user = { userId: 'gris', email: 'g.slepak@icloud.com' };
-    return next();
+    return requestContext.run({ userId: 'gris' }, next);
   }
 
   const authHeader = req.headers.authorization;
@@ -59,7 +60,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   try {
     const payload = jwt.verify(token, jwtConfig.secret) as JwtPayload;
     req.user = payload;
-    next();
+    requestContext.run({ userId: payload.userId }, next);
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });
   }

@@ -12,6 +12,7 @@ import {
 } from '../services/driveSession';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from '../services/localPoi';
 import { recordUsage } from '../services/usage';
+import { getGuide, listGuides } from '../services/guides';
 
 export async function startSession(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -26,6 +27,11 @@ export async function startSession(req: AuthRequest, res: Response): Promise<voi
   }
 
   const body = req.body || {};
+  const guide = await getGuide(String(body.voiceId ?? user?.driveDiscovery.voiceId ?? 'dana'));
+  if (body.voiceId && !guide?.active && !['default', 'ru-m', 'en-f', 'en-m'].includes(body.voiceId)) {
+    res.status(400).json({ error: 'Guide is unavailable. Select another guide.' }); return;
+  }
+  const selectedGuide = guide?.active ? guide : (await listGuides())[0];
   const lang =
     !user || user.driveDiscovery.languageDefault === 'auto'
       ? 'ru'
@@ -37,7 +43,7 @@ export async function startSession(req: AuthRequest, res: Response): Promise<voi
     narrationStyle: body.narrationStyle ?? user?.driveDiscovery.narrationStyle ?? 'documentary',
     lengthSec: typeof body.lengthSec === 'number' ? body.lengthSec : user?.driveDiscovery.lengthSec ?? 90,
     leadTimeMin: typeof body.leadTimeMin === 'number' ? body.leadTimeMin : user?.driveDiscovery.leadTimeMin ?? 2,
-    voiceId: body.voiceId ?? user?.driveDiscovery.voiceId ?? 'dana',
+    voiceId: selectedGuide.id,
     language: body.language ?? lang,
     autoplay: typeof body.autoplay === 'boolean' ? body.autoplay : user?.driveDiscovery.autoplay ?? true,
   };

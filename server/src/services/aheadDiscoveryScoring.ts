@@ -1,4 +1,6 @@
 import { aheadDiscovery } from '../config';
+import { discoverySearchProfile } from './discoverySearchProfile';
+import type { MovementContext } from './aheadDiscoveryTypes';
 import type { CandidateEvaluation, DiscoveryCandidate } from './aheadDiscoveryTypes';
 
 const categoryPriority: Record<DiscoveryCandidate['targetType'], number> = {
@@ -26,11 +28,13 @@ function clamp01(value: number): number {
 
 export function scoreCandidate(
   candidate: DiscoveryCandidate,
-  currentTargetId?: string
+  currentTargetId?: string,
+  movement?: MovementContext
 ): CandidateEvaluation {
   const reasons: string[] = [];
-  const aheadScore = candidate.isAhead
-    ? 1 - candidate.headingDeltaDegrees / Math.max(1, aheadDiscovery.maxHeadingDeltaDegrees)
+  const profile = movement ? discoverySearchProfile(movement) : undefined;
+  const aheadScore = profile?.id === 'walking' ? 1 : candidate.isAhead
+    ? clamp01(1 - candidate.headingDeltaDegrees / Math.max(1, profile?.headingLimit ?? aheadDiscovery.maxHeadingDeltaDegrees))
     : 0;
   if (candidate.isAhead) reasons.push('candidate ahead of movement heading');
 
@@ -76,10 +80,11 @@ export function scoreCandidate(
 
 export function chooseBestCandidate(
   candidates: DiscoveryCandidate[],
-  currentTarget?: DiscoveryCandidate
+  currentTarget?: DiscoveryCandidate,
+  movement?: MovementContext
 ): { selected: CandidateEvaluation | null; replaced: boolean; retained: boolean } {
   const scored = candidates
-    .map((candidate) => scoreCandidate(candidate, currentTarget?.providerId))
+    .map((candidate) => scoreCandidate(candidate, currentTarget?.providerId, movement))
     .sort((a, b) => b.score - a.score);
   const best = scored[0];
   if (!best) return { selected: null, replaced: false, retained: false };

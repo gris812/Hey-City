@@ -11,6 +11,7 @@ const state = {
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
   guideLanguage: localStorage.getItem('heyCityGuideLanguage') || 'ru',
+  units: localStorage.getItem('heyCityUnits') || 'km', mapOrientation: 'course', heading: null, previousFix: null, lastPosition: null, lastContextAt: 0,
 };
 if (state.token && state.user) {
   localStorage.setItem('heyCityToken', state.token);
@@ -43,13 +44,13 @@ const messages = {
 };
 function t(key, values = {}) { const template = messages[state.appLanguage]?.[key] || messages.ru[key] || key; return Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), template); }
 function movementModeLabel() { return t(state.movementMode === 'vehicle' ? 'map.modeVehicle' : 'map.modeWalking'); }
-function movementMetaLabel() { return Number.isFinite(state.speedKmh) ? t('map.speed', { speed: Math.round(state.speedKmh) }) : t('map.gps'); }
+function movementMetaLabel() { return Number.isFinite(state.speedKmh) ? `${Math.round(state.speedKmh / (state.units === 'mi' ? 1.609344 : 1))} ${state.units === 'mi' ? (state.appLanguage === 'ru' ? 'миль/ч' : 'mph') : (state.appLanguage === 'ru' ? 'км/ч' : 'km/h')}` : t('map.gps'); }
 
-const guides = {
+let guides = {
   dana: { avatar: '/assets/dana-v3-avatar.png', image: '/assets/dana-v3-profile.png', ru: { name: 'Dana', role: 'Городской проводник', body: 'Живая, наблюдательная и любопытная. Dana замечает характер города, локальную жизнь и детали, мимо которых легко пройти.', interests: ['Скрытые места', 'Локальная жизнь', 'Атмосфера'], greeting: 'Привет! Я Dana. Будем идти в вашем ритме — я заговорю, когда рядом появится место, которое действительно стоит заметить.' }, en: { name: 'Dana', role: 'City companion', body: 'Lively, observant and curious. Dana notices the city’s character, local life and details that are easy to walk past.', interests: ['Hidden gems', 'Local life', 'Atmosphere'], greeting: 'Hi! I’m Dana. We’ll move at your pace, and I’ll speak when something nearby is genuinely worth noticing.' } },
   arthur: { avatar: '/assets/arthur-v3-avatar.png', image: '/assets/arthur-v3-profile.png', ru: { name: 'Arthur', role: 'Историк', body: 'Структурный, точный и внимательный. Arthur объясняет город через историю, архитектуру и решения людей.', interests: ['История', 'Архитектура', 'Контекст'], greeting: 'Здравствуйте. Я Arthur. Вместе мы увидим, как история, архитектура и человеческие решения сформировали город вокруг нас.' }, en: { name: 'Arthur', role: 'Historian', body: 'Structured, precise and attentive. Arthur explains the city through history, architecture and human decisions.', interests: ['History', 'Architecture', 'Context'], greeting: 'Hello. I’m Arthur. Together we’ll see how history, architecture and human decisions shaped the city around us.' } },
 };
-function guideCopy(id = state.guide) { return { ...guides[id], ...guides[id][state.appLanguage] }; }
+function guideCopy(id = state.guide) { const g = guides[id] || Object.values(guides)[0]; return { ...g, ...g[state.appLanguage], image: guideImageUrl(g.image), avatar: guideImageUrl(g.avatar) }; }
 const storyAudio = new Audio();
 storyAudio.preload = 'auto';
 storyAudio.crossOrigin = 'anonymous';
@@ -101,7 +102,7 @@ function icon(name) {
     stories: '<path d="M4 5.5h16v13H4z"/><path d="M8 9h8M8 13h6"/>',
     settings: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
-    locate: '<circle cx="12" cy="12" r="6"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    locate: '<circle cx="12" cy="12" r="9"/><path d="m15 7-2 6-4 4 2-6z"/><path d="M12 1v2"/>',
     back: '<path d="m15 5-7 7 7 7"/>', play: '<path d="m9 7 8 5-8 5z"/>',
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]}</svg>`;
@@ -109,7 +110,7 @@ function icon(name) {
 
 function setPath(path) { if (location.pathname !== path) history.pushState({}, '', path); }
 function navigate(tab) { state.tab = tab; setPath(tab === 'admin' ? '/admin' : '/'); render(); }
-function logout() { stopWalking(false); localStorage.removeItem('heyCityToken'); localStorage.removeItem('heyCityUser'); sessionStorage.removeItem('heyCityToken'); sessionStorage.removeItem('heyCityUser'); state.token = null; state.user = null; state.profile = null; state.map = null; state.mapLoadPromise = null; state.marker = null; state.tab = 'map'; setPath('/'); render(); }
+function logout() { void sendActivity(true); stopWalking(false); localStorage.removeItem('heyCityToken'); localStorage.removeItem('heyCityUser'); sessionStorage.removeItem('heyCityToken'); sessionStorage.removeItem('heyCityUser'); state.token = null; state.user = null; state.profile = null; state.map = null; state.mapLoadPromise = null; state.marker = null; state.tab = 'map'; setPath('/'); render(); }
 
 function loginView() {
   const adminLogin = location.pathname === '/admin';
@@ -127,7 +128,7 @@ function loginView() {
         sent = true; document.querySelector('#code-wrap').hidden = false; document.querySelector('#code').required = true; document.querySelector('#code').focus(); button.textContent = t('login.enter'); message.dataset.tone = 'success'; message.textContent = result.message === 'Enter administrator access code' ? t('login.adminCode') : t('login.sent');
       } else {
         const result = await api('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email, code: document.querySelector('#code').value }) });
-        state.token = result.token; state.user = result.user; localStorage.setItem('heyCityToken', state.token); localStorage.setItem('heyCityUser', JSON.stringify(state.user)); state.tab = state.user.role === 'admin' && location.pathname === '/admin' ? 'admin' : 'map'; render();
+        state.token = result.token; state.user = result.user; localStorage.setItem('heyCityToken', state.token); localStorage.setItem('heyCityUser', JSON.stringify(state.user)); state.tab = state.user.role === 'admin' && location.pathname === '/admin' ? 'admin' : 'map'; render(); void sendActivity();
       }
     } catch (error) { message.dataset.tone = 'error'; message.textContent = error.message; } finally { button.disabled = false; }
   });
@@ -167,11 +168,11 @@ function mapView() {
   const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
   const lastCopy = state.lastResult?.transcriptText;
   const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-failure" id="map-failure" hidden>${t('map.keyRejected')}</div><div class="map-shade" aria-hidden="true"></div><div class="radar-scan" id="radar-scan" hidden aria-hidden="true"><i class="radar-ring radar-ring-a"></i><i class="radar-ring radar-ring-b"></i></div>
-    <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? movementModeLabel() : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${guide.name}"><img src="${guide.avatar}" alt=""></button></header>
+    <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? movementModeLabel() : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${esc(guide.name)}"><img src="${esc(guide.avatar)}" alt=""></button></header>
     <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
-    <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${guide.avatar}" alt="${guide.name}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
+    <article class="walking-sheet"><div class="sheet-handle"></div><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${esc(guide.avatar)}" alt="${esc(guide.name)}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
   if (mountedMap) {
-    document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', () => { void locateUser().catch(showLocationError); }); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
+    document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', toggleMapOrientation); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
   }
   refreshMapView();
   void loadMap();
@@ -205,6 +206,8 @@ function refreshMapView() {
   ambientAvatar.alt = guide.name;
   setRadarScanning(walking && state.contextInFlight);
   renderAudioControl();
+  renderNearbyList();
+  applyMapOrientation();
 }
 
 async function loadMap() {
@@ -233,7 +236,7 @@ async function loadMap() {
       document.head.appendChild(script);
     });
     const mapNode = document.querySelector('#map'); if (!mapNode) return;
-    state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
+    state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, renderingType: 'VECTOR', heading: 0, tilt: 0, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
     if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint, zIndex: 20 });
     document.querySelector('#map-state')?.setAttribute('hidden', ''); document.querySelector('#map-failure')?.setAttribute('hidden', ''); api('/usage/client', { method: 'POST', body: JSON.stringify({ operation: 'dynamic_map_load' }) }).catch(() => {});
   } catch { const failure = document.querySelector('#map-failure'); if (failure) { failure.hidden = false; failure.textContent = t('map.loadFailed'); } else if (status) status.textContent = t('map.loadFailed'); } finally { state.mapLoadPromise = null; } })();
@@ -249,7 +252,10 @@ function showLocationError(error) {
 function applyPosition(position) {
   const { latitude: lat, longitude: lng } = position.coords;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error(t('map.geoFailed'));
+  updateHeading(position);
+  state.lastPosition = position;
   state.lastPoint = { lat, lng };
+  applyMapOrientation();
   state.map?.setCenter(state.lastPoint);
   if (state.map) {
     if (state.marker) state.marker.setPosition(state.lastPoint);
@@ -279,10 +285,11 @@ async function startWalking() {
   try {
     const position = await locateUser();
     if (runId !== state.runId) return;
-    const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ mode: 'walking', autoMode: true, themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide === 'arthur' ? 'artur' : 'dana', language: state.guideLanguage, autoplay: true }) });
+    const result = await api('/sessions/start', { method: 'POST', body: JSON.stringify({ mode: 'walking', autoMode: true, themeTags: ['mixed'], narrationStyle: 'documentary', lengthSec: 90, leadTimeMin: 2, voiceId: state.guide, language: state.guideLanguage, autoplay: true }) });
     if (runId !== state.runId) { void api(`/sessions/${result.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); return; }
     state.sessionId = result.sessionId;
     state.initialScanComplete = false;
+    state.lastContextAt = 0;
     state.walkStatus = t('map.searching');
     state.watchId = navigator.geolocation.watchPosition((fix) => {
       if (runId === state.runId) void updateLocation(fix);
@@ -306,8 +313,11 @@ async function startWalking() {
 async function updateLocation(position) {
   if (!state.sessionId || state.watchId === null) return;
   const sessionId = state.sessionId;
+  const requestedGuide = state.guide;
   const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords; const point = { lat, lng }; const measuredSpeedKmh = Math.max(0, (speed ?? 0) * 3.6); state.speedKmh = measuredSpeedKmh; applyPosition(position);
   if (state.contextInFlight) return;
+  if (Date.now() - state.lastContextAt < 5000) return;
+  state.lastContextAt = Date.now();
   state.contextInFlight = true;
   const initialScan = !state.initialScanComplete;
   if (initialScan) setRadarScanning(true);
@@ -318,13 +328,14 @@ async function updateLocation(position) {
     if (result.aheadDiscovery?.providerRefresh?.errorCode) {
       state.walkStatus = state.appLanguage === 'ru' ? 'Поиск объектов недоступен. Попробуйте позже.' : 'Place search is unavailable. Try again later.';
     }
-    renderCandidateMarkers(result.aheadDiscovery?.topCandidates || []);
+    renderCandidateMarkers(result.aheadDiscovery?.nearbyCandidates || result.aheadDiscovery?.topCandidates || []);
+    renderNearbyList();
     const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); const modeNode = document.querySelector('#top-status'); const metaNode = document.querySelector('.area-label'); if (statusNode) statusNode.textContent = state.walkStatus; if (modeNode) modeNode.textContent = movementModeLabel(); if (metaNode) metaNode.textContent = movementMetaLabel(); if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText;
     if (result.nextAction === 'PLAY' && copyNode) {
       const source = result.narrativePlan?.storySeed?.match(/https:\/\/en\.wikipedia\.org\/\?curid=\d+/)?.[0];
       if (source) { const link = document.createElement('a'); link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = ' Wikipedia · CC BY-SA'; copyNode.append(link); }
     }
-    if (result.audioUrl && result.nextAction === 'PLAY') { state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
+    if (result.audioUrl && result.nextAction === 'PLAY') { state.audioGuideId = requestedGuide; state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
   } catch (error) { if (state.sessionId !== sessionId) return; state.walkStatus = error.message; const statusNode = document.querySelector('#walk-status'); if (statusNode) statusNode.textContent = state.walkStatus; }
   finally { if (state.sessionId !== sessionId) return; state.contextInFlight = false; if (initialScan) { state.initialScanComplete = true; setRadarScanning(false); } }
 }
@@ -370,7 +381,7 @@ function renderCandidateMarkers(candidates) {
 }
 
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
-function updateAudioControl() { renderAudioControl(); }
+function updateAudioControl() { renderAudioControl(); renderNearbyList(); }
 function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.paused) storyAudio.play().catch(() => {}); else storyAudio.pause(); }
 function stopWalking(refresh = true) { state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); if (refresh && state.tab === 'map') render(); }
 
@@ -383,9 +394,10 @@ function storiesView() {
 function settingsView() {
   const selected = guideCopy();
   shell(`<div class="page settings-page"><header class="settings-sticky"><div class="eyebrow">${t('settings.eyebrow')}</div><h1>${t('settings.title')}</h1></header><section class="settings-section account-line"><div><span class="section-label">${t('settings.account')}</span><strong>${esc(state.user?.email)}</strong></div><button class="text-button" id="logout">${t('settings.logout')}</button></section>
-    <section class="settings-section"><div class="section-head"><div><span class="section-label">${t('settings.guide')}</span><h2>${t('settings.leads', { guide: selected.name })}</h2></div><span class="section-note">${t('settings.fullProfile')}</span></div><div class="guide-grid">${Object.keys(guides).map((id) => { const guide = guideCopy(id); return `<button class="guide-card ${state.guide === id ? 'selected' : ''}" data-guide="${id}"><img src="${guide.image}" alt="${guide.name}"><span><strong>${guide.name}</strong><small>${guide.role}</small></span></button>`; }).join('')}</div></section>
-    <section class="settings-section settings-table"><div><span class="section-label">${t('settings.appLanguage')}</span><div class="segmented"><button data-language="ru" class="${state.appLanguage === 'ru' ? 'selected' : ''}">Русский</button><button data-language="en" class="${state.appLanguage === 'en' ? 'selected' : ''}">English</button></div></div><div><span class="section-label">${t('settings.guideLanguage')}</span><div class="segmented"><button data-guide-language="ru" class="${state.guideLanguage === 'ru' ? 'selected' : ''}">Русский</button><button data-guide-language="en" class="${state.guideLanguage === 'en' ? 'selected' : ''}">English</button></div></div><div><span class="section-label">${t('settings.privacy')}</span><p>${state.profile?.historyEnabled === false ? t('settings.historyOff') : t('settings.historyOn')}</p></div></section>
+    <section class="settings-section"><div class="section-head"><div><span class="section-label">${t('settings.guide')}</span><h2>${t('settings.leads', { guide: selected.name })}</h2></div><span class="section-note">${t('settings.fullProfile')}</span></div><div class="guide-grid">${Object.keys(guides).map((id) => { const guide = guideCopy(id); return `<button class="guide-card ${state.guide === id ? 'selected' : ''}" data-guide="${id}"><img src="${esc(guide.image)}" alt="${esc(guide.name)}"><span><strong>${esc(guide.name)}</strong><small>${esc(guide.role)}</small></span></button>`; }).join('')}</div></section>
+    <section class="settings-section settings-table"><div><span class="section-label">${t('settings.appLanguage')}</span><div class="segmented"><button data-language="ru" class="${state.appLanguage === 'ru' ? 'selected' : ''}">Русский</button><button data-language="en" class="${state.appLanguage === 'en' ? 'selected' : ''}">English</button></div></div><div><span class="section-label">${t('settings.guideLanguage')}</span><div class="segmented"><button data-guide-language="ru" class="${state.guideLanguage === 'ru' ? 'selected' : ''}">Русский</button><button data-guide-language="en" class="${state.guideLanguage === 'en' ? 'selected' : ''}">English</button></div></div><div><span class="section-label">${state.appLanguage === 'ru' ? 'Скорость и расстояние' : 'Speed & distance'}</span><div class="segmented"><button data-units="km" class="${state.units === 'km' ? 'selected' : ''}">км / km</button><button data-units="mi" class="${state.units === 'mi' ? 'selected' : ''}">мили / miles</button></div></div><div><span class="section-label">${t('settings.privacy')}</span><p>${state.profile?.historyEnabled === false ? t('settings.historyOff') : t('settings.historyOn')}</p></div></section>
     ${state.user?.role === 'admin' ? `<section class="settings-section account-line"><div><span class="section-label">${t('settings.admin')}</span><strong>${t('settings.stats')}</strong></div><button class="text-button" id="open-admin">${t('settings.open')}</button></section>` : ''}<footer class="settings-footer">Hey City WebApp · beta</footer></div>`, 'settings');
+  document.querySelectorAll('[data-units]').forEach(button => button.addEventListener('click', () => { state.units = button.dataset.units; localStorage.setItem('heyCityUnits', state.units); settingsView(); }));
   document.querySelector('#logout').addEventListener('click', logout); document.querySelector('#open-admin')?.addEventListener('click', () => navigate('admin')); document.querySelectorAll('[data-guide]').forEach((button) => button.addEventListener('click', () => openGuideProfile(button.dataset.guide))); document.querySelectorAll('[data-language]').forEach((button) => button.addEventListener('click', () => { state.appLanguage = button.dataset.language; localStorage.setItem('heyCityLanguage', state.appLanguage); state.walkStatus = state.watchId === null ? t('map.ready') : t('map.listening'); settingsView(); })); document.querySelectorAll('[data-guide-language]').forEach((button) => button.addEventListener('click', () => { state.guideLanguage = button.dataset.guideLanguage; localStorage.setItem('heyCityGuideLanguage', state.guideLanguage); api('/me', { method: 'PUT', body: JSON.stringify({ driveDiscovery: { languageDefault: state.guideLanguage } }) }).catch(() => {}); settingsView(); })); if (!state.profile) loadProfileAndRefresh('settings');
 }
 
@@ -407,9 +419,9 @@ function openGuideProfile(initialGuide) {
   let activeGuide = initialGuide;
   const draw = () => {
     document.querySelector('#guide-profile')?.remove(); const guide = guideCopy(activeGuide);
-    document.body.insertAdjacentHTML('beforeend', `<div class="guide-profile" id="guide-profile" role="dialog" aria-modal="true" aria-label="${guide.name}"><div class="profile-photo"><img src="${guide.image}" alt="${guide.name}"><button class="profile-back" id="close-profile" aria-label="Back">${icon('back')}</button><span class="swipe-hint">${t('guide.swipe')}</span></div><div class="profile-content"><div class="profile-title"><div><h1>${guide.name}</h1><span>${guide.role}</span></div><code>${activeGuide === 'dana' ? '01' : '02'} / 02</code></div><p>${guide.body}</p><div class="interest-line">${guide.interests.join(' · ')}</div><button class="voice-sample" id="voice-sample">${icon('play')}<span><strong>${t('guide.voice')}</strong><small>${t('guide.voicePlaceholder')}</small></span></button><blockquote id="voice-copy" hidden>${guide.greeting}</blockquote><div class="profile-actions"><button class="primary" id="choose-guide">${t('guide.choose', { guide: guide.name })}</button><button class="text-button" id="switch-guide">${t('guide.other')}</button></div></div></div>`);
-    document.querySelector('#close-profile').addEventListener('click', closeGuideProfile); document.querySelector('#voice-sample').addEventListener('click', async (event) => { const button = event.currentTarget; const copy = document.querySelector('#voice-copy'); copy.hidden = false; if (sampleAudio.src && sampleAudio.dataset.guide === activeGuide && sampleAudio.dataset.lang === state.guideLanguage) { if (sampleAudio.paused) await sampleAudio.play().catch(() => {}); else sampleAudio.pause(); return; } button.querySelector('small').textContent = t('guide.voiceLoading'); button.disabled = true; try { const result = await api('/stories/voice-sample', { method: 'POST', body: JSON.stringify({ voiceId: activeGuide === 'arthur' ? 'artur' : 'dana', lang: state.guideLanguage }) }); sampleAudio.src = result.audioUrl; sampleAudio.dataset.guide = activeGuide; sampleAudio.dataset.lang = state.guideLanguage; await sampleAudio.play(); } catch (error) { button.querySelector('small').textContent = error.message; } finally { button.disabled = false; } }); document.querySelector('#switch-guide').addEventListener('click', () => { sampleAudio.pause(); activeGuide = activeGuide === 'dana' ? 'arthur' : 'dana'; draw(); }); document.querySelector('#choose-guide').addEventListener('click', () => { state.guide = activeGuide; localStorage.setItem('heyCityGuide', activeGuide); closeGuideProfile(); render(); });
-    let startX = null; const modal = document.querySelector('#guide-profile'); modal.addEventListener('touchstart', (event) => { startX = event.touches[0].clientX; }, { passive: true }); modal.addEventListener('touchend', (event) => { if (startX !== null && Math.abs(event.changedTouches[0].clientX - startX) > 60) { activeGuide = activeGuide === 'dana' ? 'arthur' : 'dana'; draw(); } }, { passive: true });
+    document.body.insertAdjacentHTML('beforeend', `<div class="guide-profile" id="guide-profile" role="dialog" aria-modal="true" aria-label="${esc(guide.name)}"><div class="profile-photo"><img src="${esc(guide.image)}" alt="${esc(guide.name)}"><button class="profile-back" id="close-profile" aria-label="Back">${icon('back')}</button><span class="swipe-hint">${t('guide.swipe')}</span></div><div class="profile-content"><div class="profile-title"><div><h1>${esc(guide.name)}</h1><span>${esc(guide.role)}</span></div><code>${Object.keys(guides).indexOf(activeGuide) + 1} / ${Object.keys(guides).length}</code></div><p>${esc(guide.body)}</p><div class="interest-line">${guide.interests.map(esc).join(' · ')}</div><button class="voice-sample" id="voice-sample">${icon('play')}<span><strong>${t('guide.voice')}</strong><small>${t('guide.voicePlaceholder')}</small></span></button><blockquote id="voice-copy" hidden>${esc(guide.greeting)}</blockquote><div class="profile-actions"><button class="primary" id="choose-guide">${t('guide.choose', { guide: guide.name })}</button><button class="text-button" id="switch-guide">${t('guide.other')}</button></div></div></div>`);
+    document.querySelector('#close-profile').addEventListener('click', closeGuideProfile); document.querySelector('#voice-sample').addEventListener('click', async (event) => { const button = event.currentTarget; const copy = document.querySelector('#voice-copy'); copy.hidden = false; if (sampleAudio.src && sampleAudio.dataset.guide === activeGuide && sampleAudio.dataset.lang === state.guideLanguage) { if (sampleAudio.paused) await sampleAudio.play().catch(() => {}); else sampleAudio.pause(); return; } button.querySelector('small').textContent = t('guide.voiceLoading'); button.disabled = true; try { const result = await api('/stories/voice-sample', { method: 'POST', body: JSON.stringify({ voiceId: activeGuide, lang: state.guideLanguage }) }); sampleAudio.src = result.audioUrl; sampleAudio.dataset.guide = activeGuide; sampleAudio.dataset.lang = state.guideLanguage; await sampleAudio.play(); } catch (error) { button.querySelector('small').textContent = error.message; } finally { button.disabled = false; } }); document.querySelector('#switch-guide').addEventListener('click', () => { sampleAudio.pause(); activeGuide = nextGuideId(activeGuide); draw(); }); document.querySelector('#choose-guide').addEventListener('click', () => { selectGuide(activeGuide); closeGuideProfile(); render(); });
+    let startX = null; const modal = document.querySelector('#guide-profile'); modal.addEventListener('touchstart', (event) => { startX = event.touches[0].clientX; }, { passive: true }); modal.addEventListener('touchend', (event) => { if (startX !== null && Math.abs(event.changedTouches[0].clientX - startX) > 60) { activeGuide = nextGuideId(activeGuide); draw(); } }, { passive: true });
   };
   draw();
 }
@@ -418,16 +430,16 @@ function closeGuideProfile() { sampleAudio.pause(); document.querySelector('#gui
 
 async function adminView() {
   if (state.user?.role !== 'admin') { navigate('settings'); return; }
-  shell(`<div class="page admin-page"><header class="admin-head"><div><div class="eyebrow">Hey City · operations</div><h1>${t('admin.title')}</h1></div><div class="admin-actions"><button class="text-button" id="admin-back">${t('admin.back')}</button><button class="text-button" id="admin-logout">${t('settings.logout')}</button><select class="period" id="period"><option value="7">${t('admin.days', { count: 7 })}</option><option value="30" selected>${t('admin.days', { count: 30 })}</option><option value="90">${t('admin.days', { count: 90 })}</option></select></div></header><div id="admin-data" class="empty">…</div></div>`, '');
-  document.querySelector('#admin-back').addEventListener('click', () => navigate('map')); document.querySelector('#admin-logout').addEventListener('click', logout); document.querySelector('#period').addEventListener('change', loadAdmin); await loadAdmin();
+  shell(`<div class="page admin-page"><header class="admin-head"><div><div class="eyebrow">Hey City · operations</div><h1>${t('admin.title')}</h1></div><div class="admin-actions"><button class="text-button" id="admin-back">${t('admin.back')}</button><button class="text-button" id="admin-logout">${t('settings.logout')}</button><select class="period" id="period"><option value="7">${t('admin.days', { count: 7 })}</option><option value="30" selected>${t('admin.days', { count: 30 })}</option><option value="90">${t('admin.days', { count: 90 })}</option></select></div></header><div id="admin-data" class="empty">…</div><section id="account-analytics"></section><section id="guide-admin"></section></div>`, '');
+  document.querySelector('#admin-back').addEventListener('click', () => navigate('map')); document.querySelector('#admin-logout').addEventListener('click', logout); document.querySelector('#period').addEventListener('change', loadAdmin); await loadAdmin(); await loadGuideAdmin();
 }
 
 async function loadAdmin() {
   const node = document.querySelector('#admin-data'); if (!node) return;
   try {
-    const days = document.querySelector('#period')?.value || 30; const [summary, list] = await Promise.all([api(`/admin/summary?days=${days}`), api('/admin/users')]); const totals = summary.totals || []; const matching = (category, operation) => totals.filter((item) => item.category === category && (!operation || item.operation === operation)); const value = (category, field = 'quantity', operation) => matching(category, operation).reduce((sum, item) => sum + Number(item[field] || 0), 0); const categoryCost = (category, operation) => value(category, 'estimated_cost_usd', operation); const cost = totals.reduce((sum, item) => sum + Number(item.estimated_cost_usd || 0), 0); const textTokens = value('openai_text', 'input_tokens') + value('openai_text', 'output_tokens'); const voiceTokens = value('openai_tts', 'input_tokens') + value('openai_tts', 'output_tokens'); const tokens = textTokens + voiceTokens; const googleCost = categoryCost('google_maps');
+    const days = document.querySelector('#period')?.value || 30; void loadAccountAnalytics(days); const [summary, list] = await Promise.all([api(`/admin/summary?days=${days}`), api('/admin/users')]); const totals = summary.totals || []; const matching = (category, operation) => totals.filter((item) => item.category === category && (!operation || item.operation === operation)); const value = (category, field = 'quantity', operation) => matching(category, operation).reduce((sum, item) => sum + Number(item[field] || 0), 0); const categoryCost = (category, operation) => value(category, 'estimated_cost_usd', operation); const cost = totals.reduce((sum, item) => sum + Number(item.estimated_cost_usd || 0), 0); const textTokens = value('openai_text', 'input_tokens') + value('openai_text', 'output_tokens'); const voiceTokens = value('openai_tts', 'input_tokens') + value('openai_tts', 'output_tokens'); const tokens = textTokens + voiceTokens; const googleCost = categoryCost('google_maps');
     const costRow = (label, category, operation, tokenCount = null) => `<div><span>${label}</span><code>${value(category, 'quantity', operation)} ${t('admin.calls')}${tokenCount === null ? '' : ` · ${tokenCount} tokens`}</code><b>$${categoryCost(category, operation).toFixed(4)}</b></div>`;
-    node.className = ''; node.innerHTML = `<section class="metrics"><div class="metric"><b>${summary.users}</b><span>${t('admin.users')}</span></div><div class="metric"><b>${summary.activeUsers}</b><span>${t('admin.active')}</span></div><div class="metric"><b>${value('product', 'quantity', 'object_viewed')}</b><span>${t('admin.objects')}</span></div><div class="metric"><b>${tokens}</b><span>${t('admin.tokens')}</span></div><div class="metric"><b>$${googleCost.toFixed(2)}</b><span>${t('admin.googleGross')}</span></div><div class="metric"><b>$${cost.toFixed(2)}</b><span>${t('admin.total')}</span></div></section><section class="cost-breakdown"><h2>${t('admin.breakdown')}</h2>${costRow(t('admin.mapLoads'), 'google_maps', 'dynamic_map_load')}${costRow(t('admin.nearby'), 'google_maps', 'places_nearby_new')}${costRow(t('admin.geocoding'), 'google_maps', 'reverse_geocoding')}${costRow(t('admin.textAi'), 'openai_text', null, textTokens)}${costRow(t('admin.voiceAi'), 'openai_tts', null, voiceTokens)}</section><p class="footnote">${state.appLanguage === 'ru' ? 'Новая диагностика: попытки определения района / ошибки' : 'New diagnostics: area attempts / errors'}: ${value('product', 'quantity', 'reverse_geocoding_attempt')} / ${value('product', 'quantity', 'reverse_geocoding_error')}. ${state.appLanguage === 'ru' ? 'Попытки поиска объектов / ошибки' : 'Place search attempts / errors'}: ${value('product', 'quantity', 'places_nearby_new_attempt')} / ${value('product', 'quantity', 'places_nearby_new_error')}. ${state.appLanguage === 'ru' ? 'Исторические суммы не пересчитаны; новые ошибки исключены из оценки успешных вызовов.' : 'Historical totals unchanged; new errors excluded from successful-call estimates.'}</p><div class="table-wrap"><table><thead><tr><th>${t('admin.email')}</th><th>${t('admin.lastSession')}</th><th>${t('admin.objects')}</th><th>${t('admin.tokens')}</th><th>${t('admin.cost')}</th></tr></thead><tbody>${list.users.map((user) => `<tr><td>${esc(user.email)}</td><td>${new Date(user.last_seen_at).toLocaleString(state.appLanguage)}</td><td>${user.objects_viewed}</td><td>${user.tokens}</td><td>$${Number(user.estimated_cost_usd).toFixed(4)}</td></tr>`).join('')}</tbody></table></div><p class="footnote">${t('admin.note')}</p>`;
+    node.className = ''; node.innerHTML = `<section class="metrics"><div class="metric"><b>${summary.users}</b><span>${t('admin.users')}</span></div><div class="metric"><b>${summary.activeUsers}</b><span>${t('admin.active')}</span></div><div class="metric"><b>${value('product', 'quantity', 'object_viewed')}</b><span>${t('admin.objects')}</span></div><div class="metric"><b>${tokens}</b><span>${t('admin.tokens')}</span></div><div class="metric"><b>$${googleCost.toFixed(2)}</b><span>${t('admin.googleGross')}</span></div><div class="metric"><b>$${cost.toFixed(2)}</b><span>${t('admin.total')}</span></div></section><section class="cost-breakdown"><h2>${t('admin.breakdown')}</h2>${costRow(t('admin.mapLoads'), 'google_maps', 'dynamic_map_load')}${costRow(t('admin.nearby'), 'google_maps', 'places_nearby_new')}${costRow(t('admin.geocoding'), 'google_maps', 'reverse_geocoding')}${costRow(t('admin.textAi'), 'openai_text', null, textTokens)}${costRow(t('admin.voiceAi'), 'openai_tts', null, voiceTokens)}</section><p class="footnote">${state.appLanguage === 'ru' ? 'Новая диагностика: попытки определения района / ошибки' : 'New diagnostics: area attempts / errors'}: ${value('product', 'quantity', 'reverse_geocoding_attempt')} / ${value('product', 'quantity', 'reverse_geocoding_error')}. ${state.appLanguage === 'ru' ? 'Попытки поиска объектов / ошибки' : 'Place search attempts / errors'}: ${value('product', 'quantity', 'places_nearby_new_attempt')} / ${value('product', 'quantity', 'places_nearby_new_error')}. ${state.appLanguage === 'ru' ? 'Исторические суммы не пересчитаны; новые ошибки исключены из оценки успешных вызовов.' : 'Historical totals unchanged; new errors excluded from successful-call estimates.'}</p><div class="table-wrap"><table><thead><tr><th>${t('admin.email')}</th><th>${t('admin.lastSession')}</th><th>${t('admin.objects')}</th><th>${t('admin.tokens')}</th><th>${t('admin.cost')}</th></tr></thead><tbody>${list.users.map((user) => `<tr><td>${esc(user.email)}</td><td>${new Date(user.last_seen_at).toLocaleString(state.appLanguage)}</td><td>${user.objects_viewed}</td><td>${user.tokens}</td><td>$${Number(user.estimated_cost_usd).toFixed(4)}</td></tr>`).join('')}</tbody></table></div><p class="footnote">${t('admin.note')} ${state.appLanguage === 'ru' ? 'Не привязано к аккаунтам' : 'Unassigned to accounts'}: ${Number(summary.unassignedCostUsd || 0).toFixed(4)}.</p>`;
   } catch (error) { node.className = 'message'; node.textContent = error.message; }
 }
 
@@ -435,3 +447,165 @@ function render() { closeGuideProfile(); if (!state.token) return loginView(); i
 window.addEventListener('popstate', () => { state.tab = location.pathname === '/admin' ? 'admin' : 'map'; render(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js');
 render();
+
+function guideImageUrl(path) {
+  return path?.startsWith('/media/guide-') ? `${config.apiUrl}${path}` : path;
+}
+function nextGuideId(id) {
+  const ids = Object.keys(guides); return ids[(ids.indexOf(id) + 1) % ids.length];
+}
+async function loadGuideCatalog() {
+  try {
+    const result = await api('/guides');
+    if (!Array.isArray(result.guides) || !result.guides.length) return;
+    const next = Object.fromEntries(result.guides.filter(g => /^[a-z][a-z0-9_-]{1,39}$/.test(g.id) && g.active && g.ru && g.en && /^\/(assets|media)\/[a-zA-Z0-9._-]+$/.test(g.avatar) && /^\/(assets|media)\/[a-zA-Z0-9._-]+$/.test(g.image)).map(g => [g.id, g]));
+    if (!Object.keys(next).length) return;
+    guides = next;
+    if (!guides[state.guide]) selectGuide(Object.keys(guides)[0]);
+    if (state.tab !== 'admin') render();
+  } catch { /* Bundled guides remain available during temporary network loss. */ }
+}
+function selectGuide(id) {
+  state.guide = id; localStorage.setItem('heyCityGuide', id);
+  if (state.sessionId) api(`/sessions/${state.sessionId}/guide`, { method: 'PUT', body: JSON.stringify({ guideId: id }) }).catch(showLocationError);
+  void sendActivity();
+}
+
+function updateHeading(position) {
+  const { latitude: lat, longitude: lng, heading, speed, accuracy } = position.coords;
+  let value = Number.isFinite(heading) && heading >= 0 && (speed ?? 0) > 0.8 ? heading : null;
+  const p = state.previousFix;
+  if (p && value === null) {
+    const dy = (lat - p.lat) * 111320, dx = (lng - p.lng) * 111320 * Math.cos(lat * Math.PI / 180);
+    if (Math.hypot(dx, dy) >= Math.max(15, accuracy || 0, p.accuracy || 0)) value = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  }
+  if (value !== null) {
+    const delta = state.heading === null ? 0 : ((value - state.heading + 540) % 360) - 180;
+    state.heading = state.heading === null ? value : (state.heading + delta * 0.4 + 360) % 360;
+    state.previousFix = { lat, lng, accuracy };
+  } else if (!p) state.previousFix = { lat, lng, accuracy };
+}
+function applyMapOrientation() {
+  const course = state.mapOrientation === 'course';
+  const vector = state.map?.getRenderingType?.() !== 'RASTER';
+  state.map?.setHeading?.(course && vector ? state.heading ?? 0 : 0);
+  const button = document.querySelector('#locate');
+  if (!button) return;
+  const label = state.appLanguage === 'ru'
+    ? (course ? 'По ходу движения. Нажмите: север сверху' : 'Север сверху. Нажмите: по ходу движения')
+    : (course ? 'Travel direction. Tap for north up' : 'North up. Tap for travel direction');
+  button.setAttribute('aria-label', label); button.title = vector ? label : `${label} · ${state.appLanguage === 'ru' ? 'Вращение карты недоступно на этом устройстве' : 'Map rotation unavailable on this device'}`;
+  button.setAttribute('aria-pressed', String(!course));
+  button.querySelector('svg').style.transform = `rotate(${course && vector ? -(state.heading ?? 0) : 0}deg)`;
+}
+function toggleMapOrientation() {
+  state.mapOrientation = state.mapOrientation === 'course' ? 'north' : 'course';
+  applyMapOrientation();
+  if (state.lastPoint) state.map?.setCenter(state.lastPoint);
+  else void locateUser().catch(showLocationError);
+}
+function displayDistance(meters) {
+  if (state.units === 'mi') return `${(meters / 1609.344).toFixed(1)} ${state.appLanguage === 'ru' ? 'мили' : 'mi'}`;
+  return meters < 1000 ? `${Math.round(meters)} ${state.appLanguage === 'ru' ? 'м' : 'm'}` : `${(meters / 1000).toFixed(1)} ${state.appLanguage === 'ru' ? 'км' : 'km'}`;
+}
+function renderNearbyList() {
+  const sheet = document.querySelector('.walking-sheet'); if (!sheet) return;
+  let node = sheet.querySelector('#nearby-list');
+  if (!node) { node = document.createElement('section'); node.id = 'nearby-list'; sheet.querySelector('.ambient-row').after(node); }
+  const candidates = [...(state.lastResult?.aheadDiscovery?.nearbyCandidates || state.lastResult?.aheadDiscovery?.topCandidates || [])].sort((a,b) => a.distanceMeters - b.distanceMeters).slice(0, state.movementMode === 'vehicle' ? 3 : 6);
+  const narration = !!state.audioUrl && !storyAudio.ended;
+  sheet.querySelector('.ambient-row').hidden = candidates.length > 0 && !narration;
+  node.hidden = !candidates.length;
+  const categories = { city: ['Город','City'], museum: ['Музей','Museum'], historical_landmark: ['Историческое место','Historic landmark'], cultural_landmark: ['Достопримечательность','Landmark'], national_park: ['Национальный парк','National park'], park: ['Парк','Park'], monument: ['Монумент','Monument'], university: ['Университет','University'], region: ['Регион','Region'] };
+  node.innerHTML = `<h2>${state.appLanguage === 'ru' ? 'Ближайшие места' : 'Nearby places'}</h2><ul>${candidates.map(c => `<li><span><strong>${esc(c.name)}</strong><small>${esc((categories[c.targetType] || ['Место','Place'])[state.appLanguage === 'ru' ? 0 : 1])}</small></span><span>${displayDistance(c.distanceMeters)}</span></li>`).join('')}</ul>`;
+}
+
+const activityClientId = globalThis.crypto?.randomUUID?.() || `client_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+let activityPending = false;
+async function sendActivity(forceInactive = false) {
+  if (!state.token || activityPending) return;
+  activityPending = true;
+  try {
+    await api('/usage/activity', { method: 'POST', keepalive: true, body: JSON.stringify({ clientId: activityClientId, guideId: state.guide, active: !forceInactive && (!document.hidden || !storyAudio.paused), listening: !storyAudio.paused, listeningGuideId: state.audioGuideId || state.guide }) });
+  } catch { /* Analytics must never stop playback or discovery. */ }
+  finally { activityPending = false; }
+}
+setInterval(() => { if (!document.hidden || !storyAudio.paused) void sendActivity(); }, 30000);
+document.addEventListener('visibilitychange', () => { void sendActivity(); if (!document.hidden) void loadGuideCatalog(); });
+window.addEventListener('pagehide', () => { void sendActivity(true); });
+for (const event of ['play', 'pause', 'ended']) storyAudio.addEventListener(event, () => { void sendActivity(); });
+void loadGuideCatalog();
+void sendActivity();
+
+function durationLabel(seconds) {
+  const minutes = Math.round(Number(seconds || 0) / 60);
+  return `${Math.floor(minutes / 60)} ${state.appLanguage === 'ru' ? 'ч' : 'h'} ${minutes % 60} ${state.appLanguage === 'ru' ? 'мин' : 'min'}`;
+}
+async function loadAccountAnalytics(days) {
+  const node = document.querySelector('#account-analytics'); if (!node) return;
+  try {
+    const result = await api(`/admin/accounts?days=${days}`);
+    node.innerHTML = `<h2>${state.appLanguage === 'ru' ? 'Использование по аккаунтам' : 'Account activity'}</h2><p>${state.appLanguage === 'ru' ? 'Время: открытое приложение или воспроизведение рассказа. Прослушивание показано отдельно. Исторические данные до обновления отсутствуют.' : 'Time: visible app or story playback. Listening is reported separately. Data before this update is unavailable.'}</p>${result.users.map(user => `<details class="account-detail"><summary><strong>${esc(user.email)}</strong><span>${durationLabel(user.active_seconds)}</span></summary><p>${state.appLanguage === 'ru' ? 'Выбранный гид' : 'Selected guide'}: ${esc(user.selected_guide_id || '—')} · ${state.appLanguage === 'ru' ? 'Чаще всего' : 'Most used'}: ${esc(user.guides?.[0]?.guideId || '—')}</p><div class="table-wrap"><table><thead><tr><th>Гид / Guide</th><th>Время / Time</th><th>Аудио / Audio</th></tr></thead><tbody>${(user.guides || []).map(g => `<tr><td>${esc(g.guideId)}</td><td>${durationLabel(g.seconds)}</td><td>${durationLabel(g.listeningSeconds)}</td></tr>`).join('')}</tbody></table><table><thead><tr><th>API / Model</th><th>Tokens</th><th>USD</th></tr></thead><tbody>${(user.costs || []).filter(c => Number(c.cost) || Number(c.tokens)).map(c => `<tr><td>${esc(c.category)} ${esc(c.model)}</td><td>${Number(c.tokens || 0)}</td><td>$${Number(c.cost).toFixed(4)}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}`;
+  } catch (error) { node.textContent = error.message; }
+}
+let adminGuides = [];
+async function loadGuideAdmin() {
+  const node = document.querySelector('#guide-admin'); if (!node) return;
+  try {
+    const data = await api('/admin/guides'); adminGuides = data.guides;
+    node.innerHTML = `<h2>Гиды / Guides</h2><p>Фото, аватар, описание, характер и голос. Удаление скрывает гида из приложения; история использования сохраняется.</p><div class="admin-guide-list">${adminGuides.map(g => `<button class="secondary" data-edit-guide="${esc(g.id)}"><img src="${esc(guideImageUrl(g.avatar))}" alt=""><span>${esc(g.ru.name)}${g.active ? '' : ' · архив'}</span></button>`).join('')}<button class="secondary" id="add-guide">+ Добавить гида</button></div><div id="guide-editor"></div>`;
+    node.querySelectorAll('[data-edit-guide]').forEach(b => b.addEventListener('click', () => drawGuideEditor(adminGuides.find(g => g.id === b.dataset.editGuide))));
+    node.querySelector('#add-guide').addEventListener('click', () => drawGuideEditor(null));
+  } catch (error) { node.textContent = error.message; }
+}
+function drawGuideEditor(existing) {
+  const node = document.querySelector('#guide-editor');
+  const draft = existing ? JSON.parse(JSON.stringify(existing)) : { id: '', active: false, order: adminGuides.length, avatar: '', image: '', voice: 'coral', personality: '', voiceInstructions: '', ru: { name: '', role: '', body: '', interests: [], greeting: '' }, en: { name: '', role: '', body: '', interests: [], greeting: '' } };
+  const field = (label, name, value, multiline = false) => `<label>${label}${multiline ? `<textarea name="${name}" rows="3" required>${esc(value)}</textarea>` : `<input name="${name}" value="${esc(value)}" required>`}</label>`;
+  node.innerHTML = `<form id="guide-form"><h3>${existing ? esc(existing.ru.name) : 'Новый гид'}</h3><label>ID<input name="id" pattern="[a-z][a-z0-9_-]{1,39}" maxlength="40" value="${esc(draft.id)}" ${existing ? 'readonly' : ''} required></label><label>Порядок<input type="number" name="order" min="-10000" max="10000" value="${draft.order}" required></label><label class="check-label"><input type="checkbox" name="active" ${draft.active ? 'checked' : ''}> Доступен в приложении</label><div class="editor-images">${['image','avatar'].map(kind => `<section><h4>${kind === 'avatar' ? 'Круглый аватар' : 'Главное фото'}</h4><img id="preview-${kind}" class="${kind}" ${draft[kind] ? `src="${esc(guideImageUrl(draft[kind]))}"` : ''} alt="Предпросмотр"><input type="file" data-image-kind="${kind}" accept="image/png,image/jpeg,image/webp"><div id="crop-${kind}"></div></section>`).join('')}</div>${['ru','en'].map(lang => `<fieldset><legend>${lang === 'ru' ? 'Русский' : 'English'}</legend>${field('Имя / Name',lang+'.name',draft[lang].name)}${field('Роль / Role',lang+'.role',draft[lang].role)}${field('Описание / Description',lang+'.body',draft[lang].body,true)}${field('Темы через запятую / Topics',lang+'.interests',draft[lang].interests.join(', '))}${field('Пример голоса / Voice sample',lang+'.greeting',draft[lang].greeting,true)}</fieldset>`).join('')}${field('Характер и манера рассказа (не правила выбора объектов)','personality',draft.personality,true)}<label>Голос OpenAI<select name="voice">${['alloy','echo','fable','onyx','nova','shimmer','coral','sage','ash'].map(v => `<option ${v===draft.voice?'selected':''}>${v}</option>`).join('')}</select></label>${field('Манера речи / Voice direction','voiceInstructions',draft.voiceInstructions,true)}<p id="editor-message" role="status"></p><div class="profile-actions"><button class="primary" type="submit">Сохранить</button>${existing ? '<button class="secondary" type="button" id="archive-guide">Удалить из приложения</button>' : ''}</div></form>`;
+  node.querySelectorAll('[data-image-kind]').forEach(input => input.addEventListener('change', () => prepareGuideImage(input.files[0], input.dataset.imageKind, draft)));
+  node.querySelector('#archive-guide')?.addEventListener('click', async () => {
+    if (!confirm('Скрыть гида из приложения? Статистика сохранится.')) return;
+    try { await api(`/admin/guides/${draft.id}`,{method:'DELETE'}); await loadGuideAdmin(); await loadGuideCatalog(); }
+    catch(e) { node.querySelector('#editor-message').textContent=e.message; }
+  });
+  node.querySelector('form').addEventListener('submit', async event => {
+    event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const button = form.querySelector('[type=submit]');
+    for(const key of ['id','personality','voiceInstructions','voice']) draft[key] = String(data.get(key)).trim();
+    draft.active = data.has('active'); draft.order = Number(data.get('order'));
+    for(const lang of ['ru','en']) for(const key of ['name','role','body','greeting','interests']) draft[lang][key] = key === 'interests' ? String(data.get(lang+'.'+key)).split(',').map(s=>s.trim()).filter(Boolean) : String(data.get(lang+'.'+key)).trim();
+    button.disabled = true;
+    try { await api(`/admin/guides/${draft.id}`,{method:'PUT',body:JSON.stringify(draft)}); await loadGuideCatalog(); await loadGuideAdmin(); document.querySelector('#guide-editor').textContent = 'Сохранено. Изменения доступны в приложении.'; }
+    catch(e) { form.querySelector('#editor-message').textContent = e.message; button.disabled = false; }
+  });
+}
+function prepareGuideImage(file, kind, draft) {
+  if (!file) return;
+  const container = document.querySelector(`#crop-${kind}`);
+  if (file.size > 20 * 1024 * 1024 || !['image/png','image/jpeg','image/webp'].includes(file.type)) { container.textContent = 'Выберите PNG, JPEG или WebP до 20 МБ.'; return; }
+  const url = URL.createObjectURL(file); const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(url);
+    container.innerHTML = `<p>${kind === 'avatar' ? 'Кадрируйте до середины груди, оставив голову целиком.' : 'Главное фото сохраняется целиком.'}</p><canvas width="${kind === 'avatar' ? 512 : Math.min(1200,image.width)}" height="${kind === 'avatar' ? 512 : Math.round(image.height*Math.min(1200/image.width,1800/image.height,1))}"></canvas>${kind === 'avatar' ? '<label>Масштаб<input type="range" data-crop="zoom" min="1" max="4" step="0.01" value="1"></label><label>По горизонтали<input type="range" data-crop="x" min="0" max="1" step="0.01" value="0.5"></label><label>По вертикали<input type="range" data-crop="y" min="0" max="1" step="0.01" value="0"></label>' : ''}<button type="button" class="secondary">Использовать изображение</button><p role="status"></p>`;
+    const canvas = container.querySelector('canvas');
+    if(kind === 'image') { const scale=Math.min(1200/image.width,1800/image.height,1);canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale); }
+    const draw = () => {
+      const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);
+      if(kind==='avatar') { const val=name=>Number(container.querySelector(`[data-crop=${name}]`).value);const side=Math.min(image.width,image.height)/val('zoom');ctx.drawImage(image,(image.width-side)*val('x'),(image.height-side)*val('y'),side,side,0,0,512,512); }
+      else { ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(image,0,0,canvas.width,canvas.height); }
+    };
+    container.querySelectorAll('input').forEach(i=>i.addEventListener('input',draw));draw();
+    container.querySelector('button').addEventListener('click', async event => {
+      const button=event.currentTarget;button.disabled=true;
+      try {
+        const mime = kind === 'avatar' ? 'image/png' : 'image/jpeg';
+        let blob=await new Promise(resolve=>canvas.toBlob(resolve,mime,0.88));
+        if(!blob || blob.size>950*1024) throw new Error('Изображение больше 950 КБ. Выберите менее крупное изображение.');
+        const result=await api('/admin/guide-image',{method:'POST',headers:{'Content-Type':mime},body:blob});
+        draft[kind]=result.path;document.querySelector(`#preview-${kind}`).src=guideImageUrl(result.path);container.innerHTML='<p>Изображение подготовлено. Нажмите «Сохранить» ниже.</p>';
+      } catch(e) { container.querySelector('[role=status]').textContent=e.message;button.disabled=false; }
+    });
+  };
+  image.onerror = () => { URL.revokeObjectURL(url);container.textContent='Не удалось прочитать изображение'; };
+  image.src=url;
+}

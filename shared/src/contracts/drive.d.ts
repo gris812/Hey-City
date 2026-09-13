@@ -110,6 +110,8 @@ export interface AheadDiscoveryDiagnostic {
   excludedCandidateCount: number;
   exclusionReasonsSummary: Record<string, number>;
   topCandidates: Array<DiscoveryCandidate & { score: number; reasons: string[] }>;
+  /** Display-only nearby list; does not override deterministic story direction checks. */
+  nearbyCandidates?: DiscoveryCandidate[];
   excludedCandidates: AheadDiscoveryExcludedCandidate[];
 }
 

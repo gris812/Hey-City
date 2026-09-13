@@ -1,3 +1,4 @@
+import { getGuide } from '../services/guides';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { generateNarration as generate, generateVoiceSample as generateSample } from '../services/narration';
@@ -49,19 +50,10 @@ export async function generateVoiceSample(req: AuthRequest, res: Response): Prom
     return;
   }
   const lang = req.body?.lang === 'en' ? 'en' : 'ru';
-  const voiceId = req.body?.voiceId === 'artur' || req.body?.voiceId === 'arthur' ? 'artur' : 'dana';
-  const samples = {
-    ru: {
-      dana: 'Привет! Я Dana. Будем идти в вашем ритме — я заговорю, когда рядом появится место, которое действительно стоит заметить.',
-      artur: 'Здравствуйте. Я Arthur. Вместе мы увидим, как история, архитектура и человеческие решения сформировали город вокруг нас.',
-    },
-    en: {
-      dana: "Hi! I'm Dana. We'll move at your pace, and I'll speak when something nearby is genuinely worth noticing.",
-      artur: "Hello. I'm Arthur. Together we'll see how history, architecture, and human decisions shaped the city around us.",
-    },
-  } as const;
   try {
-    res.json(await generateSample(samples[lang][voiceId], voiceId, lang, req.user.userId));
+    const guide = await getGuide(String(req.body?.voiceId || 'dana'));
+    if (!guide?.active) { res.status(400).json({ error: 'Guide is unavailable' }); return; }
+    res.json(await generateSample(guide[lang].greeting, guide.id, lang, req.user.userId));
   } catch (error) {
     console.error('generateVoiceSample', error);
     res.status(500).json({ error: 'Voice sample failed' });

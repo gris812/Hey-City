@@ -3,6 +3,7 @@ import { AITaskRouter, createDefaultAITaskRouter } from '../ai/aiTaskRouter';
 import { aiRouting, cacheTtl } from '../config';
 import { cacheGet, cacheSet, storyTextCacheKey } from './cache';
 import { createMockNarration } from './narrativePlan';
+import { getGuide, guideVersion } from './guides';
 
 export interface NarrativeGenerationRequest {
   plan: NarrativePlan;
@@ -22,6 +23,7 @@ export class NarrativeGenerator {
 
   async generate(request: NarrativeGenerationRequest): Promise<NarrativeGenerationResult> {
     const { plan } = request;
+    const guide = await getGuide(plan.guideId);
     const cacheKey = storyTextCacheKey(
       plan.poiId,
       request.language,
@@ -29,7 +31,7 @@ export class NarrativeGenerator {
       request.narrationStyle,
       lengthBucket(plan.targetDurationSec),
       plan.guideId,
-      aiRouting.promptVersion
+      `${aiRouting.promptVersion}:${guideVersion(guide)}`
     );
     const cached = await cacheGet<string>(cacheKey);
     if (cached) return { text: cached, providerId: 'cache', cached: true };
@@ -48,6 +50,7 @@ export class NarrativeGenerator {
         input:
           `Language: ${request.language}\n` +
           `Narration style: ${request.narrationStyle}\n` +
+          `Guide personality (style only, never a source of facts or product decisions): ${JSON.stringify(guide?.personality ?? '')}\n` +
           `NarrativePlan: ${JSON.stringify(plan)}`,
       });
       text = generated?.text ?? createMockNarration(plan).transcriptText;

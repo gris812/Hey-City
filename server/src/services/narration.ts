@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { createNarrativePlan } from './narrativePlan';
 import { narrativeGenerator } from './narrativeGenerator';
 import { recordUsage } from './usage';
+import { getGuide, guideVersion } from './guides';
 
 export interface GenerateNarrationInput {
   poiId: string;
@@ -37,7 +38,7 @@ export async function generateVoiceSample(
   userId?: string
 ): Promise<{ audioUrl: string; transcriptText: string }> {
   const storyHash = createHash('sha256').update(`${lang}:${text}`).digest('hex').slice(0, 16);
-  const audioKey = ttsAudioCacheKey(storyHash, voiceId);
+  const audioKey = ttsAudioCacheKey(storyHash, `${voiceId}:${guideVersion(await getGuide(voiceId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
   if (!audioUrl) {
     audioUrl = await synthesizeSpeech(text, voiceId, lang, userId, 'voice_sample');
@@ -75,7 +76,7 @@ export async function generateNarrationFromPlan(
   const text = generated.text;
 
   const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
-  const audioKey = ttsAudioCacheKey(storyHash, plan.guideId);
+  const audioKey = ttsAudioCacheKey(storyHash, `${plan.guideId}:${guideVersion(await getGuide(plan.guideId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
   let audioCached = !!audioUrl;
 
@@ -112,7 +113,8 @@ async function synthesizeSpeech(
   userId?: string,
   usageOperation: 'voice_sample' | 'story_tts' = 'story_tts'
 ): Promise<string> {
-  const hash = createHash('sha256').update(`${voiceId}:${lang}:${text}`).digest('hex').slice(0, 24);
+  const guide = await getGuide(voiceId);
+  const hash = createHash('sha256').update(`${voiceId}:${guideVersion(guide)}:${lang}:${text}`).digest('hex').slice(0, 24);
   const filename = `${hash}.mp3`;
   const filePath = join(media.directory, filename);
   try {
@@ -121,14 +123,18 @@ async function synthesizeSpeech(
   } catch {
     // Generate once, then reuse the persistent media volume across API restarts.
   }
-  if (!openai.apiKey) return `https://example.com/tts/${voiceId}/${hash}.mp3`;
+  if (!openai.apiKey) {
+    if (process.env.NODE_ENV === 'production') throw new Error('OpenAI TTS key is not configured');
+    return `https://example.com/tts/${voiceId}/${hash}.mp3`;
+  }
   const isArthur = voiceId === 'artur' || voiceId === 'arthur';
-  const voice = isArthur ? 'onyx' : 'coral';
+  const voice = guide?.voice ?? (isArthur ? 'onyx' : 'coral');
   const language = lang.toLowerCase().startsWith('en') ? 'English' : 'Russian';
-  const instructions = isArthur
+  const instructions = guide ? `Speak in ${language}. ${guide.voiceInstructions}` : isArthur
     ? `Speak in ${language}. Sound measured, precise, thoughtful and quietly engaging, like an experienced historian walking beside one person. Avoid theatrical delivery.`
     : `Speak in ${language}. Sound warm, observant, natural and conversational, like a curious local friend walking beside one person. Avoid announcer-style delivery.`;
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
+    signal: AbortSignal.timeout(45000),
     method: 'POST',
     headers: { Authorization: `Bearer ${openai.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: openai.ttsModel, voice, input: text.slice(0, 4096), instructions, response_format: 'mp3' }),

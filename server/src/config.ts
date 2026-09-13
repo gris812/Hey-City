@@ -50,7 +50,7 @@ export const production = {
 export const auth = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   fromEmail: process.env.AUTH_FROM_EMAIL || 'Hey City <login@heycity.stolbergco.com>',
-  adminEmail: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
+  adminEmail: 'slepak@stolbergco.com',
   adminCode: process.env.ADMIN_AUTH_CODE || '',
   otpPepper: process.env.OTP_PEPPER || '',
   testerAllowlist: (process.env.TESTER_EMAIL_ALLOWLIST || '')
@@ -126,6 +126,14 @@ export function getAheadDiscoveryConfig(env: NodeJS.ProcessEnv = process.env) {
     movementRefreshMeters: num('AHEAD_DISCOVERY_MOVEMENT_REFRESH_M', 3000),
     movementRefreshSeconds: num('AHEAD_DISCOVERY_MOVEMENT_REFRESH_SECONDS', 180),
     knowledgeTimeoutMs: num('DISCOVERY_KNOWLEDGE_TIMEOUT_MS', 5000),
+    walkingHeadingThresholdKmh: num('DISCOVERY_WALKING_HEADING_THRESHOLD_KMH', 10),
+    highwayThresholdMps: float('DISCOVERY_HIGHWAY_THRESHOLD_MPS', 17.88),
+    searchProfiles: {
+      walking: { id: 'walking', radiusMeters: 3000, projectionMeters: 0, headingLimit: 180, rankPreference: 'DISTANCE' as const },
+      urban: { id: 'urban_drive', radiusMeters: 6000, projectionMeters: 1500, headingLimit: 110, rankPreference: 'DISTANCE' as const },
+      highway: { id: 'highway', radiusMeters: 14000, projectionMeters: 8000, headingLimit: 75, rankPreference: 'POPULARITY' as const },
+    },
+    nearbyOmnidirectionalMeters: num('DISCOVERY_NEARBY_OMNIDIRECTIONAL_M', 150),
     knowledgeCacheSeconds: num('DISCOVERY_KNOWLEDGE_CACHE_SECONDS', 86400),
     knowledgeCandidateLimit: num('DISCOVERY_KNOWLEDGE_CANDIDATE_LIMIT', 3),
     knowledgeMinChars: num('DISCOVERY_KNOWLEDGE_MIN_CHARS', 160),

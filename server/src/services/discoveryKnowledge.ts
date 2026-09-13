@@ -2,12 +2,13 @@ import type { DiscoveryCandidate } from '@heycity/shared';
 import { aheadDiscovery } from '../config';
 import { cacheGet, cacheSet } from './cache';
 import { distanceMeters } from './geo';
+import { recordUsage } from './usage';
 
 const pending = new Map<string, Promise<string | null>>();
 
 /** Exact-title lookup with redirects and coordinate validation; never invent a seed from a name. */
 export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise<string | null> {
-  const key = `discovery-knowledge:v1:${candidate.providerId}`;
+  const key = `discovery-knowledge:v2:${candidate.providerId}`;
   const cached = await cacheGet<{ seed: string | null }>(key);
   if (cached) return cached.seed;
   if (pending.has(key)) return pending.get(key)!;
@@ -34,8 +35,32 @@ export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise
         seed = `Category: ${candidate.targetType}. Source: https://en.wikipedia.org/?curid=${page.pageid} (Wikipedia, CC BY-SA).\n${page.extract.slice(0, aheadDiscovery.knowledgeMaxChars)}`;
         break;
       }
+      if (!seed) {
+        // A Google display name is often not the encyclopedia's page title.
+        // Search only around the candidate and require both name and coordinates.
+        url.searchParams.delete('titles');
+        url.searchParams.set('generator', 'geosearch');
+        url.searchParams.set('ggscoord', `${candidate.latitude}|${candidate.longitude}`);
+        url.searchParams.set('ggsradius', String(Math.min(10000, aheadDiscovery.knowledgeMatchRadiusMeters)));
+        url.searchParams.set('ggslimit', '10');
+        const nearby = await fetch(url, { signal: AbortSignal.timeout(aheadDiscovery.knowledgeTimeoutMs), headers: { 'User-Agent': 'HeyCity/0.1 (https://heycity.stolbergco.com)' } });
+        if (!nearby.ok) throw new Error('knowledge_unavailable');
+        const nearbyData = await nearby.json() as typeof data;
+        const words = (name: string) => new Set(name.toLowerCase().replace(/\bst[.]?\b/g, 'saint').replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(w => w.length > 2 && !['the', 'and', 'of'].includes(w)));
+        const wanted = words(candidate.name.split(',')[0]);
+        for (const page of Object.values(nearbyData.query?.pages ?? {})) {
+          const coord = page.coordinates?.[0]; const titleWords = words(page.title ?? '');
+          const match = [...wanted].filter(w => titleWords.has(w)).length / Math.max(wanted.size, titleWords.size, 1);
+          if (!coord || !page.pageid || page.pageprops?.disambiguation !== undefined || !page.extract || page.extract.length < aheadDiscovery.knowledgeMinChars || match < 0.6) continue;
+          if (distanceMeters(candidate.latitude, candidate.longitude, coord.lat, coord.lon) > aheadDiscovery.knowledgeMatchRadiusMeters) continue;
+          seed = `Category: ${candidate.targetType}. Source: https://en.wikipedia.org/?curid=${page.pageid} (Wikipedia, CC BY-SA).\n${page.extract.slice(0, aheadDiscovery.knowledgeMaxChars)}`;
+          break;
+        }
+      }
+      await recordUsage({ category: 'product', operation: seed ? 'knowledge_matched' : 'knowledge_no_match' });
       await cacheSet(key, { seed }, aheadDiscovery.knowledgeCacheSeconds);
     } catch {
+      await recordUsage({ category: 'product', operation: 'knowledge_provider_error' });
       await cacheSet(key, { seed: null }, aheadDiscovery.providerErrorBackoffSeconds);
     }
     return seed;

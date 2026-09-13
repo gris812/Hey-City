@@ -1,8 +1,9 @@
 import { databaseEnabled, query } from './database';
+import { requestContext } from './requestContext';
 
 export interface UsageEvent {
   userId?: string;
-  category: 'auth' | 'google_maps' | 'openai_text' | 'openai_tts' | 'product';
+  category: 'auth' | 'google_maps' | 'openai_text' | 'openai_tts' | 'ai' | 'product';
   operation: string;
   quantity?: number;
   inputTokens?: number;
@@ -14,6 +15,7 @@ export interface UsageEvent {
 const memoryEvents: Array<UsageEvent & { createdAt: string }> = [];
 
 export async function recordUsage(event: UsageEvent): Promise<void> {
+  event = { ...event, userId: event.userId ?? requestContext.getStore()?.userId };
   if (!databaseEnabled()) {
     memoryEvents.push({ ...event, createdAt: new Date().toISOString() });
     return;
@@ -45,7 +47,8 @@ export async function adminSummary(days = 30): Promise<Record<string, unknown>> 
      FROM usage_events WHERE created_at >= now() - ($1 * interval '1 day')
      GROUP BY category, operation ORDER BY category, operation`, [days]
   );
-  return { periodDays: days, users: Number(users?.total ?? 0), activeUsers: Number(users?.active ?? 0), totals };
+  const [unassigned] = await query<{ cost: string }>(`SELECT coalesce(sum(estimated_cost_usd),0)::text AS cost FROM usage_events WHERE user_id IS NULL AND created_at >= now()-($1*interval '1 day')`, [days]);
+  return { periodDays: days, users: Number(users?.total ?? 0), activeUsers: Number(users?.active ?? 0), totals, unassignedCostUsd: Number(unassigned?.cost ?? 0) };
 }
 
 export async function adminUsers(limit = 100): Promise<unknown[]> {

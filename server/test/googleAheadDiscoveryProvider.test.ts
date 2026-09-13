@@ -125,10 +125,12 @@ async function run() {
   assert.equal(deniedCalls, 1, 'access failure blocks area requests across cells');
 
   global.fetch = (async () => ({ ok: false, status: 429, json: async () => ({}) }) as Response) as typeof fetch;
+  const partial = await googleAheadDiscoveryProvider.searchAhead({ movement, projectedPoint: { latitude: 40.9, longitude: -88.65 }, radiusMeters: 12000, limit: 10 });
+  assert(partial.some(c => c.providerId === 'settlement-1'), 'cached city remains usable when Places fails');
   await assert.rejects(
     () =>
       googleAheadDiscoveryProvider.searchAhead({
-        movement,
+        movement: { ...movement, latitude: 44, longitude: -84 },
         projectedPoint: { latitude: 40.9, longitude: -88.65 },
         radiusMeters: 12000,
         limit: 10,

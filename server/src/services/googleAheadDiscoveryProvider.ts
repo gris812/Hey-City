@@ -8,6 +8,7 @@ import { normalizeTargetType } from './aheadDiscoveryFiltering';
 import { aheadDiscoveryCacheKey, cacheGet, cacheSet } from './cache';
 import { encodeGeohash } from './geo';
 import { recordUsage } from './usage';
+import { discoverySearchProfile } from './discoverySearchProfile';
 
 type GooglePlace = {
   id?: string;
@@ -39,7 +40,7 @@ async function cachedOperation(key: string, operation: string, ttl: number,
     } catch (error) {
       const code = (error as Error).message;
       await cacheSet(`failed:${key}`, code, aheadDiscovery.providerErrorBackoffSeconds);
-      if (/http_40[13]|REQUEST_DENIED|quota_or_rate_limit/.test(code)) {
+      if (/http_40[13]|REQUEST_DENIED|quota_or_rate_limit|api_key_expired/.test(code)) {
         await cacheSet(`blocked:${operation}`, code, aheadDiscovery.providerErrorBackoffSeconds);
       }
       await recordUsage({ category: 'product', operation: `${operation}_error`, metadata: { code } });
@@ -125,23 +126,29 @@ export const googleAheadDiscoveryProvider: DiscoveryDataProvider = {
       input.projectedPoint.longitude,
       7
     );
-    const cacheKey = `${aheadDiscoveryCacheKey(geohash, input.radiusMeters, input.limit)}:at:${encodeGeohash(input.movement.latitude, input.movement.longitude, aheadDiscovery.areaCachePrecision)}`;
+    const cacheKey = `${aheadDiscoveryCacheKey(geohash, input.radiusMeters, input.limit)}:profile:${discoverySearchProfile(input.movement).id}:at:${encodeGeohash(input.movement.latitude, input.movement.longitude, aheadDiscovery.areaCachePrecision)}`;
     const cached = await cacheGet<ProviderDiscoveryCandidate[]>(cacheKey);
     if (cached) return cached;
 
-    const [settlements, places] = await Promise.all([
+    const operations = await Promise.allSettled([
       cachedOperation(`area-current:${encodeGeohash(input.movement.latitude, input.movement.longitude, aheadDiscovery.areaCachePrecision)}`,
         'reverse_geocoding', aheadDiscovery.areaCacheTtlSeconds, () => searchGeocodedSettlements(input)),
       cachedOperation(`places:${cacheKey}`, 'places_nearby_new', aheadDiscovery.providerCacheTtlSeconds,
         () => searchPlacesNew(input)),
     ]);
 
+    if (operations.every(result => result.status === 'rejected')) throw (operations[1] as PromiseRejectedResult).reason;
     const byId = new Map<string, ProviderDiscoveryCandidate>();
-    for (const candidate of [...settlements, ...places]) {
+    for (const candidate of operations.flatMap(result => result.status === 'fulfilled' ? result.value : [])) {
       byId.set(candidate.providerId, candidate);
     }
     const results = [...byId.values()].slice(0, input.limit);
-    await cacheSet(cacheKey, results, aheadDiscovery.providerCacheTtlSeconds);
+    if (!results.length) {
+      const failed = operations.find(result => result.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (failed) throw failed.reason;
+    }
+    // Do not cache a partial response beyond the failed operation's retry window.
+    if (operations.every(result => result.status === 'fulfilled')) await cacheSet(cacheKey, results, aheadDiscovery.providerCacheTtlSeconds);
     return results;
   },
 };
@@ -181,6 +188,7 @@ async function searchGeocodedSettlements(
 
 async function searchPlacesNew(input: SearchAheadInput): Promise<ProviderDiscoveryCandidate[]> {
   const body = {
+    rankPreference: discoverySearchProfile(input.movement).rankPreference,
     includedTypes: [
       'historical_landmark',
       'cultural_landmark',

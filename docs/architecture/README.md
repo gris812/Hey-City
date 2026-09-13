@@ -21,6 +21,7 @@ These documents are intended for:
 9. `09-repository-structure.md`
 10. `10-provider-integration.md`
 11. `11-cost-control.md`
+12. `12-field-discovery-and-guide-admin.md` — current field search profiles, persistent guide catalogue and account analytics.
 
 ## Codex instruction
 

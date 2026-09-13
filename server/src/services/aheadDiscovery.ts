@@ -5,6 +5,7 @@ import { createCandidateGeometry, deriveHeadingFromMovement, projectedSearchPoin
 import { filterAheadCandidates } from './aheadDiscoveryFiltering';
 import { chooseBestCandidate, scoreCandidate } from './aheadDiscoveryScoring';
 import { googleAheadDiscoveryProvider } from './googleAheadDiscoveryProvider';
+import { discoverySearchProfile } from './discoverySearchProfile';
 import type { DiscoveryCandidate, DiscoveryDataProvider, ProviderDiscoveryCandidate } from './aheadDiscoveryTypes';
 
 type AheadDiscoverySessionState = {
@@ -155,7 +156,7 @@ async function refreshProviderCandidates(
     state.candidates = await provider.searchAhead({
       movement,
       projectedPoint: projectedSearchPoint(movement),
-      radiusMeters: aheadDiscovery.searchRadiusMeters,
+      radiusMeters: discoverySearchProfile(movement).radiusMeters,
       limit: aheadDiscovery.providerLimit,
     });
     state.lastRefreshedAtMs = nowMs;
@@ -191,6 +192,8 @@ function evaluateCandidateSet(input: {
   // A current-city context is relevant even when its centre is behind the user.
   for (const candidate of candidates) {
     if (candidate.targetType === 'city' && candidate.distanceMeters <= aheadDiscovery.cityContextRadiusMeters) candidate.isAhead = true;
+    // Nearby discovery must still work while stationary or walking past an entrance.
+    if ((input.movement.speedMps ?? 0) * 3.6 < aheadDiscovery.walkingHeadingThresholdKmh || candidate.distanceMeters <= aheadDiscovery.nearbyOmnidirectionalMeters) candidate.isAhead = true;
   }
   const filtered = filterAheadCandidates(candidates);
 
@@ -258,7 +261,7 @@ function evaluateCandidateSet(input: {
         ...createCandidateGeometry(input.movement, input.state.selectedTarget),
       }
     : undefined;
-  const selection = chooseBestCandidate(filtered.included, currentTarget);
+  const selection = chooseBestCandidate(filtered.included, currentTarget, input.movement);
   if (!selection.selected) {
     logAheadDiscovery('ahead_discovery_hold', {
       sessionId: input.sessionId,
@@ -342,8 +345,12 @@ function createDiagnostic(input: {
     includedCandidateCount: included.length,
     excludedCandidateCount: excluded.length,
     exclusionReasonsSummary: input.filtered?.summary ?? {},
+    nearbyCandidates: filterAheadCandidates(input.state.candidates.map(candidate => ({
+      ...candidate, ...createCandidateGeometry(input.movement, candidate), isAhead: true,
+    }))).included.filter(c => c.distanceMeters <= aheadDiscovery.targetDistanceMaxM)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 8),
     topCandidates: included
-      .map((candidate) => scoreCandidate(candidate, input.state.selectedTarget?.providerId))
+      .map((candidate) => scoreCandidate(candidate, input.state.selectedTarget?.providerId, input.movement))
       .sort((a, b) => Number(b.candidate.targetType === 'city') - Number(a.candidate.targetType === 'city') || b.score - a.score)
       .slice(0, 5)
       .map((item) => ({ ...item.candidate, score: item.score, reasons: item.reasons })),

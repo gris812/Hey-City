@@ -10,6 +10,7 @@ import { driveRouter } from './routes/drive';
 import { healthRouter } from './routes/health';
 import { meRouter } from './routes/me';
 import { narrationRouter } from './routes/narration';
+import { listGuides } from './services/guides';
 
 export function createApp(): express.Express {
   const app = express();
@@ -38,6 +39,10 @@ export function createApp(): express.Express {
   });
 
   app.use('/health', healthRouter);
+  app.get('/guides', async (_req, res, next) => {
+    try { res.setHeader('Cache-Control', 'no-store'); res.json({ guides: (await listGuides()).map(({ personality, voiceInstructions, ...guide }) => guide) }); }
+    catch (error) { next(error); }
+  });
   app.use('/auth', authRouter);
   app.use('/admin', adminRouter);
   app.use('/usage', usageRouter);

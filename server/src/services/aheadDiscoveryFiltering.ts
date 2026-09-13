@@ -43,7 +43,9 @@ const typeMap: Array<{ targetType: AheadDiscoveryTargetType; googleTypes: string
 ];
 
 export function normalizeTargetType(providerTypes: string[]): AheadDiscoveryTargetType | null {
-  if (providerTypes.some((type) => denyTypes.has(type))) return null;
+  // Museums and landmarks can also have shops/cafes. Their cultural type wins.
+  const cultural = ['museum', 'historical_landmark', 'cultural_landmark', 'monument', 'national_park'];
+  if (providerTypes.some((type) => denyTypes.has(type)) && !providerTypes.some(type => cultural.includes(type))) return null;
   for (const item of typeMap) {
     if (providerTypes.some((type) => item.googleTypes.includes(type))) {
       return item.targetType;
@@ -54,7 +56,7 @@ export function normalizeTargetType(providerTypes: string[]): AheadDiscoveryTarg
 
 export function exclusionReason(candidate: DiscoveryCandidate): string | null {
   if (!candidate.isAhead) return 'behind_user';
-  if (candidate.providerTypes.some((type) => denyTypes.has(type))) return 'excluded_commercial_type';
+  if (candidate.providerTypes.some((type) => denyTypes.has(type)) && !normalizeTargetType(candidate.providerTypes)) return 'excluded_commercial_type';
   if (!normalizeTargetType(candidate.providerTypes)) return 'ambiguous_or_not_allowed';
   return null;
 }

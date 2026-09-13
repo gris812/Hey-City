@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
+const testWindows = [];
+function makeDom(...args) { const dom = new JSDOM(...args); testWindows.push(dom.window); return dom; }
+
 const source = await readFile(new URL('./app.js', import.meta.url), 'utf8');
 
 function response(body, ok = true) {
@@ -14,7 +17,7 @@ async function settle() {
 }
 
 async function testLoginAndNavigation() {
-  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
   let stoppedWatches = 0;
   let voiceSampleRequest = null;
   let mapConstructions = 0;
@@ -131,7 +134,7 @@ async function testLoginAndNavigation() {
 }
 
 async function testAdminDashboard() {
-  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/admin', runScripts: 'dangerously' });
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/admin', runScripts: 'dangerously' });
   dom.window.HTMLMediaElement.prototype.play = async () => {};
   dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.sessionStorage.setItem('heyCityToken', 'admin-token');
@@ -168,7 +171,7 @@ async function testMapConfiguration() {
 }
 
 async function testDelayedMapsCallback() {
-  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
   dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.localStorage.setItem('heyCityToken', 'test-token');
   dom.window.localStorage.setItem('heyCityUser', JSON.stringify({ id: 'test', role: 'user' }));
@@ -194,7 +197,7 @@ async function testDelayedMapsCallback() {
 }
 
 async function testLocationRecovery() {
-  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
   dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.localStorage.setItem('heyCityToken', 'test');
   dom.window.localStorage.setItem('heyCityUser', JSON.stringify({ id: 'test', role: 'user' }));
@@ -246,7 +249,7 @@ async function testLocationRecovery() {
 }
 
 async function testExpiredLoginRecovery() {
-  const dom = new JSDOM('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
   dom.window.HTMLMediaElement.prototype.pause = () => {};
   dom.window.localStorage.setItem('heyCityToken', 'expired');
   dom.window.localStorage.setItem('heyCityUser', JSON.stringify({ email: 'tester@example.com', role: 'user' }));
@@ -289,10 +292,35 @@ async function testExpiredLoginRecovery() {
   watch({ coords: { ...fix.coords, latitude: 42.001 } });
   await settle();
   assert.equal(center.lat, 42.001, 'watch moves marker without another button click');
-  assert.equal(contexts, 2);
+  assert.equal(contexts, 1, 'rapid GPS fixes move the marker without another API call');
   dom.window.close();
 }
 
+async function testCatalogUnitsAndCompass() {
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  dom.window.HTMLMediaElement.prototype.pause = () => {};
+  dom.window.HTMLMediaElement.prototype.play = async () => {};
+  const seeds = JSON.parse(await readFile(new URL('../server/src/services/guideSeeds.json', import.meta.url), 'utf8'));
+  const third = { ...seeds[0], id: 'third', ru: { ...seeds[0].ru, name: '<Test>' } };
+  dom.window.fetch = async url => response(url.endsWith('/guides') ? { guides: [...seeds, third] } : {});
+  dom.window.eval(source + "\nwindow.inspectApp = expression => eval(expression);");
+  await settle();
+  assert.equal(dom.window.inspectApp('Object.keys(guides).length'), 3, 'catalog supports more than two guides');
+  dom.window.inspectApp("state.units='mi'; state.speedKmh=80.4672");
+  assert.match(dom.window.inspectApp('movementMetaLabel()'), /50/);
+  assert.match(dom.window.inspectApp('displayDistance(1609.344)'), /1.0/);
+  dom.window.inspectApp("state.guide='third'; openGuideProfile('third')");
+  assert(dom.window.document.body.textContent.includes('<Test>'), 'guide copy is text, not HTML');
+  const headings = [];
+  dom.window.mapStub = { setHeading: n => headings.push(n), getRenderingType: () => 'VECTOR' };
+  dom.window.inspectApp("state.map=window.mapStub; state.heading=90; state.mapOrientation='course'; applyMapOrientation()");
+  assert.equal(headings.at(-1), 90);
+  dom.window.inspectApp("state.mapOrientation='north'; applyMapOrientation()");
+  assert.equal(headings.at(-1), 0);
+  dom.window.close();
+}
+
+await testCatalogUnitsAndCompass();
 await testExpiredLoginRecovery();
 await testLocationRecovery();
 await testDelayedMapsCallback();
@@ -300,3 +328,5 @@ await testLoginAndNavigation();
 await testAdminDashboard();
 await testMapConfiguration();
 console.log('web smoke tests passed');
+
+testWindows.forEach(window => window.close());

@@ -15,6 +15,19 @@ export async function query<T extends QueryResultRow>(text: string, values: unkn
   return result.rows;
 }
 
+export async function transaction<T>(work: (run: typeof query) => Promise<T>): Promise<T> {
+  if (!pool) throw new Error('Database is not configured');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const run: typeof query = async (sql, values = []) => (await client.query(sql, values)).rows;
+    const value = await work(run);
+    await client.query('COMMIT');
+    return value;
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
 export async function initializeDatabase(): Promise<void> {
   if (!pool) {
     if (server.nodeEnv === 'production') throw new Error('DATABASE_URL is required in production');
@@ -64,9 +77,24 @@ export async function initializeDatabase(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS usage_events_created_idx ON usage_events(created_at DESC);
     CREATE INDEX IF NOT EXISTS usage_events_user_idx ON usage_events(user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS guides (
+      id text PRIMARY KEY, document jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS selected_guide_id text;
+    CREATE TABLE IF NOT EXISTS activity_state (
+      user_id text PRIMARY KEY, client_id text NOT NULL, guide_id text NOT NULL,
+      last_at timestamptz NOT NULL, active boolean NOT NULL, listening boolean NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS activity_daily (
+      user_id text NOT NULL, day date NOT NULL, guide_id text NOT NULL,
+      active_seconds numeric NOT NULL DEFAULT 0, listening_seconds numeric NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day, guide_id)
+    );
+    ALTER TABLE activity_state ADD COLUMN IF NOT EXISTS listening_guide_id text;
   `);
   await pool.query("DELETE FROM otp_challenges WHERE expires_at < now()");
   await pool.query("DELETE FROM usage_events WHERE created_at < now() - ($1 * interval '1 day')", [privacy.usageRetentionDays]);
+  await pool.query("DELETE FROM activity_daily WHERE day < (now() AT TIME ZONE 'UTC')::date - $1::int", [privacy.usageRetentionDays]);
 }
 
 export async function closeDatabase(): Promise<void> {
