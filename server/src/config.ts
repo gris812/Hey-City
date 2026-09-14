@@ -274,6 +274,11 @@ export const aiRouting = {
 };
 
 export const media = {
+  progressiveSpeech: process.env.PROGRESSIVE_SPEECH !== 'false',
+  speechTimeoutMs: num('SPEECH_TIMEOUT_MS', 45000),
+  maxSpeechJobs: num('MAX_SPEECH_JOBS', 8),
+  maxSpeechBytes: num('MAX_SPEECH_BYTES', 8 * 1024 * 1024),
+  speechFailureRetentionMs: num('SPEECH_FAILURE_RETENTION_MS', 30000),
   directory: process.env.MEDIA_DIRECTORY || './data/media',
   publicApiUrl: (process.env.PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, ''),
 };

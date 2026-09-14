@@ -11,6 +11,7 @@ import { createNarrativePlan } from './narrativePlan';
 import { narrativeGenerator } from './narrativeGenerator';
 import { recordUsage } from './usage';
 import { getGuide, guideVersion } from './guides';
+import { ProgressiveAudio } from './progressiveAudio';
 
 export interface GenerateNarrationInput {
   poiId: string;
@@ -38,7 +39,7 @@ export async function generateVoiceSample(
   userId?: string
 ): Promise<{ audioUrl: string; transcriptText: string }> {
   const storyHash = createHash('sha256').update(`${lang}:${text}`).digest('hex').slice(0, 16);
-  const audioKey = ttsAudioCacheKey(storyHash, `${voiceId}:${guideVersion(await getGuide(voiceId))}`);
+  const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${voiceId}:${guideVersion(await getGuide(voiceId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
   if (!audioUrl) {
     audioUrl = await synthesizeSpeech(text, voiceId, lang, userId, 'voice_sample');
@@ -76,14 +77,21 @@ export async function generateNarrationFromPlan(
   const text = generated.text;
 
   const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
-  const audioKey = ttsAudioCacheKey(storyHash, `${plan.guideId}:${guideVersion(await getGuide(plan.guideId))}`);
+  const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${input.language}:${plan.guideId}:${guideVersion(await getGuide(plan.guideId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
   let audioCached = !!audioUrl;
 
   if (!audioUrl) {
     try {
-      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts');
-      await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 24 * 60 * 60);
+      // Return after the first audio bytes, not after the entire MP3 has arrived.
+      // Only completed speech is persisted; an in-flight URL must not enter this cache.
+      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts', media.progressiveSpeech);
+      const completion = pendingSpeech.get(audioUrl.split('/').pop()!)?.completion;
+      if (completion) {
+        void completion.then(url => cacheSet(audioKey, url, cacheTtl.ttsAudioDays * 86400)).catch(() => {});
+      } else {
+        await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 86400);
+      }
     } catch (error) {
       console.warn('TTS provider failed; returning text-only narration', error);
       audioUrl = '';
@@ -106,26 +114,51 @@ export async function generateNarrationFromPlan(
   };
 }
 
-const pendingSpeech = new Map<string, Promise<string>>();
+const pendingSpeech = new Map<string, { audio: ProgressiveAudio; completion: Promise<string> }>();
+export function pendingSpeechAudio(filename: string): ProgressiveAudio | undefined {
+  return pendingSpeech.get(filename)?.audio;
+}
 async function synthesizeSpeech(text: string, voiceId: string, lang: string, userId?: string,
-  usageOperation: 'voice_sample' | 'story_tts' = 'story_tts'): Promise<string> {
-  const key = createHash('sha256').update(`${voiceId}:${guideVersion(await getGuide(voiceId))}:${lang}:${text}`).digest('hex');
-  const existing = pendingSpeech.get(key);
-  if (existing) return existing;
-  const task = synthesizeSpeechOnce(text, voiceId, lang, userId, usageOperation);
-  pendingSpeech.set(key, task);
-  try { return await task; } finally { pendingSpeech.delete(key); }
+  usageOperation: 'voice_sample' | 'story_tts' = 'story_tts', progressive = false): Promise<string> {
+  const guide = await getGuide(voiceId);
+  const hash = createHash('sha256').update(`${openai.ttsModel}:${voiceId}:${guideVersion(guide)}:${lang}:${text}`).digest('hex').slice(0,24);
+  const filename = `${hash}.mp3`;
+  const url = `${media.publicApiUrl}/media/${filename}`;
+  let job = pendingSpeech.get(filename);
+  if (!job) {
+    try { await access(join(media.directory, filename)); return url; } catch { /* cache miss */ }
+    // Re-check after asynchronous disk access: concurrent callers must share one job.
+    job = pendingSpeech.get(filename);
+    if (!job) {
+      if (pendingSpeech.size >= media.maxSpeechJobs) throw new Error('Speech capacity reached');
+      const audio = new ProgressiveAudio(media.maxSpeechBytes);
+      const completion = synthesizeSpeechOnce(text, voiceId, lang, userId, usageOperation, guide, hash, audio);
+      job = { audio, completion };
+      pendingSpeech.set(filename, job);
+      void completion.then(() => {
+        audio.finish(); pendingSpeech.delete(filename);
+      }, () => {
+        // Keep failed streams briefly, so a late browser GET receives an error, not partial media.
+        audio.finish(new Error('Speech generation failed'));
+        const timer = setTimeout(() => pendingSpeech.delete(filename), media.speechFailureRetentionMs);
+        timer.unref();
+      });
+    }
+  }
+  if (progressive && openai.apiKey) { await job.audio.ready; return url; }
+  return job.completion;
 }
 
 async function synthesizeSpeechOnce(
   text: string,
   voiceId: string,
   lang: string,
-  userId?: string,
-  usageOperation: 'voice_sample' | 'story_tts' = 'story_tts'
+  userId: string | undefined,
+  usageOperation: 'voice_sample' | 'story_tts',
+  guide: Awaited<ReturnType<typeof getGuide>>,
+  hash: string,
+  audio: ProgressiveAudio
 ): Promise<string> {
-  const guide = await getGuide(voiceId);
-  const hash = createHash('sha256').update(`${voiceId}:${guideVersion(guide)}:${lang}:${text}`).digest('hex').slice(0, 24);
   const filename = `${hash}.mp3`;
   const filePath = join(media.directory, filename);
   try {
@@ -144,15 +177,25 @@ async function synthesizeSpeechOnce(
   const instructions = guide ? `Speak in ${language}. ${guide.voiceInstructions}` : isArthur
     ? `Speak in ${language}. Sound measured, precise, thoughtful and quietly engaging, like an experienced historian walking beside one person. Avoid theatrical delivery.`
     : `Speak in ${language}. Sound warm, observant, natural and conversational, like a curious local friend walking beside one person. Avoid announcer-style delivery.`;
+  const startedAt = Date.now();
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(media.speechTimeoutMs),
     method: 'POST',
     headers: { Authorization: `Bearer ${openai.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: openai.ttsModel, voice, input: text.slice(0, 4096), instructions, response_format: 'mp3' }),
   });
   if (!response.ok) throw new Error(`OpenAI TTS error: ${response.status} ${(await response.text()).slice(0, 300)}`);
   await mkdir(media.directory, { recursive: true });
-  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!response.body) throw new Error('OpenAI TTS returned no stream');
+  const chunks: Buffer[] = [];
+  for await (const chunk of response.body) {
+    const bytes = Buffer.from(chunk);
+    if (!bytes.length) continue;
+    audio.append(bytes);
+    if (!chunks.length) console.info(JSON.stringify({ event: 'speech_first_byte', elapsedMs: Date.now() - startedAt }));
+    chunks.push(bytes);
+  }
+  const bytes = Buffer.concat(chunks);
   if (!bytes.length) throw new Error('OpenAI TTS returned empty audio');
   const tempPath = `${filePath}.${Date.now()}.tmp`;
   try { await writeFile(tempPath, bytes); await rename(tempPath, filePath); }
@@ -161,7 +204,10 @@ async function synthesizeSpeechOnce(
   const outputTokens = Math.ceil((text.length / 14) * 20);
   await recordUsage({ userId, category: 'openai_tts', operation: usageOperation, inputTokens, outputTokens,
     estimatedCostUsd: inputTokens / 1e6 * openai.ttsInputUsdPerMillion + outputTokens / 1e6 * openai.ttsOutputUsdPerMillion,
-    metadata: { estimate: true, model: openai.ttsModel } });
+    metadata: { estimate: true, model: openai.ttsModel } }).catch(() => {
+      console.warn('Speech usage recording failed');
+    });
+  console.info(JSON.stringify({ event: 'speech_complete', elapsedMs: Date.now() - startedAt, bytes: bytes.length }));
   return `${media.publicApiUrl}/media/${filename}`;
 }
 

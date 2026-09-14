@@ -11,6 +11,7 @@ import { healthRouter } from './routes/health';
 import { meRouter } from './routes/me';
 import { narrationRouter } from './routes/narration';
 import { listGuides } from './services/guides';
+import { progressiveSpeech } from './middleware/progressiveSpeech';
 
 export function createApp(): express.Express {
   const app = express();
@@ -26,7 +27,7 @@ export function createApp(): express.Express {
     // Audio is intentionally consumed by the WebApp on a sibling origin.
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
-  }, express.static(media.directory, { maxAge: '30d', immutable: true }));
+  }, progressiveSpeech, express.static(media.directory, { maxAge: '30d', immutable: true }));
 
   app.get('/', (_req, res) => {
     res.json({

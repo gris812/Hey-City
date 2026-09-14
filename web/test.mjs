@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
 const testWindows = [];
-function makeDom(...args) { const dom = new JSDOM(...args); testWindows.push(dom.window); dom.window.HTMLMediaElement.prototype.play = async () => {}; dom.window.HTMLMediaElement.prototype.pause = () => {}; return dom; }
+function makeDom(...args) { const dom = new JSDOM(...args); testWindows.push(dom.window); dom.window.HTMLMediaElement.prototype.play = async () => {}; dom.window.HTMLMediaElement.prototype.pause = () => {}; dom.window.HTMLMediaElement.prototype.load = () => {}; return dom; }
 
 const source = await readFile(new URL('./app.js', import.meta.url), 'utf8');
 
@@ -115,6 +115,7 @@ async function testLoginAndNavigation() {
   assert.match(dom.window.document.body.textContent, /22 км\/ч/);
   dom.window.document.querySelector('#stop-walk').click();
   assert.equal(stoppedWatches, 1);
+  assert.equal(audioElements[0].getAttribute('src'), null, 'ending detaches the old audio stream');
   dom.window.document.querySelector('[data-tab="settings"]').click();
   await settle();
   dom.window.document.querySelector('[data-guide="dana"]').click();
