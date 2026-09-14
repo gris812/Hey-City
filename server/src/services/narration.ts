@@ -5,7 +5,7 @@ import type { NarrativePlan } from '@heycity/shared';
 import { cacheGet, cacheSet, ttsAudioCacheKey, placeDetailsCacheKey } from './cache';
 import { cacheTtl, discoveryConfig, media, openai } from '../config';
 import { createHash } from 'crypto';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createNarrativePlan } from './narrativePlan';
 import { narrativeGenerator } from './narrativeGenerator';
@@ -106,7 +106,18 @@ export async function generateNarrationFromPlan(
   };
 }
 
-async function synthesizeSpeech(
+const pendingSpeech = new Map<string, Promise<string>>();
+async function synthesizeSpeech(text: string, voiceId: string, lang: string, userId?: string,
+  usageOperation: 'voice_sample' | 'story_tts' = 'story_tts'): Promise<string> {
+  const key = createHash('sha256').update(`${voiceId}:${guideVersion(await getGuide(voiceId))}:${lang}:${text}`).digest('hex');
+  const existing = pendingSpeech.get(key);
+  if (existing) return existing;
+  const task = synthesizeSpeechOnce(text, voiceId, lang, userId, usageOperation);
+  pendingSpeech.set(key, task);
+  try { return await task; } finally { pendingSpeech.delete(key); }
+}
+
+async function synthesizeSpeechOnce(
   text: string,
   voiceId: string,
   lang: string,
@@ -141,7 +152,11 @@ async function synthesizeSpeech(
   });
   if (!response.ok) throw new Error(`OpenAI TTS error: ${response.status} ${(await response.text()).slice(0, 300)}`);
   await mkdir(media.directory, { recursive: true });
-  await writeFile(filePath, Buffer.from(await response.arrayBuffer()));
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!bytes.length) throw new Error('OpenAI TTS returned empty audio');
+  const tempPath = `${filePath}.${Date.now()}.tmp`;
+  try { await writeFile(tempPath, bytes); await rename(tempPath, filePath); }
+  finally { await unlink(tempPath).catch(() => {}); }
   const inputTokens = Math.ceil(text.length / 4);
   const outputTokens = Math.ceil((text.length / 14) * 20);
   await recordUsage({ userId, category: 'openai_tts', operation: usageOperation, inputTokens, outputTokens,

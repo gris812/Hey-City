@@ -50,6 +50,8 @@ Validation covers PostgreSQL-compatible migrations and transactions using PGlite
 
 ## Manual exploration update
 
+Audio follow-up (2026-09-14): the player is primed inside the Start/select/voice-sample user gesture, with one short clip (not a background keep-alive). Load failures show a retry action. The bounded Wikipedia shortlist starts concurrently but is consumed in deterministic priority order. Identical TTS work coalesces and completed MP3s are published by atomic rename. Full-story TTS is still awaited; the prototype's chunked speech pipeline is not yet ported. Device autoplay and authenticated production audio require separate verification.
+
 Dragging the map disables automatic centring until the compass is pressed. Follow mode offsets the user marker into the unobscured map area; the results sheet is height-limited and collapsible. GPS updates continue without snapping a manually moved map back.
 
 POST `/sessions/:sessionId/select` accepts only a provider ID already discovered for the caller's session. Explicit selection bypasses the automatic heading/timing choice, but not source validation: insufficient evidence returns 422 rather than invented narration. One manual generation per session can run at a time. The existing narrative provider, guide choice, usage accounting and TTS cache are reused. Server session loss restores the Start control and explains that a new session is required; sessions are still held in process memory and do not survive an API restart.

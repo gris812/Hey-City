@@ -58,7 +58,7 @@ storyAudio.addEventListener('play', updateAudioControl);
 storyAudio.addEventListener('pause', updateAudioControl);
 storyAudio.addEventListener('ended', updateAudioControl);
 storyAudio.addEventListener('ended', () => {
-  if (state.sessionId) api('/drive/session/story/finish', { method: 'POST', body: JSON.stringify({ sessionId: state.sessionId, reason: 'ended' }) }).catch(() => {
+  if (state.sessionId && state.audioUrl) api('/drive/session/story/finish', { method: 'POST', body: JSON.stringify({ sessionId: state.sessionId, reason: 'ended' }) }).catch(() => {
     state.walkStatus = state.appLanguage === 'ru' ? 'Не удалось завершить рассказ. Перезапустите прогулку.' : 'Could not finish the story. Restart the walk.';
     const status = document.querySelector('#walk-status'); if (status) status.textContent = state.walkStatus;
   });
@@ -282,6 +282,7 @@ function locateUser() {
 
 async function startWalking() {
   if (state.starting || state.watchId !== null) return;
+  primeStoryAudio();
   state.starting = true;
   const runId = ++state.runId;
   try {
@@ -390,7 +391,7 @@ function renderCandidateMarkers(candidates) {
 
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
 function updateAudioControl() { renderAudioControl(); renderNearbyList(); }
-function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.paused) storyAudio.play().catch(() => {}); else storyAudio.pause(); }
+function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.error) { storyAudio.src = state.audioUrl; storyAudio.load(); } if (storyAudio.paused) storyAudio.play().catch(() => showLocationError({message:t('map.tapPlay')})); else storyAudio.pause(); }
 function stopWalking(refresh = true) { state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; void syncScreenLock(); state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); syncMediaSession(); if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
@@ -428,7 +429,7 @@ function openGuideProfile(initialGuide) {
   const draw = () => {
     document.querySelector('#guide-profile')?.remove(); const guide = guideCopy(activeGuide);
     document.body.insertAdjacentHTML('beforeend', `<div class="guide-profile" id="guide-profile" role="dialog" aria-modal="true" aria-label="${esc(guide.name)}"><div class="profile-photo"><img src="${esc(guide.image)}" alt="${esc(guide.name)}"><button class="profile-back" id="close-profile" aria-label="Back">${icon('back')}</button><span class="swipe-hint">${t('guide.swipe')}</span></div><div class="profile-content"><div class="profile-title"><div><h1>${esc(guide.name)}</h1><span>${esc(guide.role)}</span></div><code>${Object.keys(guides).indexOf(activeGuide) + 1} / ${Object.keys(guides).length}</code></div><p>${esc(guide.body)}</p><div class="interest-line">${guide.interests.map(esc).join(' · ')}</div><button class="voice-sample" id="voice-sample">${icon('play')}<span><strong>${t('guide.voice')}</strong><small>${t('guide.voicePlaceholder')}</small></span></button><blockquote id="voice-copy" hidden>${esc(guide.greeting)}</blockquote><div class="profile-actions"><button class="primary" id="choose-guide">${t('guide.choose', { guide: guide.name })}</button><button class="text-button" id="switch-guide">${t('guide.other')}</button></div></div></div>`);
-    document.querySelector('#close-profile').addEventListener('click', closeGuideProfile); document.querySelector('#voice-sample').addEventListener('click', async (event) => { const button = event.currentTarget; const copy = document.querySelector('#voice-copy'); copy.hidden = false; if (sampleAudio.src && sampleAudio.dataset.guide === activeGuide && sampleAudio.dataset.lang === state.guideLanguage) { if (sampleAudio.paused) await sampleAudio.play().catch(() => {}); else sampleAudio.pause(); return; } button.querySelector('small').textContent = t('guide.voiceLoading'); button.disabled = true; try { const result = await api('/stories/voice-sample', { method: 'POST', body: JSON.stringify({ voiceId: activeGuide, lang: state.guideLanguage }) }); sampleAudio.src = result.audioUrl; sampleAudio.dataset.guide = activeGuide; sampleAudio.dataset.lang = state.guideLanguage; await sampleAudio.play(); } catch (error) { button.querySelector('small').textContent = error.message; } finally { button.disabled = false; } }); document.querySelector('#switch-guide').addEventListener('click', () => { sampleAudio.pause(); activeGuide = nextGuideId(activeGuide); draw(); }); document.querySelector('#choose-guide').addEventListener('click', () => { selectGuide(activeGuide); closeGuideProfile(); render(); });
+    document.querySelector('#close-profile').addEventListener('click', closeGuideProfile); document.querySelector('#voice-sample').addEventListener('click', async (event) => { const button = event.currentTarget; const copy = document.querySelector('#voice-copy'); copy.hidden = false; if (sampleAudio.src && sampleAudio.dataset.guide === activeGuide && sampleAudio.dataset.lang === state.guideLanguage) { if (sampleAudio.paused) await sampleAudio.play().catch(() => {}); else sampleAudio.pause(); return; } if (!sampleAudio.src) primeStoryAudio(sampleAudio); button.querySelector('small').textContent = t('guide.voiceLoading'); button.disabled = true; try { const result = await api('/stories/voice-sample', { method: 'POST', body: JSON.stringify({ voiceId: activeGuide, lang: state.guideLanguage }) }); sampleAudio.src = result.audioUrl; sampleAudio.dataset.guide = activeGuide; sampleAudio.dataset.lang = state.guideLanguage; await sampleAudio.play(); } catch (error) { button.querySelector('small').textContent = error.message; } finally { button.disabled = false; } }); document.querySelector('#switch-guide').addEventListener('click', () => { sampleAudio.pause(); activeGuide = nextGuideId(activeGuide); draw(); }); document.querySelector('#choose-guide').addEventListener('click', () => { selectGuide(activeGuide); closeGuideProfile(); render(); });
     let startX = null; const modal = document.querySelector('#guide-profile'); modal.addEventListener('touchstart', (event) => { startX = event.touches[0].clientX; }, { passive: true }); modal.addEventListener('touchend', (event) => { if (startX !== null && Math.abs(event.changedTouches[0].clientX - startX) > 60) { activeGuide = nextGuideId(activeGuide); draw(); } }, { passive: true });
   };
   draw();
@@ -682,6 +683,7 @@ async function selectNearbyPlace(poiId) {
   const sessionId = state.sessionId;
   state.selectingPlace = true;
   storyAudio.pause();
+  primeStoryAudio();
   showLocationError({message: state.appLanguage === 'ru' ? 'Готовлю рассказ…' : 'Preparing story…'});
   try {
     const result = await api('/sessions/' + sessionId + '/select', {method:'POST',body:JSON.stringify({poiId})});
@@ -700,3 +702,23 @@ async function selectNearbyPlace(poiId) {
   }
   finally { state.selectingPlace = false; }
 }
+
+// One short user-initiated priming clip, not a background keep-alive loop.
+const primedAudio = new WeakSet();
+function primeStoryAudio(audio = storyAudio) {
+  if (primedAudio.has(audio) || (audio === storyAudio && state.audioUrl)) return;
+  const clip = 'data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgA==';
+  audio.src = clip;
+  void audio.play().then(() => {
+    primedAudio.add(audio);
+    // Never clear a real story that arrived while the priming promise resolved.
+    if (audio.src === clip) { audio.pause(); audio.removeAttribute('src'); }
+  }).catch(() => {});
+}
+storyAudio.addEventListener('error', () => {
+  if (!state.audioUrl) return;
+  showLocationError({message: state.appLanguage === 'ru'
+    ? 'Не удалось загрузить аудио. Нажмите «Слушать», чтобы повторить.'
+    : 'Audio could not load. Tap Play to retry.'});
+  renderAudioControl();
+});

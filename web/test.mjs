@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
 const testWindows = [];
-function makeDom(...args) { const dom = new JSDOM(...args); testWindows.push(dom.window); return dom; }
+function makeDom(...args) { const dom = new JSDOM(...args); testWindows.push(dom.window); dom.window.HTMLMediaElement.prototype.play = async () => {}; dom.window.HTMLMediaElement.prototype.pause = () => {}; return dom; }
 
 const source = await readFile(new URL('./app.js', import.meta.url), 'utf8');
 
@@ -67,7 +67,7 @@ async function testLoginAndNavigation() {
     if (url.endsWith('/sessions/session-1/end')) return response({ ok: true });
     throw new Error(`Unexpected request: ${url}`);
   };
-  dom.window.eval(source);
+  dom.window.eval(source + "\nwindow.testAudioUrl = value => { state.audioUrl = value; };");
   assert.match(dom.window.document.body.textContent, /Город говорит/);
   dom.window.document.querySelector('#email').value = 'tester@example.com';
   dom.window.document.querySelector('#auth-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -85,8 +85,10 @@ async function testLoginAndNavigation() {
   assert.equal(dom.window.localStorage.getItem('heyCityToken'), 'test-token');
   assert.match(dom.window.localStorage.getItem('heyCityUser'), /tester@example.com/);
   dom.window.document.querySelector('#start-walk').click();
+  assert.match(audioElements[0].src, /^data:audio\/wav/, 'audio is primed inside the user click, before network work');
   await settle();
   assert.equal(dom.window.document.querySelector('#radar-scan').hidden, true);
+  dom.window.testAudioUrl('https://api.example/story.mp3');
   audioElements[0].dispatchEvent(new dom.window.Event('ended'));
   await settle();
   assert.deepEqual(finishedStory, { sessionId: 'session-1', reason: 'ended' }, 'audio completion releases backend story gate');

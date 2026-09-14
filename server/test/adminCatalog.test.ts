@@ -84,7 +84,23 @@ async function run() {
       assert.equal((await selected.json() as {name:string}).name,'Test Museum');
       assert.equal((await request('/sessions/'+session.id+'/select','slepak@stolbergco.com','admin','POST',{poiId:'invented-id'})).status,404,'arbitrary IDs cannot seed stories');
     } finally { globalThis.fetch = savedFetch; }
-    console.log('admin catalog, SQL migrations, activity, attribution and access tests passed');
+    const { generateVoiceSample } = await import('../src/services/narration');
+    const { openai, media } = await import('../src/config');
+    const { mkdtemp, readdir } = await import('node:fs/promises');
+    const originalDirectory = media.directory, originalKey = openai.apiKey;
+    media.directory = await mkdtemp('/tmp/heycity-voice-test-'); openai.apiKey = 'test-only';
+    let speechCalls = 0;
+    globalThis.fetch = async () => { speechCalls++; await new Promise(resolve => setTimeout(resolve,10)); return new Response(new Uint8Array([73,68,51,1,2,3])); };
+    try {
+      const text = 'A unique voice test ' + Date.now();
+      const [one,two] = await Promise.all([generateVoiceSample(text,'dana','en','u1'),generateVoiceSample(text,'dana','en','u1')]);
+      assert.equal(speechCalls,1,'concurrent identical speech generates once');
+      assert.equal(one.audioUrl,two.audioUrl);
+      const files=await readdir(media.directory);
+      assert.equal(files.filter(f=>f.endsWith('.mp3')).length,1);
+      assert(!files.some(f=>f.endsWith('.tmp')),'no incomplete audio is published');
+    } finally { globalThis.fetch=savedFetch; media.directory=originalDirectory; openai.apiKey=originalKey; }
+    console.log('admin catalog, SQL migrations, activity, attribution, access and speech deduplication tests passed');
   } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); await pg.close(); }
 }
 void run().catch(error=>{console.error(error);process.exitCode=1;});

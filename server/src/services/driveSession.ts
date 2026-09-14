@@ -231,14 +231,23 @@ export async function pingSession(
     const offset = session.knowledgeOffset ?? 0;
     const pendingKnowledge = [...live.slice(offset), ...live.slice(0, offset)];
     let attempts = 0;
+    const eligible: typeof live = [];
     for (const candidate of pendingKnowledge) {
       if (session.spokenProviderIds?.has(candidate.providerId) || await wasPoiListenedRecently(userId, candidate.providerId, poi.repeatCooldownHours)) continue;
       const isCityContext = candidate.targetType === 'city' && candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters;
       const eta = candidate.distanceMeters / Math.max(speedKmh / 3.6, 1);
       if (!isCityContext && candidate.distanceMeters > driveDiscovery.fallbackDistanceM && eta > leadTimeSec) continue;
       if (attempts++ >= discoverySettings.knowledgeCandidateLimit) break;
+      eligible.push(candidate);
+    }
+    // Start the bounded free knowledge lookups together, retain deterministic priority.
+    const seeds = eligible.map(candidate => discoveryStorySeed(candidate));
+    for (let i = 0; i < eligible.length; i++) {
+      const candidate = eligible[i];
+      const isCityContext = candidate.targetType === 'city' && candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters;
+      const eta = candidate.distanceMeters / Math.max(speedKmh / 3.6, 1);
       session.knowledgeOffset = (live.indexOf(candidate) + 1) % Math.max(1, live.length);
-      const storySeed = await discoveryStorySeed(candidate);
+      const storySeed = await seeds[i];
       if (!storySeed) continue;
       storyCandidates.push({ poiId: candidate.providerId, placeName: candidate.name,
         distanceMeters: isCityContext ? 0 : candidate.distanceMeters,
