@@ -32,6 +32,10 @@ export interface GenerateNarrationResult {
   cached: boolean;
 }
 
+export async function generateIdentification(text: string, voiceId: string, lang: string, userId?: string) {
+  return { transcriptText: text, audioUrl: await synthesizeSpeech(text, voiceId, lang, userId, 'story_tts', media.progressiveSpeech) };
+}
+
 export async function generateVoiceSample(
   text: string,
   voiceId: string,
@@ -66,15 +70,17 @@ export async function generateNarration(input: GenerateNarrationInput): Promise<
 
 export async function generateNarrationFromPlan(
   plan: NarrativePlan,
-  input: { language: string; narrationStyle: string; userId?: string }
+  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal }
 ): Promise<GenerateNarrationResult> {
   const generated = await narrativeGenerator.generate({
     plan,
     language: input.language,
     narrationStyle: input.narrationStyle,
     userId: input.userId,
+    signal: input.signal,
   });
   const text = generated.text;
+  input.signal?.throwIfAborted();
 
   const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
   const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${input.language}:${plan.guideId}:${guideVersion(await getGuide(plan.guideId))}`);
@@ -102,14 +108,7 @@ export async function generateNarrationFromPlan(
   return {
     audioUrl,
     transcriptText: text,
-    estimatedDurationSec:
-      plan.mode === 'vehicle'
-        ? clamp(
-            plan.targetDurationSec,
-            discoveryConfig.vehicleStoryMinSeconds,
-            discoveryConfig.vehicleStoryMaxSeconds
-          )
-        : plan.targetDurationSec,
+    estimatedDurationSec: plan.targetDurationSec,
     cached: generated.cached && audioCached,
   };
 }

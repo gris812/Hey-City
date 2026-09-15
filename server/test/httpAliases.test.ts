@@ -161,7 +161,8 @@ async function run(): Promise<void> {
       voiceId: 'artur',
       context: 'drive_discovery',
     });
-  assert.ok(story.transcriptText.length > 40);
+  assert.match(story.transcriptText, /Offline demonstration/);
+  assert.doesNotMatch(story.transcriptText, /Category:|Source:|https?:/);
   assert.ok(story.estimatedDurationSec >= 30);
   assert.ok(story.estimatedDurationSec <= 45);
   assert.ok(story.audioUrl.startsWith('https://example.com/tts/'));

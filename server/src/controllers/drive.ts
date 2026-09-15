@@ -106,7 +106,8 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
     speedKmh,
     ts,
     accuracy,
-    forceAheadRefresh === true
+    forceAheadRefresh === true,
+    req.body.discoveryOnly === true
   );
 
   res.json(result);

@@ -352,6 +352,20 @@ async function testCatalogUnitsAndCompass() {
   await settle();
   assert.equal(selectedId,'museum-id','list click requests the selected provider ID');
   assert.equal(dom.window.document.querySelector('#place-copy').textContent,'Verified story');
+  assert.equal(dom.window.document.querySelector('[data-poi]').getAttribute('aria-pressed'),'true');
+  assert.match(dom.window.document.querySelector('#story-levels').textContent,/Кратко|Brief story/);
+  let releaseOld,releaseNew;
+  dom.window.fetch=async (url,options)=>url.endsWith('/select') ? new Promise(resolve=>{ if(JSON.parse(options.body).level==='long') releaseOld=resolve;else releaseNew=resolve; }) : response({});
+  const old = dom.window.inspectApp("selectNearbyPlace('museum-id','long')");
+  const fresh = dom.window.inspectApp("selectNearbyPlace('museum-id','short')");
+  releaseNew(response({name:'Museum',transcriptText:'Latest choice',audioUrl:''}));await fresh;
+  releaseOld(response({name:'Museum',transcriptText:'STALE',audioUrl:''}));await old;
+  assert.equal(dom.window.document.querySelector('#place-copy').textContent,'Latest choice','late selection cannot overwrite the latest choice');
+  const abandoned=dom.window.inspectApp("selectNearbyPlace('museum-id','long')");
+  dom.window.inspectApp('stopWalking(false)');
+  assert.equal(dom.window.inspectApp('state.selectingPlace'),false,'ending resets busy flag immediately');
+  releaseOld(response({name:'Museum',transcriptText:'OLD SESSION',audioUrl:''}));await abandoned;
+  assert.equal(dom.window.inspectApp('state.selectedPoi'),null,'old session cannot restore selected object');
 
 
   dom.window.close();

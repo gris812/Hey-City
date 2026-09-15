@@ -38,11 +38,19 @@ svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.8;
 .map-shade { position:absolute; z-index:1; inset:0; pointer-events:none; background:linear-gradient(to bottom,rgba(11,23,17,.025),transparent 30%,transparent 72%,rgba(11,23,17,.07)); }
 .radar-scan { position:absolute; z-index:2; inset:0; pointer-events:none; overflow:hidden; }
 .radar-scan[hidden] { display:none; }
-.radar-scan::before { content:""; position:absolute; left:50%; top:50%; width:200vmax; height:200vmax; border-radius:50%; background:conic-gradient(from -20deg,rgba(11,23,17,.38) 0deg 320deg,rgba(11,23,17,0) 320deg 360deg); transform:translate(-50%,-50%); animation:radar-sweep 2.8s linear infinite; }
+@property --sweep-angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+.radar-scan::before { content:""; position:absolute; inset:0; background:conic-gradient(from calc(var(--course-bearing,0deg) + var(--sweep-angle) - 12deg) at 50% var(--radar-y,50%), transparent 0deg 24deg,rgba(11,23,17,.32) 24deg 360deg); animation:radar-sweep 2.8s linear infinite; }
+.radar-scan.vehicle-radar::before { animation:radar-forward 2.8s ease-in-out infinite alternate; }
+.vehicle-radar .radar-ring { display:none; }
 .radar-ring { position:absolute; left:50%; top:50%; border:1px solid rgba(15,122,63,.34); border-radius:50%; transform:translate(-50%,-50%); }
 .radar-ring-a { width:34vmin; height:34vmin; }
 .radar-ring-b { width:66vmin; height:66vmin; }
-@keyframes radar-sweep { to { transform:translate(-50%,-50%) rotate(360deg); } }
+@keyframes radar-sweep { from {--sweep-angle:0deg;} to {--sweep-angle:360deg;} }
+@keyframes radar-forward { from {--sweep-angle:-68deg;} to {--sweep-angle:68deg;} }
+#story-levels { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; }
+#story-levels button { flex:1; }
+#story-levels a { flex-basis:100%; font-size:12px; color:var(--muted); }
+.nearby-place.selected { border-left:4px solid var(--green,#087b42); background:var(--green-soft); }
 .poi-map-label { width:max-content; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transform:translateY(28px); padding:3px 6px; border:1px solid rgba(11,23,17,.18); border-radius:4px; background:rgba(248,250,247,.94); color:var(--ink)!important; font-size:10px!important; font-weight:650!important; box-shadow:0 2px 7px rgba(11,23,17,.12); }
 .map-header { position:absolute; z-index:5; top:max(14px,env(safe-area-inset-top)); left:14px; right:14px; display:grid; grid-template-columns:46px minmax(0,1fr) 46px; align-items:center; gap:10px; }
 .icon-button,.guide-avatar,.map-locate,.profile-back { border:1px solid rgba(11,23,17,.16); background:rgba(255,255,255,.96); color:var(--ink); box-shadow:0 5px 18px rgba(11,23,17,.1); }

@@ -65,3 +65,18 @@ Tests gate the upstream completion and prove HTTP first bytes arrive while it is
 Dragging the map disables automatic centring until the compass is pressed. Follow mode offsets the user marker into the unobscured map area; the results sheet is height-limited and collapsible. GPS updates continue without snapping a manually moved map back.
 
 POST `/sessions/:sessionId/select` accepts only a provider ID already discovered for the caller's session. Explicit selection bypasses the automatic heading/timing choice, but not source validation: insufficient evidence returns 422 rather than invented narration. One manual generation per session can run at a time. The existing narrative provider, guide choice, usage accounting and TTS cache are reused. Server session loss restores the Start control and explains that a new session is required; sessions are still held in process memory and do not survive an API restart.
+
+
+## Three-stage spoken discovery (2026-09-15)
+
+The web client sends `discoveryOnly: true` on location updates. This returns ranked candidates and an optional deterministic `suggestedPoiId` without waiting for Wikipedia enrichment, LLM generation or speech. Existing discovery filters, budgets, cooldowns and movement thresholds remain authoritative. Legacy clients retain the previous ping contract.
+
+`POST /sessions/:id/select` accepts a known candidate, `language` (`ru`/`en`) and `level` (`identify`, `short`, `long`). Identification speaks the name and localized category without an LLM or evidence lookup. Short and detailed stories use verified evidence and NarrativePlan; defaults are 30 and 120 seconds. The longer duration is only for an explicit request, not automatic driving narration. Sources are attributed separately in the interface, never inserted into spoken text.
+
+The latest selection aborts the previous text request. Client selection revisions ignore late responses; ending a session aborts preparation and clears playback state. Selection name and preparation status appear immediately, with brief/detail controls and a highlighted list item. Language changes invalidate pending narration and update the active session.
+
+The OpenAI REST adapter reads `output[].content[].text` for `output_text` content (the top-level SDK convenience field is not required). Requests have a 12-second timeout and a configurable output-token ceiling. Invalid language or source metadata fails with a localized retry message; production never falls back to raw source text. Text cache version changes prevent reuse of prior invalid stories and include exact requested duration. Streaming TTS still begins before full MP3 completion.
+
+The radar masks the rectangular map surface; its clear wedge sweeps a forward ±80° sector in vehicle mode and a full circle on foot. It is a discovery activity indicator, not a representation of independent paid requests per angle.
+
+Validation covers raw REST parsing, rejecting English for Russian narration, stage durations, replacement/cancellation, session stop, and immediate selected-place feedback. Real phone/network latency and audio playback still require field verification; no fixed end-to-end latency is promised. Cancellation may leave a shared source lookup or already-started speech generation completing for cache reuse.

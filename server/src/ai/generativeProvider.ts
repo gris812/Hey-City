@@ -10,6 +10,7 @@ export interface GenerativeTaskRequest {
   instructions: string;
   input: string;
   userId?: string;
+  signal?: AbortSignal;
 }
 
 export interface GenerativeTaskResult {

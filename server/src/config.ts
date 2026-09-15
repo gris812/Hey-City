@@ -258,6 +258,8 @@ export const googleMaps = {
 };
 
 export const openai = {
+  textTimeoutMs: num('OPENAI_TEXT_TIMEOUT_MS', 12000),
+  maxOutputTokens: num('OPENAI_MAX_OUTPUT_TOKENS', 900),
   apiKey: process.env.OPENAI_API_KEY || '',
   textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
   ttsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
@@ -288,6 +290,8 @@ export const privacy = {
 };
 
 export const narration = {
+  briefSeconds: num('NARRATION_BRIEF_SECONDS', 30),
+  detailedSeconds: num('NARRATION_DETAILED_SECONDS', 120),
   lengthSecMin: 30,
   lengthSecMax: 180,
   lengthSecDefault: 90,

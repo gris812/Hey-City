@@ -83,6 +83,41 @@ async function run() {
       assert.equal(selected.status,200,'known discovery object can be selected explicitly');
       assert.equal((await selected.json() as {name:string}).name,'Test Museum');
       assert.equal((await request('/sessions/'+session.id+'/select','slepak@stolbergco.com','admin','POST',{poiId:'invented-id'})).status,404,'arbitrary IDs cannot seed stories');
+      const { selectStory } = await import('../src/services/selectedStory');
+      const { narrativeGenerator } = await import('../src/services/narrativeGenerator');
+      const { stopSession } = await import('../src/services/driveSession');
+      const originalGenerate = narrativeGenerator.generate;
+      const durations: number[] = [];
+      narrativeGenerator.generate = async ({plan, language}) => {
+        durations.push(plan.targetDurationSec);
+        assert.equal(language,'ru');
+        return {text:'Здесь сохранилась история города и речной торговли.',providerId:'test',cached:false};
+      };
+      try {
+        const identification = await selectStory(session.id,'u1','manual-museum','identify','ru');
+        assert.match(identification.transcriptText, /Рассказать/);
+        assert.equal(durations.length,0,'identification needs neither LLM nor source enrichment');
+        await selectStory(session.id,'u1','manual-museum','short','ru');
+        await selectStory(session.id,'u1','manual-museum','long','ru');
+        assert.deepEqual(durations,[30,120]);
+        let release!: () => void;
+        let started!: () => void;
+        const waiting = new Promise<void>(resolve => {started=resolve;});
+        narrativeGenerator.generate = async () => {
+          started(); await new Promise<void>(resolve => {release=resolve;});
+          return {text:'Старый рассказ.',providerId:'test',cached:false};
+        };
+        const previous = selectStory(session.id,'u1','manual-museum','long','ru');
+        const rejected = assert.rejects(previous, /abort/i);
+        await waiting;
+        await selectStory(session.id,'u1','manual-museum','identify','ru');
+        release(); await rejected;
+        assert.equal(session.alreadyListening,true,'old completion cannot unlock latest story');
+        const next = selectStory(session.id,'u1','manual-museum','long','ru');
+        const stopped = assert.rejects(next, /abort/i);
+        stopSession(session.id); await stopped;
+      } finally {narrativeGenerator.generate=originalGenerate;}
+
     } finally { globalThis.fetch = savedFetch; }
     const { generateVoiceSample } = await import('../src/services/narration');
     const { openai, media } = await import('../src/config');

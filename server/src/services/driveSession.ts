@@ -50,6 +50,7 @@ export interface DriveSession {
   lastStoryStartedAt: number;
   lastCandidates: NearbyPlace[];
   alreadyListening: boolean;
+  storyRequest?: AbortController;
   spokenProviderIds?: Set<string>;
   knowledgeOffset?: number;
   pendingMode?: DiscoveryMode;
@@ -117,6 +118,7 @@ export function getSession(sessionId: string): DriveSession | null {
 }
 
 export function stopSession(sessionId: string): boolean {
+  sessions.get(sessionId)?.storyRequest?.abort();
   clearAheadDiscoverySession(sessionId);
   return sessions.delete(sessionId);
 }
@@ -146,6 +148,7 @@ export function finishActiveStory(
 
 export interface PingResult extends Omit<DrivePingResult, 'poi'> {
   poi?: NearbyPlace;
+  suggestedPoiId?: string;
 }
 
 export async function pingSession(
@@ -156,7 +159,8 @@ export async function pingSession(
   speedKmh: number,
   timestamp: number,
   accuracyMeters?: number,
-  forceAheadRefresh = false
+  forceAheadRefresh = false,
+  discoveryOnly = false
 ): Promise<PingResult> {
   const session = sessions.get(sessionId);
   if (!session) {
@@ -179,6 +183,16 @@ export async function pingSession(
     forceRefresh: forceAheadRefresh,
     nowMs: now,
   });
+  if (discoveryOnly) {
+    const suggested = !session.alreadyListening && !session.storyRequest &&
+      !session.muted && !isCircuitOpen(session.userId) &&
+      (!session.lastStoryStartedAt || now-session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds*1000)
+      ? aheadDiscovery.topCandidates.find(c => !session.spokenProviderIds?.has(c.providerId) &&
+        (c.distanceMeters <= driveDiscovery.fallbackDistanceM ||
+         c.distanceMeters / Math.max(speedKmh/3.6,1) <= session.params.leadTimeMin*60 ||
+         (c.targetType === 'city' && c.distanceMeters <= discoverySettings.cityContextRadiusMeters))) : undefined;
+    return {nextAction:'NONE', mode:activeMode, speedKmh, aheadDiscovery,suggestedPoiId:suggested?.providerId};
+  }
   if (session.pendingMode) {
     return { nextAction: 'NONE', mode: activeMode, speedKmh, aheadDiscovery };
   }

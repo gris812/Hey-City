@@ -8,6 +8,8 @@ import type {
   GenerativeTaskResult,
 } from '../src/ai/generativeProvider';
 import { NarrativeGenerator } from '../src/services/narrativeGenerator';
+import { OpenAIGenerativeProvider } from '../src/ai/openAiGenerativeProvider';
+import { openai } from '../src/config';
 
 class StubProvider implements GenerativeProvider {
   readonly id = 'quality';
@@ -83,6 +85,19 @@ async function run(): Promise<void> {
   });
   assert.equal(fallback.providerId, 'deterministic');
   assert.match(fallback.text, /Federal Hall/);
+
+  const savedFetch = globalThis.fetch, savedKey = openai.apiKey;
+  openai.apiKey = 'test-only';
+  try {
+    globalThis.fetch = async (_url, options) => {
+      assert(options?.signal, 'provider requests have a deadline');
+      return new Response(JSON.stringify({status:'completed',output:[{type:'reasoning'},{type:'message',content:[{type:'output_text',text:'Здесь город встречается с рекой.'}]}],usage:{input_tokens:10,output_tokens:10}}));
+    };
+    const raw = await new OpenAIGenerativeProvider().generate({task:'final_storytelling',instructions:'Russian',input:'Facts'});
+    assert.equal(raw.text,'Здесь город встречается с рекой.','parse the real REST message envelope, not SDK-only output_text');
+    await assert.rejects(generator.generate({plan:{...plan,poiId:'wrong_language'},language:'ru',narrationStyle:'conversational'}),/Рассказ пока не готов/);
+    await assert.rejects(fallbackGenerator.generate({plan:{...plan,poiId:'no_raw_source',storySeed:'Category: city. Source: https://example.com\nEnglish evidence.'},language:'ru',narrationStyle:'conversational'}),/Рассказ пока не готов/);
+  } finally {globalThis.fetch=savedFetch;openai.apiKey=savedKey;}
 
   console.log('aiTaskRouter tests passed');
 }
