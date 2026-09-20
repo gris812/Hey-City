@@ -32,6 +32,8 @@ the user moves through the city and the city starts telling its story.
 
 ## Canonical documents
 Always treat these as primary sources:
+- `/docs/context/Core_Experience_v2_Canonical.md`
+- `/docs/context/Core_Experience_v2_Implementation_Milestones.md`
 - `/docs/context/AI_Guide_Brain_Unified_Architecture_v2_Canonical.md`
 - `/docs/context/Product_Architecture_v1.md`
 - `/docs/context/Hey_City_MVP_API_Specification_v1.md`
