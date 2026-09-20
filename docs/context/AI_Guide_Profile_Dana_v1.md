@@ -1,3 +1,7 @@
+> **LEGACY REFERENCE — NOT CANONICAL FOR CORE EXPERIENCE v2**
+>
+> This document is retained for project history. It must not override the current guide identity, runtime narrative behavior, or Core Experience v2 guide policy. For implementation, use `Core_Experience_v2_Canonical.md`, the active M1 specification, and the runtime guide catalogue/policy. No visual redesign is authorized by this legacy file.
+
 # AI Guide — Dana (D-001)
 
 ## 1. Identity
