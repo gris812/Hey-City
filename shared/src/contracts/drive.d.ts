@@ -175,6 +175,12 @@ export interface DrivePoi {
   geometry: { location: { lat: number; lng: number } };
 }
 
+/** Display-only source credit. Raw evidence and claim text remain server-internal. */
+export interface NarrativeAttribution {
+  label: string;
+  url?: string;
+}
+
 export interface DrivePingResult {
   nextAction: 'PLAY' | 'NONE';
   mode?: DiscoveryMode;
@@ -186,6 +192,7 @@ export interface DrivePingResult {
   narrativePlan?: NarrativePlan;
   transcriptText?: string;
   estimatedDurationSec?: number;
+  attribution?: NarrativeAttribution;
   circuitLimited?: boolean;
   aheadDiscovery?: AheadDiscoveryDiagnostic;
 }

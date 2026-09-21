@@ -1,6 +1,6 @@
 import type { MomentPlan, NarrativeBeat, NarrativeLevel, NarrativePlanInput } from '@heycity/shared';
 import { narrativeV2 } from '../config';
-import { EvidenceBundle, InsufficientEvidenceError, storyAvailability, verifiedItems } from './evidence';
+import { EvidenceBundle, InsufficientEvidenceError, selectedEvidenceItems, storyAvailability, verifiedItems } from './evidence';
 import { GuidePolicy } from './guidePolicy';
 
 export interface StoryContinuationState {
@@ -19,11 +19,11 @@ export interface StoryBrief {
 export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBundle, policy: GuidePolicy,
   options: { level: NarrativeLevel; language: string; continuation?: StoryContinuationState }): StoryBrief {
   if (input.poiId !== evidence.subjectId || input.placeName !== evidence.subjectName) throw new Error('Evidence target mismatch');
-  const available = storyAvailability(evidence);
-  if (!(options.level === 'long' ? available.long : available.short)) throw new InsufficientEvidenceError();
   const prior = options.continuation;
   const continuation = options.level === 'long' && prior?.poiId === input.poiId && prior.guideId === policy.id && prior.language === options.language
     ? { previousLevel: 'short' as const, previousTranscript: prior.previousTranscript } : undefined;
+  const available = storyAvailability(evidence, continuation ? policy.id : undefined);
+  if (!(options.level === 'long' ? available.long : available.short)) throw new InsufficientEvidenceError();
   const city = evidence.category === 'city' || evidence.category === 'region';
   const moment: MomentPlan = {
     relationship: continuation ? 'continuation' : city ? 'orientation' : 'new_topic',
@@ -41,10 +41,7 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
   };
   const kinds = continuation ? ['callback' as const, 'context' as const, 'reveal' as const, 'stop' as const] : policy.preferredBeats;
   const items = verifiedItems(evidence);
-  const shortItems = selectShortEvidence(items, policy.id);
-  const selectedItems = options.level === 'short' ? shortItems : continuation
-    ? items.filter(item => !shortItems.some(short => short.id === item.id))
-    : items;
+  const selectedItems = selectedEvidenceItems(evidence, policy.id, options.level, Boolean(continuation));
   return {
     subject: { id: input.poiId, name: input.placeName, category: evidence.category }, moment, level: options.level,
     narrativeAngle: `${continuation ? 'New context beyond the already-heard story' : city ? 'A grounded sense of this city' : evidence.category === 'bridge' ? policy.id === 'arthur' ? 'Engineering significance of a supported structural detail' : 'A supported visible feature opens an engineering story' : policy.id === 'arthur' ? 'Historical or architectural meaning of a precise detail' : 'A human-scale reveal connecting past and present'}; category=${evidence.category}; theme=${input.themeTags.join(',') || 'mixed'}`,
@@ -52,11 +49,4 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
     evidence: { ...evidence, items }, selectedEvidenceRefs: selectedItems.map(item => item.id), continuation,
     constraints: { targetDurationSec: input.targetDurationSec, language: options.language, forbiddenPatterns: [...narrativeV2.forbiddenPatterns] },
   };
-}
-
-function selectShortEvidence<T extends { id: string }>(items: T[], guideId: string): T[] {
-  if (items.length <= 2) return items;
-  // Arthur's short establishes the site/current-building distinction. Dana keeps the first
-  // reveal and its immediate consequence. Ordering is stable from evidence normalization.
-  return guideId === 'arthur' ? [items[0], items[2]] : items.slice(0, 2);
 }

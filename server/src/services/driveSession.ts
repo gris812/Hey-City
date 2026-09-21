@@ -11,7 +11,7 @@ import type {
 } from '@heycity/shared';
 import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings } from '../config';
 import { discoveryEvidence } from './discoveryKnowledge';
-import { EvidenceBundle, normalizeEvidence, storyAvailability } from './evidence';
+import { EvidenceBundle, normalizeEvidence, publicAttribution, storyAvailability } from './evidence';
 import type { StoryContinuationState } from './storyBrief';
 import type { DiscoveryCandidate as StoryCandidate } from './driveDecision';
 import { getUserById } from './user';
@@ -306,7 +306,8 @@ export async function pingSession(
     etaSeconds: decision.etaSeconds,
     storySeed: decision.narrativePlanInput.storySeed,
   });
-  const { plan: narrativePlan, brief, policy } = prepareNarrative(decision.narrativePlanInput, evidenceByPoi.get(decision.poiId)!, { level: 'auto', language: session.params.language });
+  const selectedEvidence = evidenceByPoi.get(decision.poiId)!;
+  const { plan: narrativePlan, brief, policy } = prepareNarrative(decision.narrativePlanInput, selectedEvidence, { level: 'auto', language: session.params.language });
   // The public decision carries product fields, never legacy source prose.
   delete decision.narrativePlanInput.storySeed;
   session.storyContinuation = undefined;
@@ -349,6 +350,7 @@ export async function pingSession(
     narrativePlan,
     transcriptText: narration.transcriptText,
     estimatedDurationSec: narration.estimatedDurationSec,
+    attribution: publicAttribution(selectedEvidence),
     aheadDiscovery,
   };
 }

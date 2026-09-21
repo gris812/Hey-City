@@ -9,7 +9,8 @@ const pending = new Map<string, Promise<EvidenceBundle | null>>();
 
 /** Exact-title lookup with redirects and coordinate validation; never invent a seed from a name. */
 export async function discoveryEvidence(candidate: DiscoveryCandidate): Promise<EvidenceBundle | null> {
-  const key = `discovery-knowledge:m1:${candidate.providerId}`;
+  // New cache namespace invalidates short-lived null entries created before M1 production-evidence QA.
+  const key = `discovery-knowledge:m1.1:${candidate.providerId}`;
   const cached = await cacheGet<{ seed: EvidenceBundle | null }>(key);
   if (cached) return cached.seed;
   if (pending.has(key)) return pending.get(key)!;

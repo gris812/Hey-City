@@ -50,6 +50,7 @@ svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.8;
 #story-levels { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; }
 #story-levels button { flex:1; }
 #story-levels a { flex-basis:100%; font-size:12px; color:var(--muted); }
+.story-attribution { display:block; margin:8px 0 0; font-size:12px; color:var(--muted); }
 .nearby-place.selected { border-left:4px solid var(--green,#087b42); background:var(--green-soft); }
 .poi-map-label { width:max-content; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transform:translateY(28px); padding:3px 6px; border:1px solid rgba(11,23,17,.18); border-radius:4px; background:rgba(248,250,247,.94); color:var(--ink)!important; font-size:10px!important; font-weight:650!important; box-shadow:0 2px 7px rgba(11,23,17,.12); }
 .map-header { position:absolute; z-index:5; top:max(14px,env(safe-area-inset-top)); left:14px; right:14px; display:grid; grid-template-columns:46px minmax(0,1fr) 46px; align-items:center; gap:10px; }

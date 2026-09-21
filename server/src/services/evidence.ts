@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { StoryAvailability } from '@heycity/shared';
+import type { NarrativeAttribution, StoryAvailability } from '@heycity/shared';
 import { narrativeV2 } from '../config';
 
 /** Server-only source material. Attribution must never be read aloud. */
@@ -48,7 +48,33 @@ export function verifiedItems(bundle: EvidenceBundle): EvidenceItem[] {
     item.claim.trim().toLowerCase() !== `${bundle.subjectName} ${bundle.category}`.toLowerCase() &&
     !/https?:\/\/|\b(?:Category|Source|CC BY-SA)\s*:/i.test(item.claim));
 }
-export function storyAvailability(bundle: EvidenceBundle): StoryAvailability {
+export function publicAttribution(bundle: EvidenceBundle): NarrativeAttribution | undefined {
+  const label = bundle.attribution?.label.trim();
+  if (!label) return undefined;
+  const rawUrl = bundle.attribution?.url;
+  if (!rawUrl) return { label };
+  try {
+    const url = new URL(rawUrl);
+    return ['http:', 'https:'].includes(url.protocol) ? { label, url: url.toString() } : { label };
+  } catch { return { label }; }
+}
+
+export function selectedEvidenceItems(bundle: EvidenceBundle, guideId: string, level: 'short' | 'long' | 'auto', continuing = false): EvidenceItem[] {
+  const items = verifiedItems(bundle);
+  const canonicalGuide = guideId === 'artur' ? 'arthur' : guideId;
+  const shortItems = items.length <= 2 ? items : canonicalGuide === 'arthur' ? [items[0], items[2]] : items.slice(0, 2);
+  if (level === 'short') return shortItems;
+  if (level === 'long' && continuing) return items.filter(item => !shortItems.some(short => short.id === item.id));
+  return items;
+}
+
+export function storyAvailability(bundle: EvidenceBundle, continuationGuideId?: string): StoryAvailability {
   const count = verifiedItems(bundle).length;
-  return { short: count >= narrativeV2.shortMinClaims, long: count >= narrativeV2.longMinClaims };
+  const continuationCount = continuationGuideId
+    ? selectedEvidenceItems(bundle, continuationGuideId, 'long', true).length
+    : count;
+  return {
+    short: count >= narrativeV2.shortMinClaims,
+    long: count >= narrativeV2.longMinClaims && continuationCount >= narrativeV2.continuationMinClaims,
+  };
 }

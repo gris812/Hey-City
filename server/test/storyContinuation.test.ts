@@ -4,8 +4,16 @@ import { evaluateAheadDiscovery } from '../src/services/aheadDiscovery';
 import { selectStory, selectedStoryAvailability } from '../src/services/selectedStory';
 import { narrativeGenerator, NarrativeGenerationRequest } from '../src/services/narrativeGenerator';
 import { fixture } from './narrativeFixtures';
+import { normalizeEvidence, storyAvailability } from '../src/services/evidence';
+import { prepareNarrative } from '../src/services/narrativePlan';
 
 async function run() {
+  const threeClaims = normalizeEvidence({ id:'three-claims', name:'Three Claims Hall', category:'museum' },
+    'The site opened as a public market in 1890. It later became a library for the surrounding neighbourhood. Its restored clock is a local landmark.', 'wikipedia', 'https://example.test/three-claims');
+  assert.deepEqual(storyAvailability(threeClaims), {short:true,long:true}, 'a direct long can use all three verified claims');
+  assert.deepEqual(storyAvailability(threeClaims,'dana'), {short:true,long:false}, 'a short consumes two claims, so one remaining claim cannot unlock a continuation');
+  assert.throws(() => prepareNarrative({poiId:'three-claims',placeName:'Three Claims Hall',mode:'walking',guideId:'dana',themeTags:[],targetDurationSec:90}, threeClaims,
+    {level:'long',language:'en',continuation:{poiId:'three-claims',guideId:'dana',language:'en',previousLevel:'short',previousTranscript:'Earlier segment.'}}));
   const session = createSession('m1-user',{mode:'walking',themeTags:['history'],narrationStyle:'conversational',lengthSec:30,leadTimeMin:2,voiceId:'dana',language:'ru',autoplay:true});
   await evaluateAheadDiscovery({sessionId:session.id,movement:{latitude:38.627,longitude:-90.1994,headingDegrees:0,speedMps:1,accuracyMeters:10,timestamp:new Date().toISOString()},provider:{name:'google',searchAhead:async()=>['one','two','weak'].map(id=>({providerId:`m1-${id}`,provider:'google' as const,name:id==='weak'?'Unknown Monument':'Federal Hall',targetType:'museum' as const,latitude:38.627,longitude:-90.1994,providerTypes:['museum']}))}});
   const originalFetch = globalThis.fetch; const originalGenerate = narrativeGenerator.generate;
@@ -27,7 +35,8 @@ async function run() {
     await assert.rejects(selectedStoryAvailability(session.id,'someone-else','m1-one'),(e:any)=>e.status===404);
     await selectStory(session.id,'m1-user','m1-one','long');
     assert.equal(calls.at(-1)!.brief.continuation,undefined,'T7 direct long');
-    await selectStory(session.id,'m1-user','m1-one','short');
+    const short = await selectStory(session.id,'m1-user','m1-one','short');
+    assert.deepEqual(short.attribution, {label:'Wikipedia · CC BY-SA',url:'https://en.wikipedia.org/?curid=1'}, 'explicit story exposes display-only attribution');
     const previous = session.storyContinuation!.previousTranscript;
     await selectStory(session.id,'m1-user','m1-one','long');
     assert.equal(calls.at(-1)!.brief.continuation?.previousTranscript,previous,'T6 successful short is shared context');

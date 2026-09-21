@@ -2,7 +2,7 @@ import { getSession } from './driveSession';
 import { sessionDiscoveryCandidate } from './aheadDiscovery';
 import { discoveryEvidence } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
-import { storyAvailability } from './evidence';
+import { EvidenceBundle, publicAttribution, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
 import type { StoryAvailability } from '@heycity/shared';
 import { generateIdentification, generateNarrationFromPlan } from './narration';
@@ -33,7 +33,7 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
   const check = () => { request.signal.throwIfAborted(); if (getSession(id) !== session) throw new StorySelectionError(404,'Session not found'); };
   try {
     let result;
-    let sourceUrl: string | undefined;
+    let evidence: EvidenceBundle | null = null;
     let availability: StoryAvailability = { short: false, long: false };
     if (level === 'identify') {
       const category = (categories[candidate.targetType] ?? ['место','place'])[params.language === 'ru' ? 0 : 1];
@@ -41,22 +41,25 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
       result = await generateIdentification(text,params.voiceId,params.language,userId);
       // Availability is resolved separately so identifying a place never waits for knowledge lookup.
     } else {
-      const evidence = await discoveryEvidence(candidate); check();
-      if (evidence) availability = storyAvailability(evidence);
+      evidence = await discoveryEvidence(candidate); check();
+      if (evidence) availability = storyAvailability(evidence, matchingContinuationGuide(session.storyContinuation, poiId, params.voiceId, params.language));
       if (!evidence || !(level === 'long' ? availability.long : availability.short)) throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.');
-      sourceUrl = evidence.attribution?.url;
       const duration = level === 'long' ? narration.detailedSeconds : narration.briefSeconds;
       const { plan, brief, policy } = prepareNarrative({poiId,placeName:candidate.name,mode:params.mode ?? 'walking',guideId:params.voiceId,themeTags:params.themeTags,targetDurationSec:duration}, evidence,
         { level: level as 'short' | 'long', language: params.language, continuation: session.storyContinuation });
       result = await generateNarrationFromPlan(plan,{brief,policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal});
     }
     check();
-    if (level === 'short') session.storyContinuation = { poiId, guideId: canonicalGuideId(params.voiceId), language: params.language, previousLevel: 'short', previousTranscript: result.transcriptText };
+    if (level === 'short') {
+      session.storyContinuation = { poiId, guideId: canonicalGuideId(params.voiceId), language: params.language, previousLevel: 'short', previousTranscript: result.transcriptText };
+      if (evidence) availability = storyAvailability(evidence, session.storyContinuation.guideId);
+    }
     session.alreadyListening = !!result.audioUrl;
     session.lastStoryStartedAt = Date.now();
     (session.spokenProviderIds ??= new Set()).add(poiId);
     succeeded = true;
-    return {...result,poiId,name:candidate.name,level,language:params.language,sourceUrl,availability};
+    const attribution = evidence ? publicAttribution(evidence) : undefined;
+    return {...result,poiId,name:candidate.name,level,language:params.language,sourceUrl:attribution?.url,attribution,availability};
   } finally {
     if (session.storyRequest === request) {session.storyRequest = undefined; if (!succeeded) session.alreadyListening = false;}
   }
@@ -69,5 +72,12 @@ export async function selectedStoryAvailability(id: string, userId: string, poiI
   if (!candidate) throw new StorySelectionError(404, 'Object is no longer available');
   const evidence = await discoveryEvidence(candidate);
   if (getSession(id) !== session) throw new StorySelectionError(404, 'Session not found');
-  return evidence ? storyAvailability(evidence) : { short: false, long: false };
+  return evidence ? storyAvailability(evidence, matchingContinuationGuide(session.storyContinuation, poiId, session.params.voiceId, session.params.language)) : { short: false, long: false };
+}
+
+function matchingContinuationGuide(continuation: NonNullable<ReturnType<typeof getSession>>['storyContinuation'], poiId: string, guideId: string, language: string): string | undefined {
+  const canonical = canonicalGuideId(guideId);
+  return continuation?.poiId === poiId && continuation.guideId === canonical && continuation.language === language
+    ? canonical
+    : undefined;
 }

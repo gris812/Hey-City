@@ -13,9 +13,9 @@ sequenceDiagram
     participant Mobile
     participant API as Backend API
     participant Discovery as Discovery Engine
-    participant Brain as AI Guide Brain
-    participant Planner as Narrative Planner
     participant Evidence as Evidence Providers
+    participant Brief as StoryBrief Builder
+    participant Planner as NarrativePlan Builder
     participant Generator as Narrative Generator
     participant Grounded as Grounded Narrative Provider
     participant TTS as TTS Provider
@@ -29,21 +29,22 @@ sequenceDiagram
     alt hold
         API-->>Mobile: hold reason + state
     else trigger_story
-        API->>Brain: selected POI + context
-        Brain->>Planner: create NarrativePlan
-        Planner-->>Brain: NarrativePlan
-        Brain->>Evidence: load reusable factual evidence
-        Evidence-->>Brain: EvidenceBundle
+        API->>Evidence: approved POI only
+        Evidence-->>API: normalized EvidenceBundle
+        API->>Brief: approved POI + evidence + level + guide policy
+        Brief-->>API: server-internal StoryBrief
+        API->>Planner: create authoritative NarrativePlan from StoryBrief
+        Planner-->>API: NarrativePlan (no raw evidence)
         alt grounded provider selected
-            Brain->>Grounded: plan + evidence + provider policy
-            Grounded-->>Brain: final text + attribution
+            API->>Grounded: plan + selected evidence + provider policy
+            Grounded-->>API: final text + attribution
         else standard generator or fallback
-            Brain->>Generator: plan + evidence
-            Generator-->>Brain: story text
+            API->>Generator: plan + selected evidence
+            Generator-->>API: story text
         end
-        Brain->>TTS: synthesize audio
+        API->>TTS: synthesize audio
         TTS->>Storage: cache audio
-        Storage-->>API: audio URL + attribution metadata
+        Storage-->>API: audio URL + public attribution DTO
         API-->>Player: story metadata + audio URL + attribution
     end
 ```
@@ -74,6 +75,24 @@ interface GroundedNarrativeProvider {
   travel with the result and are enforced before caching or delivery.
 - A deterministic or evidence-only generator remains the fallback when grounded generation is
   unavailable.
+
+## Canonical M1 construction order
+
+The executable M1 contract supersedes the older illustrative `Planner -> NarrativePlan -> Evidence`
+shape in this document. The only valid order is:
+
+```text
+approved discovery decision
+  -> EvidenceBundle (server-only)
+  -> StoryBrief (server-only, selected claim IDs and continuation context)
+  -> authoritative NarrativePlan (shared DTO, no raw source prose)
+  -> NarrativeGenerator / AITaskRouter
+  -> TTS + public NarrativeAttribution
+```
+
+`EvidenceBundle` and `StoryBrief` never cross the mobile boundary. `NarrativeAttribution` contains
+only a display label and optional safe URL; it is rendered as a credit and is never supplied to or
+spoken by the model.
 
 ## NarrativePlan shape
 
@@ -166,8 +185,9 @@ or recalculate duration.
 
 `StoryBrief` keeps the complete normalized evidence bundle server-side but deterministically selects
 the claim IDs available to each segment. A short receives at most two claims; a continuation receives
-only the remaining claims. The spoken-word budget is a maximum derived from both safety duration and
-selected-claim count, so sparse evidence ends early instead of being padded with invented detail.
+only the remaining claims and is offered only when at least two unused verified claims remain. The
+spoken-word budget is a maximum derived from both safety duration and selected-claim count, so sparse
+evidence ends early instead of being padded with invented detail.
 
 Text cache identity includes prompt/policy/evidence versions, the authoritative plan, POI, language,
 theme, style, duration, guide, selected evidence, and a hash of continuation context. This prevents
