@@ -39,7 +39,213 @@ const messages = {
     'stories.eyebrow': 'Personal archive', 'stories.title': 'Stories', 'stories.count': '{count} walks', 'stories.future': 'Future route', 'stories.emptyTitle': 'Your first walk starts here', 'stories.emptyCopy': 'Places you hear and routes you complete will become your personal city archive.', 'stories.first': 'Start your first walk', 'stories.item': 'City story',
     'settings.eyebrow': 'Profile', 'settings.title': 'Settings', 'settings.account': 'Account', 'settings.logout': 'Sign out', 'settings.guide': 'Guide', 'settings.leads': '{guide} leads your walk', 'settings.fullProfile': 'Tap for the full profile', 'settings.appLanguage': 'App language', 'settings.guideLanguage': 'Guide language', 'settings.privacy': 'History & privacy', 'settings.historyOn': 'Save viewed places and completed walks', 'settings.historyOff': 'History is off', 'settings.admin': 'Administration', 'settings.stats': 'Field-test statistics', 'settings.open': 'Open →',
     'guide.swipe': 'Swipe to meet the other guide', 'guide.voice': 'Voice sample', 'guide.voicePlaceholder': 'A short greeting and introduction', 'guide.voiceLoading': 'Preparing the voice…', 'guide.choose': 'Choose {guide}', 'guide.other': 'Other guide →',
-    'admin.title': 'Statistics', 'admin.back': '← Back to app', 'admin.users': 'users', 'admin.active': 'active', 'admin.objects': 'places', 'admin.total': 'gross estimate', 'admin.note': 'This is an internal full-list-price estimate, not the amount billed. Monthly free usage caps and discounts are not deducted. Events are retained for 30 days.', 'admin.days': '{count} days', 'admin.tokens':…4725 tokens truncated…-74.006 }, zoom: 15, renderingType: 'VECTOR', heading: 0, tilt: 0, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
+    'admin.title': 'Statistics', 'admin.back': '← Back to app', 'admin.users': 'users', 'admin.active': 'active', 'admin.objects': 'places', 'admin.total': 'gross estimate', 'admin.note': 'This is an internal full-list-price estimate, not the amount billed. Monthly free usage caps and discounts are not deducted. Events are retained for 30 days.', 'admin.days': '{count} days', 'admin.tokens': 'OpenAI tokens', 'admin.email': 'Email', 'admin.lastSession': 'Last session', 'admin.cost': 'Estimate', 'admin.breakdown': 'Estimate breakdown', 'admin.mapLoads': 'Map loads', 'admin.nearby': 'Place searches', 'admin.geocoding': 'Area lookups', 'admin.textAi': 'Story text', 'admin.voiceAi': 'Voice and samples', 'admin.calls': 'calls', 'admin.googleGross': 'Google Maps · gross',
+  },
+};
+function t(key, values = {}) { const template = messages[state.appLanguage]?.[key] || messages.ru[key] || key; return Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), template); }
+function movementModeLabel() { return t(state.movementMode === 'vehicle' ? 'map.modeVehicle' : 'map.modeWalking'); }
+function movementMetaLabel() { return Number.isFinite(state.speedKmh) ? `${Math.round(state.speedKmh / (state.units === 'mi' ? 1.609344 : 1))} ${state.units === 'mi' ? (state.appLanguage === 'ru' ? 'миль/ч' : 'mph') : (state.appLanguage === 'ru' ? 'км/ч' : 'km/h')}` : t('map.gps'); }
+
+let guides = {
+  dana: { avatar: '/assets/dana-v3-avatar.png', image: '/assets/dana-v3-profile.png', ru: { name: 'Dana', role: 'Городской проводник', body: 'Живая, наблюдательная и любопытная. Dana замечает характер города, локальную жизнь и детали, мимо которых легко пройти.', interests: ['Скрытые места', 'Локальная жизнь', 'Атмосфера'], greeting: 'Привет! Я Dana. Будем идти в вашем ритме — я заговорю, когда рядом появится место, которое действительно стоит заметить.' }, en: { name: 'Dana', role: 'City companion', body: 'Lively, observant and curious. Dana notices the city’s character, local life and details that are easy to walk past.', interests: ['Hidden gems', 'Local life', 'Atmosphere'], greeting: 'Hi! I’m Dana. We’ll move at your pace, and I’ll speak when something nearby is genuinely worth noticing.' } },
+  arthur: { avatar: '/assets/arthur-v3-avatar.png', image: '/assets/arthur-v3-profile.png', ru: { name: 'Arthur', role: 'Историк', body: 'Структурный, точный и внимательный. Arthur объясняет город через историю, архитектуру и решения людей.', interests: ['История', 'Архитектура', 'Контекст'], greeting: 'Здравствуйте. Я Arthur. Вместе мы увидим, как история, архитектура и человеческие решения сформировали город вокруг нас.' }, en: { name: 'Arthur', role: 'Historian', body: 'Structured, precise and attentive. Arthur explains the city through history, architecture and human decisions.', interests: ['History', 'Architecture', 'Context'], greeting: 'Hello. I’m Arthur. Together we’ll see how history, architecture and human decisions shaped the city around us.' } },
+};
+function guideCopy(id = state.guide) { const g = guides[id] || Object.values(guides)[0]; return { ...g, ...g[state.appLanguage], image: guideImageUrl(g.image), avatar: guideImageUrl(g.avatar) }; }
+const storyAudio = new Audio();
+storyAudio.preload = 'auto';
+storyAudio.crossOrigin = 'anonymous';
+storyAudio.addEventListener('play', updateAudioControl);
+storyAudio.addEventListener('pause', updateAudioControl);
+storyAudio.addEventListener('ended', updateAudioControl);
+storyAudio.addEventListener('ended', () => {
+  if (state.selectedPoi && state.audioUrl) {state.selectionStatus=state.appLanguage==='ru'?'Воспроизведение завершено.':'Playback finished.';renderSelectedStory();}
+  if (state.sessionId && state.audioUrl) api('/drive/session/story/finish', { method: 'POST', body: JSON.stringify({ sessionId: state.sessionId, reason: 'ended' }) }).catch(() => {
+    state.walkStatus = state.appLanguage === 'ru' ? 'Не удалось завершить рассказ. Перезапустите прогулку.' : 'Could not finish the story. Restart the walk.';
+    const status = document.querySelector('#walk-status'); if (status) status.textContent = state.walkStatus;
+  });
+});
+const sampleAudio = new Audio();
+sampleAudio.preload = 'none';
+sampleAudio.crossOrigin = 'anonymous';
+
+const LIGHT_MAP_STYLES = [
+  { elementType: 'geometry', stylers: [{ color: '#eef1eb' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#435047' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f8faf7' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#cbd4cc' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#e7ece5' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#dcebd7' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#d9dfd9' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#e2e7e2' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#cfe6ec' }] },
+];
+
+async function api(path, options = {}) {
+  const requestToken = state.token;
+  const response = await fetch(`${config.apiUrl}${path}`, { signal: AbortSignal.timeout(35000), ...options, headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}), ...(options.headers || {}) } });
+  const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && !path.startsWith('/auth/') && requestToken && state.token === requestToken) {
+    const email = state.user?.email || '';
+    const message = state.appLanguage === 'ru' ? 'Срок входа истёк. Войдите снова, чтобы начать прогулку. Ваши настройки сохранены.' : 'Your sign-in expired. Sign in again to start exploring. Your settings are saved.';
+    logout();
+    document.querySelector('#email').value = email;
+    document.querySelector('#auth-message').textContent = message;
+    throw new Error(message);
+  }
+  if (!response.ok) { const error = new Error(body.error || `HTTP ${response.status}`); error.status = response.status; throw error; }
+  return body;
+}
+
+function icon(name) {
+  const paths = {
+    map: '<circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+    stories: '<path d="M4 5.5h16v13H4z"/><path d="M8 9h8M8 13h6"/>',
+    settings: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    locate: '<circle cx="12" cy="12" r="9"/><path d="m15 7-2 6-4 4 2-6z"/><path d="M12 1v2"/>',
+    back: '<path d="m15 5-7 7 7 7"/>', play: '<path d="m9 7 8 5-8 5z"/>',
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]}</svg>`;
+}
+
+function setPath(path) { if (location.pathname !== path) history.pushState({}, '', path); }
+function navigate(tab) { state.tab = tab; setPath(tab === 'admin' ? '/admin' : '/'); render(); }
+function logout() { void sendActivity(true); stopWalking(false); localStorage.removeItem('heyCityToken'); localStorage.removeItem('heyCityUser'); sessionStorage.removeItem('heyCityToken'); sessionStorage.removeItem('heyCityUser'); state.token = null; state.user = null; state.profile = null; state.map = null; state.mapLoadPromise = null; state.marker = null; state.tab = 'map'; setPath('/'); render(); }
+
+function loginView() {
+  const adminLogin = location.pathname === '/admin';
+  app.innerHTML = `<section class="login"><div class="login-intro"><div class="eyebrow">${adminLogin ? t('login.admin') : t('login.field')}</div><h1 class="wordmark">Hey<br>City</h1><p class="intro">${adminLogin ? t('login.adminCopy') : t('login.copy')}</p></div>
+    <form class="auth-form" id="auth-form"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required placeholder="you@example.com"><div id="code-wrap" hidden><label for="code">${t('login.code')}</label><input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000"></div><button class="primary" type="submit">${t('login.send')}</button><p class="message" id="auth-message"></p></form></section>`;
+  const form = document.querySelector('#auth-form');
+  let sent = false;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const message = document.querySelector('#auth-message'); const button = form.querySelector('button'); const email = document.querySelector('#email').value.trim().toLowerCase();
+    message.textContent = ''; button.disabled = true;
+    try {
+      if (!sent) {
+        const result = await api('/auth/otp/send', { method: 'POST', body: JSON.stringify({ email }) });
+        sent = true; document.querySelector('#code-wrap').hidden = false; document.querySelector('#code').required = true; document.querySelector('#code').focus(); button.textContent = t('login.enter'); message.dataset.tone = 'success'; message.textContent = result.message === 'Enter administrator access code' ? t('login.adminCode') : t('login.sent');
+      } else {
+        const result = await api('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ email, code: document.querySelector('#code').value }) });
+        state.token = result.token; state.user = result.user; localStorage.setItem('heyCityToken', state.token); localStorage.setItem('heyCityUser', JSON.stringify(state.user)); state.tab = state.user.role === 'admin' && location.pathname === '/admin' ? 'admin' : 'map'; render(); void sendActivity();
+      }
+    } catch (error) { message.dataset.tone = 'error'; message.textContent = error.message; } finally { button.disabled = false; }
+  });
+}
+
+function shell(content, active = state.tab) {
+  if (!app.querySelector('.shell')) {
+    app.innerHTML = `<div class="shell"><section class="screen"><div class="view-layer map-view" id="map-view" hidden></div><div class="view-layer page-view" id="page-view"></div></section><nav class="nav" aria-label="Main navigation"><button data-tab="map">${icon('map')}<span></span></button><button data-tab="stories">${icon('stories')}<span></span></button><button data-tab="settings">${icon('settings')}<span></span></button></nav></div>`;
+    app.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => navigate(button.dataset.tab)));
+  }
+  const mapHost = app.querySelector('#map-view');
+  const pageHost = app.querySelector('#page-view');
+  const showingMap = active === 'map';
+  mapHost.hidden = !showingMap;
+  pageHost.hidden = showingMap;
+  let mountedMap = false;
+  if (showingMap) {
+    if (mapHost.dataset.mounted !== 'true') {
+      mapHost.innerHTML = content;
+      mapHost.dataset.mounted = 'true';
+      mountedMap = true;
+    }
+  } else {
+    pageHost.innerHTML = content;
+    pageHost.scrollTop = 0;
+  }
+  app.querySelectorAll('[data-tab]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.tab === active);
+    button.querySelector('span').textContent = t(`nav.${button.dataset.tab}`);
+  });
+  return mountedMap;
+}
+
+function mapView() {
+  const guide = guideCopy();
+  const walking = state.watchId !== null;
+  const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
+  const lastCopy = state.lastResult?.transcriptText;
+  const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-failure" id="map-failure" hidden>${t('map.keyRejected')}</div><div class="map-shade" aria-hidden="true"></div><div class="radar-scan" id="radar-scan" hidden aria-hidden="true"><i class="radar-ring radar-ring-a"></i><i class="radar-ring radar-ring-b"></i></div>
+    <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? movementModeLabel() : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${esc(guide.name)}"><img src="${esc(guide.avatar)}" alt=""></button></header>
+    <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
+    <article class="walking-sheet"><button class="sheet-handle" aria-label="Свернуть или раскрыть список" aria-expanded="true"></button><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${esc(guide.avatar)}" alt="${esc(guide.name)}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><a id="automatic-attribution" class="story-attribution" target="_blank" rel="noopener noreferrer" hidden></a><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
+  if (mountedMap) {
+    document.querySelector('.sheet-handle').onclick = event => { const sheet = event.currentTarget.closest('.walking-sheet'); const collapsed = sheet.classList.toggle('is-collapsed'); event.currentTarget.setAttribute('aria-expanded', String(!collapsed)); if (state.followPosition) frameUserPosition(); };
+    document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', toggleMapOrientation); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
+  }
+  refreshMapView();
+  void loadMap();
+  if (mountedMap && !state.lastPoint) void locateUser().catch(showLocationError);
+}
+
+function refreshMapView() {
+  const host = document.querySelector('#map-view');
+  if (!host) return;
+  const guide = guideCopy();
+  const walking = state.watchId !== null;
+  const lastTitle = state.lastResult?.poi?.name || state.lastResult?.target?.name || state.lastResult?.decision?.poiName;
+  const lastCopy = state.lastResult?.transcriptText;
+  host.querySelector('.walking-status')?.classList.toggle('is-live', walking);
+  host.querySelector('#top-status').textContent = walking ? movementModeLabel() : t('map.mode');
+  host.querySelector('#walk-status').textContent = walking ? state.walkStatus || t('map.listening') : t('map.ready');
+  host.querySelector('.area-label').textContent = walking ? movementMetaLabel() : t('map.nearby');
+  host.querySelector('#place-title').textContent = lastTitle || t('map.listening');
+  host.querySelector('#place-copy').textContent = lastCopy || t('map.copy', { guide: guide.name });
+  const automaticAttribution = host.querySelector('#automatic-attribution');
+  const attribution = state.lastAttribution;
+  if (automaticAttribution) {
+    automaticAttribution.hidden = !attribution || Boolean(state.selectedPoi);
+    automaticAttribution.textContent = attribution?.label || '';
+    if (attribution?.url) automaticAttribution.href = attribution.url; else automaticAttribution.removeAttribute('href');
+  }
+  host.querySelector('#start-walk').hidden = walking;
+  host.querySelector('#start-walk').textContent = t('map.start');
+  host.querySelector('#stop-walk').hidden = !walking;
+  host.querySelector('#stop-walk').textContent = t('map.stop');
+  host.querySelector('#locate').setAttribute('aria-label', t('map.locate'));
+  host.querySelector('#open-menu').setAttribute('aria-label', t('nav.settings'));
+  const guideButton = host.querySelector('#open-guide');
+  guideButton.setAttribute('aria-label', guide.name);
+  guideButton.querySelector('img').src = guide.avatar;
+  const ambientAvatar = host.querySelector('.ambient-avatar');
+  ambientAvatar.src = guide.avatar;
+  ambientAvatar.alt = guide.name;
+  setRadarScanning(walking && state.contextInFlight);
+  renderAudioControl();
+  renderNearbyList();
+  applyMapOrientation();
+}
+
+async function loadMap() {
+  if (state.map) {
+    setTimeout(() => {
+      window.google?.maps?.event?.trigger?.(state.map, 'resize');
+      if (state.lastPoint) state.map.setCenter(state.lastPoint);
+    }, 0);
+    return;
+  }
+  if (state.mapLoadPromise) return state.mapLoadPromise;
+  const status = document.querySelector('#map-state');
+  if (!config.googleMapsBrowserKey) { if (status) status.textContent = t('map.keyMissing'); return; }
+  window.gm_authFailure = () => { const node = document.querySelector('#map-failure'); if (node) { node.hidden = false; node.textContent = t('map.keyRejected'); } };
+  state.mapLoadPromise = (async () => { try {
+    if (typeof window.google?.maps?.Map !== 'function') await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      // loading=async signals readiness through callback, not the script load event.
+      window.heyCityMapsReady = () => {
+        if (typeof window.google?.maps?.Map === 'function') resolve();
+        else reject(new Error('Google Maps callback returned without Map constructor'));
+      };
+      script.async = true;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.googleMapsBrowserKey)}&v=weekly&loading=async&callback=heyCityMapsReady`;
+      script.onerror = () => { script.remove(); reject(new Error('Google Maps script failed to load')); };
+      document.head.appendChild(script);
+    });
+    const mapNode = document.querySelector('#map'); if (!mapNode) return;
+    state.map = new google.maps.Map(mapNode, { center: state.lastPoint || { lat: 40.7128, lng: -74.006 }, zoom: 15, renderingType: 'VECTOR', heading: 0, tilt: 0, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', styles: LIGHT_MAP_STYLES });
     state.map.addListener?.('dragstart', () => { state.followPosition = false; });
     if (state.lastPoint) state.marker = new google.maps.Marker({ map: state.map, position: state.lastPoint, zIndex: 20 });
     document.querySelector('#map-state')?.setAttribute('hidden', ''); document.querySelector('#map-failure')?.setAttribute('hidden', ''); api('/usage/client', { method: 'POST', body: JSON.stringify({ operation: 'dynamic_map_load' }) }).catch(() => {});
