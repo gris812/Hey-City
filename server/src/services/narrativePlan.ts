@@ -24,7 +24,7 @@ export function createNarrativePlan(input: NarrativePlanInput, brief?: StoryBrie
     narrativeAngle: brief?.narrativeAngle ?? 'Notice the approved place',
     beats: brief?.beats ?? [],
     mustAvoid: brief?.constraints.forbiddenPatterns ?? [],
-    evidenceRefs: brief?.evidence.items.map(item => item.id) ?? [],
+    evidenceRefs: brief?.selectedEvidenceRefs ?? [],
     targetDurationSec: vehicleSafe
       ? clamp(
           input.targetDurationSec,

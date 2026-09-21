@@ -9,6 +9,8 @@ export interface GenerativeTaskRequest {
   task: AITaskKind;
   instructions: string;
   input: string;
+  /** Provider output ceiling. The caller derives this from the deterministic spoken-word budget. */
+  maxOutputTokens?: number;
   userId?: string;
   signal?: AbortSignal;
 }

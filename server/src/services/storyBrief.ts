@@ -10,6 +10,8 @@ export interface StoryBrief {
   subject: { id: string; name: string; category: string };
   moment: MomentPlan; level: NarrativeLevel; narrativeAngle: string; beats: NarrativeBeat[];
   evidence: EvidenceBundle;
+  /** Deterministically selected claims available to this segment; the full bundle stays server-only. */
+  selectedEvidenceRefs: string[];
   continuation?: { previousLevel: 'short'; previousTranscript: string };
   constraints: { targetDurationSec: number; language: string; forbiddenPatterns: string[] };
 }
@@ -38,11 +40,23 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
     callback: 'Briefly connect to what was already heard without restating its opening or repeating its facts.',
   };
   const kinds = continuation ? ['callback' as const, 'context' as const, 'reveal' as const, 'stop' as const] : policy.preferredBeats;
+  const items = verifiedItems(evidence);
+  const shortItems = selectShortEvidence(items, policy.id);
+  const selectedItems = options.level === 'short' ? shortItems : continuation
+    ? items.filter(item => !shortItems.some(short => short.id === item.id))
+    : items;
   return {
     subject: { id: input.poiId, name: input.placeName, category: evidence.category }, moment, level: options.level,
     narrativeAngle: `${continuation ? 'New context beyond the already-heard story' : city ? 'A grounded sense of this city' : evidence.category === 'bridge' ? policy.id === 'arthur' ? 'Engineering significance of a supported structural detail' : 'A supported visible feature opens an engineering story' : policy.id === 'arthur' ? 'Historical or architectural meaning of a precise detail' : 'A human-scale reveal connecting past and present'}; category=${evidence.category}; theme=${input.themeTags.join(',') || 'mixed'}`,
     beats: kinds.map(kind => ({ kind, objective: objectives[kind] ?? 'Use only a relevant supplied claim.' })),
-    evidence: { ...evidence, items: verifiedItems(evidence) }, continuation,
+    evidence: { ...evidence, items }, selectedEvidenceRefs: selectedItems.map(item => item.id), continuation,
     constraints: { targetDurationSec: input.targetDurationSec, language: options.language, forbiddenPatterns: [...narrativeV2.forbiddenPatterns] },
   };
+}
+
+function selectShortEvidence<T extends { id: string }>(items: T[], guideId: string): T[] {
+  if (items.length <= 2) return items;
+  // Arthur's short establishes the site/current-building distinction. Dana keeps the first
+  // reveal and its immediate consequence. Ordering is stable from evidence normalization.
+  return guideId === 'arthur' ? [items[0], items[2]] : items.slice(0, 2);
 }

@@ -35,7 +35,8 @@ export class OpenAIGenerativeProvider implements GenerativeProvider {
         model: openai.textModel,
         instructions: request.instructions,
         input: request.input,
-        max_output_tokens: openai.maxOutputTokens,
+        max_output_tokens: Math.min(request.maxOutputTokens ?? openai.maxOutputTokens, openai.maxOutputTokens),
+        ...( /^(?:gpt-[56]|o\d)/.test(openai.textModel) ? { reasoning: { effort: 'low' } } : {}),
       }),
     });
     if (!response.ok) {
@@ -46,6 +47,7 @@ export class OpenAIGenerativeProvider implements GenerativeProvider {
       status?: string;
       output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
       usage?: { input_tokens?: number; output_tokens?: number };
+      incomplete_details?: { reason?: string };
     };
     // output_text is an SDK convenience, not the raw REST response envelope.
     const text = data.output?.filter(item => item.type === 'message')
@@ -66,7 +68,7 @@ export class OpenAIGenerativeProvider implements GenerativeProvider {
       metadata: { aiTask: request.task, provider: this.id },
     });
 
-    if (!text || (data.status && data.status !== 'completed')) throw new Error('OpenAI returned incomplete narration');
+    if (!text || (data.status && data.status !== 'completed')) throw new Error(`OpenAI returned incomplete narration${data.incomplete_details?.reason ? `: ${data.incomplete_details.reason}` : ''}`);
     return { text, providerId: this.id, model: openai.textModel };
   }
 }

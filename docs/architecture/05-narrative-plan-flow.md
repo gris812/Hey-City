@@ -164,6 +164,13 @@ NarrativePlan
 layer does not rebuild the plan and cannot choose another POI, alter the trigger, change the mode,
 or recalculate duration.
 
-Text cache identity includes prompt version, POI, language, theme, style, duration bucket, and guide.
-This prevents Dana and Arthur from accidentally sharing cached prose and allows an intentional
-prompt-version bump without clearing unrelated caches.
+`StoryBrief` keeps the complete normalized evidence bundle server-side but deterministically selects
+the claim IDs available to each segment. A short receives at most two claims; a continuation receives
+only the remaining claims. The spoken-word budget is a maximum derived from both safety duration and
+selected-claim count, so sparse evidence ends early instead of being padded with invented detail.
+
+Text cache identity includes prompt/policy/evidence versions, the authoritative plan, POI, language,
+theme, style, duration, guide, selected evidence, and a hash of continuation context. This prevents
+Dana and Arthur or short/long/continuation contexts from sharing cached prose. The default primary
+storytelling model is `gpt-5.6-luna`, with an environment override through `OPENAI_TEXT_MODEL`;
+deterministic routing and provider abstraction remain unchanged.

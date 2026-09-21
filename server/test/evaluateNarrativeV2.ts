@@ -8,9 +8,21 @@ import { openai } from '../src/config';
 import { normalizeEvidence, storyAvailability } from '../src/services/evidence';
 import { fixture } from './narrativeFixtures';
 import { validateStory } from '../src/services/storyQa';
+import { media } from '../src/config';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 async function run() {
   if (!openai.apiKey) throw new Error('OPENAI_API_KEY is required for live M1 experience QA');
+  const previousMediaDirectory = media.directory;
+  const qaMediaDirectory = await mkdtemp(join(tmpdir(),'heycity-m1-qa-'));
+  media.directory = qaMediaDirectory;
+  try { await runScenarios(); }
+  finally { media.directory = previousMediaDirectory; await rm(qaMediaDirectory,{recursive:true,force:true}); }
+}
+
+async function runScenarios() {
   const routes: AITaskRoutes = { final_storytelling:'openai', complex_follow_up:'openai', evidence_compression:'deterministic', poi_normalization:'deterministic', relevance_classification:'deterministic' };
   let llmCalls = 0;
   const provider = new OpenAIGenerativeProvider();

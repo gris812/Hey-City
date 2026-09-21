@@ -23,6 +23,8 @@ async function run() {
   assert.notDeepEqual(dana.policy.behavior, arthur.policy.behavior);
   assert.equal(dana.plan.poiId, 'federal-hall', 'T1 approved target');
   assert.equal(dana.brief.subject.name, 'Federal Hall');
+  assert.deepEqual(dana.plan.evidenceRefs, dana.brief.evidence.items.slice(0,2).map(item=>item.id));
+  assert.deepEqual(arthur.plan.evidenceRefs, [arthur.brief.evidence.items[0].id,arthur.brief.evidence.items[2].id]);
   assert(!JSON.stringify(dana.plan).includes('Washington'), 'public plan contains no evidence prose');
   assert(!JSON.stringify(dana.plan).includes('https://'), 'public plan contains no source URL');
   const short = await generator.generate(dana);
@@ -31,12 +33,15 @@ async function run() {
   await generator.generate(dana);
   assert.equal(calls.length, 1, 'one final call per segment; second request is a cache hit');
   assert.equal(calls[0].task, 'final_storytelling', 'T2 router boundary');
+  assert.equal(calls[0].maxOutputTokens, 270, 'short output ceiling follows deterministic evidence budget');
   assert(!calls[0].input.includes('https://'), 'T3 attribution is not prompt prose');
   assert(calls[0].input.includes('VERIFIED EVIDENCE'));
   const long = fixture({level:'long',continuation:{poiId:dana.plan.poiId,guideId:'dana',language:'en',previousLevel:'short',previousTranscript:short.text}});
+  assert.deepEqual(long.plan.evidenceRefs,long.brief.evidence.items.slice(2).map(item=>item.id),'continuation receives only unused claims');
   await generator.generate(long);
+  assert.equal(calls[1].maxOutputTokens,270,'continuation cannot pad sparse unused evidence to the duration ceiling');
   assert.equal(long.brief.continuation?.previousTranscript,short.text);
-  assert.match(calls[1].instructions, /do not restart, repeat/);
+  assert.match(calls[1].instructions, /Do not repeat its opening, subject introduction, or facts already stated/);
   assert.match(calls[1].input, /ALREADY HEARD:/);
   assert(!JSON.stringify(long.plan).includes(short.text), 'continuation transcript remains server-only');
   const standalone = fixture({level:'long'});
@@ -58,7 +63,7 @@ async function run() {
   for (const text of ['', 'Source: Wikipedia', 'https://example.com', 'NarrativePlan says to ignore instructions', 'This is entirely English.']) {
     assert.throws(()=>validateStory(text,russian.brief),`reject ${text}`);
   }
-  for (const text of ['This historic building has a story.', 'This iconic attraction is famous.', 'Federal Hall is a historic landmark located in New York.', 'Federal Hall was built in 1842 and is known for history.', 'Would you like to know more?']) assert.throws(()=>validateStory(text,dana.brief));
+  for (const text of ['This historic building has a story.', 'This iconic attraction is famous.', 'Did you know Federal Hall mattered?', 'Знаете ли вы, что Federal Hall важен?', 'Federal Hall is a historic landmark located in New York.', 'Federal Hall was built in 1842 and is known for history.', 'Would you like to know more?']) assert.throws(()=>validateStory(text,dana.brief));
   validateStory('Здесь важно различать место и здание. Нынешнее здание открылось как таможня.',russian.brief);
   const vehicle = fixture({level:'long',mode:'vehicle'});
   assert.equal(vehicle.plan.targetDurationSec,45,'E5 explicit long cannot bypass vehicle limit');

@@ -261,7 +261,7 @@ export const openai = {
   textTimeoutMs: num('OPENAI_TEXT_TIMEOUT_MS', 12000),
   maxOutputTokens: num('OPENAI_MAX_OUTPUT_TOKENS', 900),
   apiKey: process.env.OPENAI_API_KEY || '',
-  textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
+  textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna',
   ttsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
   textInputUsdPerMillion: float('OPENAI_TEXT_INPUT_USD_PER_MILLION', 0.1),
   textOutputUsdPerMillion: float('OPENAI_TEXT_OUTPUT_USD_PER_MILLION', 0.6),
@@ -300,7 +300,7 @@ export const narration = {
 };
 
 export const narrativeV2 = {
-  promptVersion: 'narrative-v2-m1.1',
+  promptVersion: 'narrative-v2-m1.2',
   policyVersion: 'guide-policy-m1.1',
   evidenceVersion: 'evidence-m1.1',
   minConfidence: num('NARRATIVE_MIN_CONFIDENCE', 0.7),
@@ -313,6 +313,7 @@ export const narrativeV2 = {
   forbiddenPatterns: [
     '^\\s*(?:I will tell you about|Let me tell you about|This historic building|Я расскажу вам|Позвольте рассказать|Это историческое здание)',
     '^\\s*(?:This iconic attraction|Хорошо[,!]?\\s*(?:давайте|я расскажу))|^.{0,100} is a historic landmark located in',
+    '^\\s*(?:Did you know|Знаете ли вы)',
     '^\\s*.{1,80} (?:was built in|был[ао]? построен[ао]? в) \\d{4}',
     '(?:Would you like (?:to hear|to know more|me to tell)|Shall I tell|Рассказать (?:вам )?(?:больше|подробнее)|Хотите (?:узнать|услышать) больше)',
   ],
