@@ -97,9 +97,13 @@ async function run() {
         const identification = await selectStory(session.id,'u1','manual-museum','identify','ru');
         assert.doesNotMatch(identification.transcriptText, /Рассказать/);
         assert.equal(durations.length,0,'identification needs neither LLM nor source enrichment');
-        await selectStory(session.id,'u1','manual-museum','short','ru');
         await selectStory(session.id,'u1','manual-museum','long','ru');
-        assert.deepEqual(durations,[30,120]);
+        await selectStory(session.id,'u1','manual-museum','short','ru');
+        assert.deepEqual(durations,[120,30]);
+        await assert.rejects(selectStory(session.id,'u1','manual-museum','long','ru'), /Недостаточно проверенной/,
+          'a three-claim object must not offer a detailed continuation after the short story consumes two claims');
+        // Exercise cancellation with a direct long request; the short continuation is intentionally unavailable above.
+        session.storyContinuation = undefined;
         let release!: () => void;
         let started!: () => void;
         const waiting = new Promise<void>(resolve => {started=resolve;});
