@@ -341,10 +341,6 @@ async function updateLocation(position) {
     renderCandidateMarkers(result.aheadDiscovery?.nearbyCandidates || result.aheadDiscovery?.topCandidates || []);
     renderNearbyList();
     const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); const modeNode = document.querySelector('#top-status'); const metaNode = document.querySelector('.area-label'); if (statusNode) statusNode.textContent = state.walkStatus; if (modeNode) modeNode.textContent = movementModeLabel(); if (metaNode) metaNode.textContent = movementMetaLabel(); if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText;
-    if (result.nextAction === 'PLAY' && copyNode) {
-      const source = result.narrativePlan?.storySeed?.match(/https:\/\/en\.wikipedia\.org\/\?curid=\d+/)?.[0];
-      if (source) { const link = document.createElement('a'); link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = ' Wikipedia · CC BY-SA'; copyNode.append(link); }
-    }
     if (result.audioUrl && result.nextAction === 'PLAY') { state.audioGuideId = requestedGuide; state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
     renderSelectedStory();
     if (result.suggestedPoiId && !state.selectingPlace && (!state.audioUrl || storyAudio.ended)) void selectNearbyPlace(result.suggestedPoiId,'identify');

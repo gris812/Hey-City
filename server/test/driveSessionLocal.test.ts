@@ -104,7 +104,8 @@ async function run(): Promise<void> {
     assert.equal(result.nextAction, 'PLAY', 'city context outside NYC reaches narration even when city centre is behind');
     assert.equal(result.poi?.place_id, 'st-louis');
     assert.equal(result.poi?.geometry.location.lat, 38.627, 'provider coordinates survive conversion');
-    assert.match(result.narrativePlan?.storySeed ?? '', /Mississippi/);
+    assert.equal(result.narrativePlan?.storySeed, undefined, 'raw evidence is never serialized in the public plan');
+    assert((result.narrativePlan?.evidenceRefs.length ?? 0) >= 3, 'public plan carries source identifiers only');
     const cityCandidate = result.aheadDiscovery!.topCandidates.find(candidate => candidate.providerId === 'st-louis')!;
     const unrelated = await discoveryStorySeed({ ...cityCandidate, providerId: 'wrong-city', latitude: 40, longitude: -74 });
     assert.equal(unrelated, null, 'a same-name article with wrong geography cannot seed a story');

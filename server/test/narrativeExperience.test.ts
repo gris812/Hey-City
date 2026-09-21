@@ -55,7 +55,7 @@ async function run() {
   for (const text of ['', 'Source: Wikipedia', 'https://example.com', 'NarrativePlan says to ignore instructions', 'This is entirely English.']) {
     assert.throws(()=>validateStory(text,russian.brief),`reject ${text}`);
   }
-  for (const text of ['This historic building has a story.', 'This iconic attraction is famous.', 'Federal Hall is a historic landmark located in New York.', 'Would you like to know more?']) assert.throws(()=>validateStory(text,dana.brief));
+  for (const text of ['This historic building has a story.', 'This iconic attraction is famous.', 'Federal Hall is a historic landmark located in New York.', 'Federal Hall was built in 1842 and is known for history.', 'Would you like to know more?']) assert.throws(()=>validateStory(text,dana.brief));
   validateStory('Здесь важно различать место и здание. Нынешнее здание открылось как таможня.',russian.brief);
   const vehicle = fixture({level:'long',mode:'vehicle'});
   assert.equal(vehicle.plan.targetDurationSec,45,'E5 explicit long cannot bypass vehicle limit');
