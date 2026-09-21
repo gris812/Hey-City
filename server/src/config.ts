@@ -299,6 +299,24 @@ export const narration = {
   leadTimeMinMax: 6,
 };
 
+export const narrativeV2 = {
+  promptVersion: 'narrative-v2-m1.1',
+  policyVersion: 'guide-policy-m1.1',
+  evidenceVersion: 'evidence-m1.1',
+  minConfidence: num('NARRATIVE_MIN_CONFIDENCE', 0.7),
+  shortMinClaims: num('NARRATIVE_SHORT_MIN_CLAIMS', 1),
+  longMinClaims: num('NARRATIVE_LONG_MIN_CLAIMS', 3),
+  minClaimChars: num('NARRATIVE_MIN_CLAIM_CHARS', 30),
+  contextualCacheSeconds: num('NARRATIVE_CONTEXT_CACHE_SECONDS', 3600),
+  languageRatio: 0.5,
+  wordsPerSecond: num('NARRATIVE_WORDS_PER_SECOND', 2.5),
+  forbiddenPatterns: [
+    '^\\s*(?:I will tell you about|Let me tell you about|This historic building|Я расскажу вам|Позвольте рассказать|Это историческое здание)',
+    '^\\s*(?:This iconic attraction|Хорошо[,!]?\\s*(?:давайте|я расскажу))|^.{0,100} is a historic landmark located in',
+    '(?:Would you like (?:to hear|to know more|me to tell)|Shall I tell|Рассказать (?:вам )?(?:больше|подробнее)|Хотите (?:узнать|услышать) больше)',
+  ],
+};
+
 export const themeTags = [
   'history',
   'architecture',

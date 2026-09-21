@@ -10,7 +10,9 @@ import type {
   StoryFinishResult,
 } from '@heycity/shared';
 import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings } from '../config';
-import { discoveryStorySeed } from './discoveryKnowledge';
+import { discoveryEvidence } from './discoveryKnowledge';
+import { EvidenceBundle, normalizeEvidence, storyAvailability } from './evidence';
+import type { StoryContinuationState } from './storyBrief';
 import type { DiscoveryCandidate as StoryCandidate } from './driveDecision';
 import { getUserById } from './user';
 import { NearbyPlace } from './googlePlaces';
@@ -19,7 +21,7 @@ import { wasPoiListenedRecently } from './history';
 import { addToHistory } from './history';
 import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
-import { createNarrativePlan } from './narrativePlan';
+import { prepareNarrative } from './narrativePlan';
 import { generateNarrationFromPlan } from './narration';
 import {
   clearAheadDiscoverySession,
@@ -51,6 +53,7 @@ export interface DriveSession {
   lastCandidates: NearbyPlace[];
   alreadyListening: boolean;
   storyRequest?: AbortController;
+  storyContinuation?: StoryContinuationState;
   spokenProviderIds?: Set<string>;
   knowledgeOffset?: number;
   pendingMode?: DiscoveryMode;
@@ -240,6 +243,7 @@ export async function pingSession(
     geometry: { location: { lat: candidate.latitude, lng: candidate.longitude } },
   }]));
   const storyCandidates: StoryCandidate[] = [];
+  const evidenceByPoi = new Map<string, EvidenceBundle>();
   // Retrieve facts only for a bounded shortlist when a new story can start.
   if (!session.alreadyListening && (!session.lastStoryStartedAt || now - session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds * 1000)) {
     const offset = session.knowledgeOffset ?? 0;
@@ -255,21 +259,25 @@ export async function pingSession(
       eligible.push(candidate);
     }
     // Start the bounded free knowledge lookups together, retain deterministic priority.
-    const seeds = eligible.map(candidate => discoveryStorySeed(candidate));
+    const seeds = eligible.map(candidate => discoveryEvidence(candidate));
     for (let i = 0; i < eligible.length; i++) {
       const candidate = eligible[i];
       const isCityContext = candidate.targetType === 'city' && candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters;
       const eta = candidate.distanceMeters / Math.max(speedKmh / 3.6, 1);
       session.knowledgeOffset = (live.indexOf(candidate) + 1) % Math.max(1, live.length);
-      const storySeed = await seeds[i];
-      if (!storySeed) continue;
+      const evidence = await seeds[i];
+      if (!evidence || !storyAvailability(evidence).short) continue;
+      evidenceByPoi.set(candidate.providerId, evidence);
       storyCandidates.push({ poiId: candidate.providerId, placeName: candidate.name,
         distanceMeters: isCityContext ? 0 : candidate.distanceMeters,
-        etaSeconds: isCityContext ? undefined : eta, storySeed });
+        etaSeconds: isCityContext ? undefined : eta });
       break;
     }
   }
-  storyCandidates.push(...localCandidates);
+  for (const candidate of localCandidates) {
+    const evidence = normalizeEvidence({ id: candidate.poiId, name: candidate.placeName, category: 'curated_place' }, candidate.storySeed ?? '', 'curated');
+    if (storyAvailability(evidence).short) { evidenceByPoi.set(candidate.poiId, evidence); storyCandidates.push(candidate); }
+  }
   session.lastCandidates = [...livePlaces.values(), ...localCandidates.map(localCandidateToNearbyPlace)];
 
   const decision = evaluateDiscoveryDecision({
@@ -298,8 +306,12 @@ export async function pingSession(
     etaSeconds: decision.etaSeconds,
     storySeed: decision.narrativePlanInput.storySeed,
   });
-  const narrativePlan = createNarrativePlan(decision.narrativePlanInput);
+  const { plan: narrativePlan, brief, policy } = prepareNarrative(decision.narrativePlanInput, evidenceByPoi.get(decision.poiId)!, { level: 'auto', language: session.params.language });
+  // The public decision carries product fields, never legacy source prose.
+  delete decision.narrativePlanInput.storySeed;
+  session.storyContinuation = undefined;
   const narration = await generateNarrationFromPlan(narrativePlan, {
+    brief, policy,
     language: session.params.language,
     narrationStyle: session.params.narrationStyle,
     userId,

@@ -58,7 +58,7 @@ storyAudio.addEventListener('play', updateAudioControl);
 storyAudio.addEventListener('pause', updateAudioControl);
 storyAudio.addEventListener('ended', updateAudioControl);
 storyAudio.addEventListener('ended', () => {
-  if (state.selectedPoi && state.audioUrl) {state.selectionStatus=state.appLanguage==='ru'?'Рассказ завершён. Кратко или подробнее?':'Finished. Hear a brief story or more detail?';renderSelectedStory();}
+  if (state.selectedPoi && state.audioUrl) {state.selectionStatus=state.appLanguage==='ru'?'Воспроизведение завершено.':'Playback finished.';renderSelectedStory();}
   if (state.sessionId && state.audioUrl) api('/drive/session/story/finish', { method: 'POST', body: JSON.stringify({ sessionId: state.sessionId, reason: 'ended' }) }).catch(() => {
     state.walkStatus = state.appLanguage === 'ru' ? 'Не удалось завершить рассказ. Перезапустите прогулку.' : 'Could not finish the story. Restart the walk.';
     const status = document.querySelector('#walk-status'); if (status) status.textContent = state.walkStatus;
@@ -695,7 +695,7 @@ function renderSelectedStory() {
   if (status) status.textContent = state.selectionStatus;
   if (!controls) {controls=document.createElement('div');controls.id='story-levels';sheet.querySelector('.ambient-row').after(controls);}
   const ru = state.appLanguage === 'ru';
-  controls.innerHTML = `<button class="secondary" data-level="short">${ru ? 'Кратко' : 'Brief story'}</button><button class="secondary" data-level="long">${ru ? 'Подробнее' : 'More detail'}</button>`;
+  controls.innerHTML = `${state.storyAvailability?.short ? `<button class="secondary" data-level="short">${ru ? 'Кратко' : 'Brief story'}</button>` : ''}${state.storyAvailability?.long ? `<button class="secondary" data-level="long">${ru ? 'Подробнее' : 'More detail'}</button>` : ''}`;
   controls.querySelectorAll('[data-level]').forEach(button=>{button.onclick=()=>selectNearbyPlace(selected.providerId,button.dataset.level);});
   if (state.selectedSource) {const link=document.createElement('a');link.href=state.selectedSource;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Wikipedia · CC BY-SA';controls.append(link);}
 }
@@ -706,7 +706,7 @@ function resetSelectionForLanguage() {
   state.selectionStatus=state.appLanguage==='ru'?'Язык изменён. Выберите «Кратко» или «Подробнее».':'Language changed. Choose a story length.';
   if (state.sessionId) void api(`/sessions/${state.sessionId}/guide`,{method:'PUT',body:JSON.stringify({guideId:state.guide,language:state.guideLanguage})}).catch(showLocationError);
 }
-async function selectNearbyPlace(poiId, level = 'short') {
+async function selectNearbyPlace(poiId, level = 'identify') {
   if (!state.sessionId) return;
   const pool = state.lastResult?.aheadDiscovery?.nearbyCandidates || state.lastResult?.aheadDiscovery?.topCandidates || [];
   const candidate = pool.find(c=>c.providerId===poiId) || (state.selectedPoi?.providerId===poiId ? state.selectedPoi : null);
@@ -715,14 +715,17 @@ async function selectNearbyPlace(poiId, level = 'short') {
   const revision = ++state.selectionRevision;
   state.selectionController?.abort();
   const controller = new AbortController(); state.selectionController = controller;
-  state.selectingPlace = true; state.selectedPoi = candidate; state.selectedText=''; state.selectedSource=null;
+  state.selectingPlace = true; state.selectedPoi = candidate; state.selectedText=''; state.selectedSource=null; state.storyAvailability=null;
   state.selectionStatus = state.appLanguage === 'ru' ? `Выбрано: ${candidate.name}. ${level === 'identify' ? 'Знакомлю с местом…' : 'Готовлю рассказ…'}` : `Selected: ${candidate.name}. Preparing…`;
   storyAudio.pause(); state.audioUrl=null; storyAudio.removeAttribute('src'); storyAudio.load(); primeStoryAudio();
   renderNearbyList(); renderAudioControl();
   try {
     const result = await api('/sessions/' + sessionId + '/select', {method:'POST',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(35000)]),body:JSON.stringify({poiId,level,language:state.guideLanguage})});
     if (state.sessionId!==sessionId || revision!==state.selectionRevision) return;
-    state.audioUrl=result.audioUrl; state.audioGuideId=state.guide; state.selectedText=result.transcriptText;state.selectedSource=result.sourceUrl;
+    state.audioUrl=result.audioUrl; state.audioGuideId=state.guide; state.selectedText=result.transcriptText;state.selectedSource=result.sourceUrl;state.storyAvailability=result.availability;
+    if (level === 'identify') void api(`/sessions/${sessionId}/objects/${encodeURIComponent(poiId)}/availability`,{signal:controller.signal}).then(availability=>{
+      if (state.sessionId===sessionId && revision===state.selectionRevision) {state.storyAvailability=availability;renderSelectedStory();}
+    }).catch(()=>{});
     state.selectionStatus = state.appLanguage === 'ru' ? `${level==='identify' ? 'Знакомство' : level==='short' ? 'Краткий рассказ' : 'Подробный рассказ'}: ${candidate.name}` : `${level}: ${candidate.name}`;
     renderSelectedStory(); renderAudioControl();
     if (result.audioUrl) {storyAudio.src=result.audioUrl; await storyAudio.play().catch(()=>{state.selectionStatus=t('map.tapPlay');renderSelectedStory();});}

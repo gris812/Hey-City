@@ -125,7 +125,27 @@ export interface NarrativePlanInput {
   targetDurationSec: number;
 }
 
+export type NarrativeLevel = 'auto' | 'short' | 'long';
+export type MomentRelationship = 'new_topic' | 'continuation' | 'callback' | 'contrast' | 'transition' | 'orientation';
+export type NarrativeIntent = 'notice' | 'orient' | 'surprise' | 'explain' | 'connect' | 'reflect';
+export type NarrativeDelivery = 'micro' | 'observation' | 'brief_story' | 'deep_story';
+export type NarrativeBeatKind = 'attention' | 'hook' | 'reveal' | 'context' | 'human' | 'contrast' | 'callback' | 'transition' | 'stop';
+export interface MomentPlan {
+  relationship: MomentRelationship;
+  intent: NarrativeIntent;
+  delivery: NarrativeDelivery;
+  attentionCue?: { relativeDirection?: 'ahead' | 'left' | 'right' };
+}
+export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }
+export interface StoryAvailability { short: boolean; long: boolean }
+
 export interface NarrativePlan extends NarrativePlanInput {
+  level: NarrativeLevel;
+  moment: MomentPlan;
+  narrativeAngle: string;
+  beats: NarrativeBeat[];
+  mustAvoid: string[];
+  evidenceRefs: string[];
   safety: {
     vehicleSafe: boolean;
     maxDurationSec: number;

@@ -3,17 +3,18 @@ import { aheadDiscovery } from '../config';
 import { cacheGet, cacheSet } from './cache';
 import { distanceMeters } from './geo';
 import { recordUsage } from './usage';
+import { EvidenceBundle, normalizeEvidence } from './evidence';
 
-const pending = new Map<string, Promise<string | null>>();
+const pending = new Map<string, Promise<EvidenceBundle | null>>();
 
 /** Exact-title lookup with redirects and coordinate validation; never invent a seed from a name. */
-export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise<string | null> {
-  const key = `discovery-knowledge:v2:${candidate.providerId}`;
-  const cached = await cacheGet<{ seed: string | null }>(key);
+export async function discoveryEvidence(candidate: DiscoveryCandidate): Promise<EvidenceBundle | null> {
+  const key = `discovery-knowledge:m1:${candidate.providerId}`;
+  const cached = await cacheGet<{ seed: EvidenceBundle | null }>(key);
   if (cached) return cached.seed;
   if (pending.has(key)) return pending.get(key)!;
   const task = (async () => {
-    let seed: string | null = null;
+    let seed: EvidenceBundle | null = null;
     try {
       const url = new URL('https://en.wikipedia.org/w/api.php');
       url.search = new URLSearchParams({ action: 'query', format: 'json', redirects: '1',
@@ -32,7 +33,7 @@ export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise
         const tolerance = candidate.targetType === 'city' ? aheadDiscovery.cityContextRadiusMeters : aheadDiscovery.knowledgeMatchRadiusMeters;
         if (!coord || !page.pageid || page.pageprops?.disambiguation !== undefined || !page.extract || page.extract.length < aheadDiscovery.knowledgeMinChars) continue;
         if (distanceMeters(candidate.latitude, candidate.longitude, coord.lat, coord.lon) > tolerance) continue;
-        seed = `Category: ${candidate.targetType}. Source: https://en.wikipedia.org/?curid=${page.pageid} (Wikipedia, CC BY-SA).\n${page.extract.slice(0, aheadDiscovery.knowledgeMaxChars)}`;
+        seed = normalizeEvidence({ id: candidate.providerId, name: candidate.name, category: candidate.targetType }, page.extract.slice(0, aheadDiscovery.knowledgeMaxChars), 'wikipedia', `https://en.wikipedia.org/?curid=${page.pageid}`);
         break;
       }
       if (!seed) {
@@ -53,7 +54,7 @@ export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise
           const match = [...wanted].filter(w => titleWords.has(w)).length / Math.max(wanted.size, titleWords.size, 1);
           if (!coord || !page.pageid || page.pageprops?.disambiguation !== undefined || !page.extract || page.extract.length < aheadDiscovery.knowledgeMinChars || match < 0.6) continue;
           if (distanceMeters(candidate.latitude, candidate.longitude, coord.lat, coord.lon) > aheadDiscovery.knowledgeMatchRadiusMeters) continue;
-          seed = `Category: ${candidate.targetType}. Source: https://en.wikipedia.org/?curid=${page.pageid} (Wikipedia, CC BY-SA).\n${page.extract.slice(0, aheadDiscovery.knowledgeMaxChars)}`;
+          seed = normalizeEvidence({ id: candidate.providerId, name: candidate.name, category: candidate.targetType }, page.extract.slice(0, aheadDiscovery.knowledgeMaxChars), 'wikipedia', `https://en.wikipedia.org/?curid=${page.pageid}`);
           break;
         }
       }
@@ -67,4 +68,10 @@ export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise
   })();
   pending.set(key, task);
   try { return await task; } finally { pending.delete(key); }
+}
+
+/** Legacy callers only; generation consumes discoveryEvidence directly. */
+export async function discoveryStorySeed(candidate: DiscoveryCandidate): Promise<string | null> {
+  const evidence = await discoveryEvidence(candidate);
+  return evidence ? evidence.items.map(item => item.claim).join(' ') : null;
 }

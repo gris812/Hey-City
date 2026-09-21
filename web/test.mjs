@@ -353,7 +353,12 @@ async function testCatalogUnitsAndCompass() {
   assert.equal(selectedId,'museum-id','list click requests the selected provider ID');
   assert.equal(dom.window.document.querySelector('#place-copy').textContent,'Verified story');
   assert.equal(dom.window.document.querySelector('[data-poi]').getAttribute('aria-pressed'),'true');
-  assert.match(dom.window.document.querySelector('#story-levels').textContent,/Кратко|Brief story/);
+  assert.equal(dom.window.document.querySelectorAll('[data-level]').length,0,'no story offers without verified evidence');
+  dom.window.inspectApp('state.storyAvailability={short:true,long:false}; renderSelectedStory()');
+  assert.equal(dom.window.document.querySelectorAll('[data-level]').length,1);
+  assert.equal(dom.window.document.querySelector('[data-level]').dataset.level,'short');
+  dom.window.inspectApp('state.storyAvailability={short:true,long:true}; renderSelectedStory()');
+  assert.equal(dom.window.document.querySelectorAll('[data-level]').length,2);
   let releaseOld,releaseNew;
   dom.window.fetch=async (url,options)=>url.endsWith('/select') ? new Promise(resolve=>{ if(JSON.parse(options.body).level==='long') releaseOld=resolve;else releaseNew=resolve; }) : response({});
   const old = dom.window.inspectApp("selectNearbyPlace('museum-id','long')");

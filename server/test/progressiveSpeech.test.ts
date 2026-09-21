@@ -8,7 +8,7 @@ async function run() {
   const { media, openai } = await import('../src/config');
   const { generateNarrationFromPlan } = await import('../src/services/narration');
   const { narrativeGenerator } = await import('../src/services/narrativeGenerator');
-  const { createNarrativePlan } = await import('../src/services/narrativePlan');
+  const { fixture } = await import('./narrativeFixtures');
   const { createApp } = await import('../src/app');
   const { ProgressiveAudio } = await import('../src/services/progressiveAudio');
   const bounded = new ProgressiveAudio(2);
@@ -33,8 +33,8 @@ async function run() {
     } }));
   };
   narrativeGenerator.generate = async () => ({ text: 'An early verified story.', providerId: 'test', cached: false });
-  const plan = createNarrativePlan({poiId:'test-stream',placeName:'Museum',mode:'vehicle',guideId:'dana',themeTags:['history'],targetDurationSec:60});
-  const generate = () => generateNarrationFromPlan(plan, {language:'en',narrationStyle:'documentary'});
+  const request = fixture({id:'test-stream',mode:'vehicle'});
+  const generate = () => generateNarrationFromPlan(request.plan, request);
   try {
     const [one, two] = await Promise.all([generate(), generate()]);
     assert.equal(calls, 1, 'identical concurrent stories share a single TTS');

@@ -1,4 +1,5 @@
 import { getGuide } from '../services/guides';
+import { InsufficientEvidenceError } from '../services/evidence';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { generateNarration as generate, generateVoiceSample as generateSample } from '../services/narration';
@@ -39,6 +40,7 @@ export async function generateNarration(req: AuthRequest, res: Response): Promis
     });
     res.json(result);
   } catch (e) {
+    if (e instanceof InsufficientEvidenceError) { res.status(422).json({ error: e.message }); return; }
     console.error('generateNarration', e);
     res.status(500).json({ error: 'Narration failed' });
   }

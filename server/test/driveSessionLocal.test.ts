@@ -26,7 +26,7 @@ async function run(): Promise<void> {
   assert.equal(first.nextAction, 'PLAY');
   assert.equal(first.decision?.type, 'trigger_story');
   assert.ok(first.poi);
-  assert.match(first.audioUrl ?? '', /^https:\/\/example\.com\/tts\/artur\//);
+  assert.match(first.audioUrl ?? '', /^https:\/\/example\.com\/tts\/arthur\//);
   assert.ok(first.narrativePlan);
   assert.ok(first.transcriptText);
   assert.ok(first.estimatedDurationSec);
