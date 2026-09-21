@@ -17,6 +17,7 @@ async function run() {
   const routes: AITaskRoutes = { final_storytelling:'quality', complex_follow_up:'quality', evidence_compression:'deterministic', poi_normalization:'deterministic', relevance_classification:'deterministic' };
   const generator = new NarrativeGenerator(new AITaskRouter([provider], routes));
   const dana = fixture(); const arthur = fixture({guide:'artur'});
+  assert.deepEqual(dana.brief.evidence.items.map(item=>item.claim),corpus.subjects['federal-hall'].claims,'stable claims preserve U.S. abbreviations');
   assert.equal(arthur.policy.id, 'arthur');
   assert.notDeepEqual(dana.plan.beats, arthur.plan.beats, 'T5 distinct guide beat tendencies');
   assert.notDeepEqual(dana.policy.behavior, arthur.policy.behavior);
@@ -25,6 +26,8 @@ async function run() {
   assert(!JSON.stringify(dana.plan).includes('Washington'), 'public plan contains no evidence prose');
   assert(!JSON.stringify(dana.plan).includes('https://'), 'public plan contains no source URL');
   const short = await generator.generate(dana);
+  assert.match(calls[0].input,/Federal Hall/,'T1 provider request retains the approved target');
+  assert.doesNotMatch(calls[0].input,/Golden Gate Bridge/,'T1 provider request cannot substitute another POI');
   await generator.generate(dana);
   assert.equal(calls.length, 1, 'one final call per segment; second request is a cache hit');
   assert.equal(calls[0].task, 'final_storytelling', 'T2 router boundary');

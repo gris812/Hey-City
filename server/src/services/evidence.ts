@@ -20,8 +20,7 @@ export function normalizeEvidence(subject: { id: string; name: string; category:
   // Legacy curated strings are accepted only at ingestion, never in the generation contract.
   const clean = text.replace(/^Category:.*(?:\r?\n|$)/gm, '').replace(/^Source:.*(?:\r?\n|$)/gm, '')
     .replace(/https?:\/\/\S+/g, '').trim();
-  const sentences = [...new Intl.Segmenter('en', { granularity: 'sentence' }).segment(clean)]
-    .map(segment => segment.segment.trim()).filter(Boolean);
+  const sentences = segmentClaims(clean);
   return {
     subjectId: subject.id, subjectName: subject.name, category: subject.category,
     sourceVersion: narrativeV2.evidenceVersion,
@@ -31,6 +30,14 @@ export function normalizeEvidence(subject: { id: string; name: string; category:
     })),
     attribution: { label: sourceType === 'wikipedia' ? 'Wikipedia · CC BY-SA' : sourceType, url: sourceUrl },
   };
+}
+function segmentClaims(text: string): string[] {
+  const dot = '\uE000';
+  const protectedText = text
+    .replace(/\b(?:[A-ZА-ЯЁ]\.){2,}/g, value => value.replaceAll('.', dot))
+    .replace(/\b(?:Mr|Mrs|Ms|Dr|Prof|St|No|vs)\./gi, value => value.replace('.', dot));
+  return protectedText.split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁ])/u)
+    .map(sentence => sentence.replaceAll(dot, '.').trim()).filter(Boolean);
 }
 export function verifiedItems(bundle: EvidenceBundle): EvidenceItem[] {
   const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
