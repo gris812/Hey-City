@@ -46,7 +46,7 @@ async function run(): Promise<void> {
   assert.equal(second.decision?.type, 'hold');
   assert.equal(second.decision?.reason, 'already_listening');
 
-  const finished = finishActiveStory(session.id, 'skipped');
+  const finished = await finishActiveStory(session.id, 'skipped');
   assert.equal(finished?.ok, true);
   assert.equal(finished?.activeStoryWasPlaying, true);
   assert.equal(finished?.reason, 'skipped');
@@ -110,7 +110,7 @@ async function run(): Promise<void> {
     const cityCandidate = result.aheadDiscovery!.topCandidates.find(candidate => candidate.providerId === 'st-louis')!;
     const unrelated = await discoveryStorySeed({ ...cityCandidate, providerId: 'wrong-city', latitude: 40, longitude: -74 });
     assert.equal(unrelated, null, 'a same-name article with wrong geography cannot seed a story');
-    finishActiveStory(city.id);
+    await finishActiveStory(city.id);
     const repeat = await pingSession(city.id, 38.64, -90.1994, 0, 40, 1_600_000);
     assert.equal(repeat.nextAction, 'NONE', 'city introduction does not repeat within the session');
   } finally { globalThis.fetch = originalFetch; googleMaps.apiKey = originalKey; }

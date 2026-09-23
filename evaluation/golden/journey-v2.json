@@ -1,11 +1,441 @@
 {
-  "version": "m2.1",
+  "version": "m2.2",
   "durationMinutes": 20,
+  "clock": {
+    "startMs": 0,
+    "endMs": 1200000
+  },
   "scenarios": [
-    { "id": "R1", "name": "Financial District multi-object journey", "expected": ["valid_callback", "no_repeated_entity", "no_repeated_evidence"] },
-    { "id": "R2", "name": "Skipped story", "expected": ["skipped_outcome", "no_phantom_callback"] },
-    { "id": "R3", "name": "Short then detailed", "expected": ["continuation", "merged_evidence_refs", "no_repeated_evidence"] },
-    { "id": "R4", "name": "Area transition", "expected": ["area_updated", "stale_area_expires", "unknown_area_not_invented"] },
-    { "id": "R5", "name": "History disabled", "expected": ["session_continuity", "no_durable_history_write"] }
+    {
+      "id": "R1",
+      "name": "Financial District multi-object journey",
+      "events": [
+        {
+          "atMs": 0,
+          "type": "context",
+          "mode": "walking",
+          "area": {
+            "locality": "Financial District",
+            "city": "New York"
+          },
+          "expect": {
+            "area": {
+              "locality": "Financial District",
+              "city": "New York"
+            },
+            "currentTargetId": null,
+            "usedEvidenceRefs": []
+          }
+        },
+        {
+          "atMs": 60000,
+          "type": "story_started",
+          "entityId": "wall-street",
+          "entityName": "Wall Street",
+          "topics": [
+            "financial_history"
+          ],
+          "evidenceRefs": [
+            "wall-1",
+            "wall-2"
+          ],
+          "expect": {
+            "currentTargetId": "wall-street",
+            "usedEvidenceRefs": []
+          }
+        },
+        {
+          "atMs": 180000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {
+            "currentTargetId": null,
+            "outcomes": [
+              {
+                "entityId": "wall-street",
+                "reason": "completed"
+              }
+            ],
+            "recentEntityIds": [
+              "wall-street"
+            ],
+            "usedEvidenceRefs": [
+              "wall-1",
+              "wall-2"
+            ]
+          }
+        },
+        {
+          "atMs": 300000,
+          "type": "story_started",
+          "entityId": "federal-hall",
+          "entityName": "Federal Hall",
+          "topics": [
+            "financial_history",
+            "political_history"
+          ],
+          "evidenceRefs": [
+            "federal-1",
+            "federal-2"
+          ],
+          "callback": {
+            "sourceEntityId": "wall-street",
+            "topicKey": "financial_history",
+            "relationship": "contrast"
+          },
+          "expect": {
+            "currentTargetId": "federal-hall",
+            "callbackSourceEntityIds": [
+              "wall-street"
+            ],
+            "usedEvidenceRefs": [
+              "wall-1",
+              "wall-2"
+            ]
+          }
+        },
+        {
+          "atMs": 420000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {
+            "outcomes": [
+              {
+                "entityId": "wall-street",
+                "reason": "completed"
+              },
+              {
+                "entityId": "federal-hall",
+                "reason": "completed"
+              }
+            ],
+            "recentEntityIds": [
+              "federal-hall",
+              "wall-street"
+            ],
+            "usedEvidenceRefs": [
+              "wall-1",
+              "wall-2",
+              "federal-1",
+              "federal-2"
+            ]
+          }
+        },
+        {
+          "atMs": 540000,
+          "type": "story_started",
+          "entityId": "custom-house",
+          "entityName": "Custom House",
+          "topics": [
+            "architecture"
+          ],
+          "evidenceRefs": [
+            "custom-1"
+          ],
+          "expect": {
+            "currentTargetId": "custom-house"
+          }
+        },
+        {
+          "atMs": 660000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {
+            "recentEntityIds": [
+              "custom-house",
+              "federal-hall",
+              "wall-street"
+            ],
+            "usedEvidenceRefs": [
+              "wall-1",
+              "wall-2",
+              "federal-1",
+              "federal-2",
+              "custom-1"
+            ]
+          }
+        },
+        {
+          "atMs": 780000,
+          "type": "story_candidate",
+          "entityId": "wall-street",
+          "topics": [
+            "financial_history"
+          ],
+          "evidenceRefs": [
+            "wall-1",
+            "wall-2"
+          ],
+          "expect": {
+            "unusedEvidenceRefs": [],
+            "currentTargetId": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "name": "Skipped story",
+      "events": [
+        {
+          "atMs": 120000,
+          "type": "story_started",
+          "entityId": "trinity-church",
+          "entityName": "Trinity Church",
+          "level": "short",
+          "topics": [
+            "religious_history"
+          ],
+          "evidenceRefs": [
+            "trinity-1"
+          ],
+          "expect": {
+            "currentTargetId": "trinity-church"
+          }
+        },
+        {
+          "atMs": 150000,
+          "type": "story_finished",
+          "reason": "skipped",
+          "expect": {
+            "currentTargetId": null,
+            "outcomes": [
+              {
+                "entityId": "trinity-church",
+                "reason": "skipped"
+              }
+            ],
+            "recentEntityIds": [],
+            "usedEvidenceRefs": []
+          }
+        },
+        {
+          "atMs": 240000,
+          "type": "story_candidate",
+          "entityId": "federal-hall",
+          "topics": [
+            "religious_history"
+          ],
+          "evidenceRefs": [
+            "federal-3"
+          ],
+          "expect": {
+            "forbiddenCallbackSourceEntityIds": [
+              "trinity-church"
+            ],
+            "callbackSourceEntityIds": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "name": "Short then detailed",
+      "events": [
+        {
+          "atMs": 360000,
+          "type": "story_started",
+          "entityId": "federal-hall",
+          "entityName": "Federal Hall",
+          "level": "short",
+          "topics": [
+            "political_history"
+          ],
+          "evidenceRefs": [
+            "federal-1",
+            "federal-2"
+          ],
+          "expect": {
+            "currentTargetId": "federal-hall"
+          }
+        },
+        {
+          "atMs": 420000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {
+            "recentEntityIds": [
+              "federal-hall"
+            ],
+            "usedEvidenceRefs": [
+              "federal-1",
+              "federal-2"
+            ]
+          }
+        },
+        {
+          "atMs": 480000,
+          "type": "story_started",
+          "entityId": "federal-hall",
+          "entityName": "Federal Hall",
+          "level": "long",
+          "topics": [
+            "political_history"
+          ],
+          "evidenceRefs": [
+            "federal-3"
+          ],
+          "expect": {
+            "currentTargetId": "federal-hall"
+          }
+        },
+        {
+          "atMs": 600000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {
+            "recentEntityIds": [
+              "federal-hall"
+            ],
+            "entityStoryLevels": {
+              "federal-hall": [
+                "short",
+                "long"
+              ]
+            },
+            "usedEvidenceRefs": [
+              "federal-1",
+              "federal-2",
+              "federal-3"
+            ]
+          }
+        },
+        {
+          "atMs": 660000,
+          "type": "story_candidate",
+          "entityId": "federal-hall",
+          "topics": [
+            "political_history"
+          ],
+          "evidenceRefs": [
+            "federal-1",
+            "federal-2",
+            "federal-3"
+          ],
+          "expect": {
+            "unusedEvidenceRefs": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "name": "Area transition",
+      "areaTtlMs": 120000,
+      "events": [
+        {
+          "atMs": 720000,
+          "type": "context",
+          "mode": "walking",
+          "area": {
+            "locality": "Financial District",
+            "city": "New York"
+          },
+          "expect": {
+            "area": {
+              "locality": "Financial District",
+              "city": "New York"
+            }
+          }
+        },
+        {
+          "atMs": 840000,
+          "type": "context",
+          "mode": "walking",
+          "area": {
+            "locality": "Chinatown",
+            "city": "New York"
+          },
+          "expect": {
+            "area": {
+              "locality": "Chinatown",
+              "city": "New York"
+            }
+          }
+        },
+        {
+          "atMs": 1020001,
+          "type": "snapshot",
+          "expect": {
+            "area": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "name": "History disabled",
+      "historyEnabled": false,
+      "events": [
+        {
+          "atMs": 900000,
+          "type": "story_started",
+          "entityId": "city-hall",
+          "entityName": "City Hall",
+          "topics": [
+            "civic_history"
+          ],
+          "evidenceRefs": [
+            "city-1"
+          ],
+          "expect": {
+            "persistentJourneyWrites": 0,
+            "currentTargetId": "city-hall"
+          }
+        },
+        {
+          "atMs": 960000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {
+            "persistentJourneyWrites": 0,
+            "recentEntityIds": [
+              "city-hall"
+            ],
+            "usedEvidenceRefs": [
+              "city-1"
+            ]
+          }
+        },
+        {
+          "atMs": 1080000,
+          "type": "story_candidate",
+          "entityId": "federal-hall",
+          "topics": [
+            "civic_history",
+            "political_history"
+          ],
+          "evidenceRefs": [
+            "federal-4"
+          ],
+          "callback": {
+            "sourceEntityId": "city-hall",
+            "topicKey": "civic_history"
+          },
+          "expect": {
+            "persistentJourneyWrites": 0,
+            "callbackSourceEntityIds": [
+              "city-hall"
+            ],
+            "usedEvidenceRefs": [
+              "city-1"
+            ]
+          }
+        },
+        {
+          "atMs": 1200000,
+          "type": "snapshot",
+          "expect": {
+            "persistentJourneyWrites": 0,
+            "recentEntityIds": [
+              "city-hall"
+            ],
+            "usedEvidenceRefs": [
+              "city-1"
+            ]
+          }
+        }
+      ]
+    }
   ]
 }

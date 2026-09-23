@@ -167,7 +167,9 @@ export async function finishActiveStoryHandler(req: AuthRequest, res: Response):
     bodyReason === 'skipped' || bodyReason === 'paused' || bodyReason === 'ended'
       ? bodyReason
       : 'ended';
-  const result = finishActiveStory(sessionId, reason);
+  const listenedSeconds = req.body?.listenedSeconds;
+  const result = await finishActiveStory(sessionId, reason,
+    typeof listenedSeconds === 'number' && Number.isFinite(listenedSeconds) ? listenedSeconds : undefined);
   res.json(result);
 }
 

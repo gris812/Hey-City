@@ -34,6 +34,7 @@ export interface JourneyEntityMemory {
   lastDiscussedAt: string;
   discussionCount: number;
   storyLevels: JourneyStoryLevel[];
+  guideIds: string[];
   evidenceRefs: string[];
   topics: string[];
   outcome?: JourneyOutcomeReason;
@@ -129,6 +130,7 @@ export interface StartJourneyStoryInput {
   entityName: string;
   category?: string;
   level: JourneyStoryLevel;
+  guideId?: string;
   startedAt?: string;
 }
 
@@ -188,6 +190,8 @@ export class JourneyState {
   private outcomes: JourneyOutcomeMemory[] = [];
   private questions: JourneyQuestionMemory[] = [];
   private callbacks: JourneyCallback[] = [];
+  /** Callback ids confirmed as spoken in this session, ordered by use time. */
+  private usedCallbackIds: string[] = [];
   private usedEvidenceRefs: string[] = [];
   private narrativeSignatures: string[] = [];
   private readonly moments = new Map<string, JourneyMoment>();
@@ -271,6 +275,9 @@ export class JourneyState {
     if (!source) return undefined;
     const topicKey = topics.find(topic => source.topicKeys.includes(topic))!;
     const id = `callback:${source.momentId}:${input.entityId}:${topicKey}`;
+    // Selecting/planning a callback does not consume it. Only a completed
+    // current story may call recordCallbackUsed after playback succeeds.
+    if (this.usedCallbackIds.includes(id)) return undefined;
     const existing = this.callbacks.find(callback => callback.id === id);
     if (existing) return freezeCopy(existing);
     const callback: JourneyCallback = {
@@ -285,6 +292,16 @@ export class JourneyState {
     };
     this.callbacks = trimNewest([...this.callbacks, callback], this.limits.callbacks);
     return freezeCopy(callback);
+  }
+
+  /**
+   * Marks a callback as spoken after the consuming story completed. It is kept
+   * in session memory only and prevents a mechanical re-use of the same
+   * source-target-topic relationship while its source moment remains retained.
+   */
+  recordCallbackUsed(callbackId: string): void {
+    if (!this.callbacks.some(callback => callback.id === callbackId) || this.usedCallbackIds.includes(callbackId)) return;
+    this.usedCallbackIds = trimNewest([...this.usedCallbackIds, callbackId], this.limits.outcomes);
   }
 
   recordQuestion(question: Omit<JourneyQuestionMemory, 'at'> & { at?: string }): void {
@@ -338,11 +355,13 @@ export class JourneyState {
     const next: JourneyEntityMemory = current ? {
       ...current, lastDiscussedAt: at, discussionCount: current.discussionCount + 1,
       storyLevels: unique([...current.storyLevels, moment.level]) as JourneyStoryLevel[],
+      guideIds: unique([...current.guideIds, ...(moment.guideId ? [moment.guideId] : [])]),
       evidenceRefs: unique([...current.evidenceRefs, ...moment.evidenceRefs]),
       topics: unique([...current.topics, ...moment.topicKeys]),
     } : {
       entityId: moment.entityId, name: moment.entityName, category: moment.category,
       firstSeenAt: at, lastDiscussedAt: at, discussionCount: 1, storyLevels: [moment.level],
+      guideIds: moment.guideId ? [moment.guideId] : [],
       evidenceRefs: [...moment.evidenceRefs], topics: [...moment.topicKeys],
     };
     this.entities.set(next.entityId, next);
@@ -367,6 +386,8 @@ export class JourneyState {
     const retainedMoments = new Set(this.outcomes.map(outcome => outcome.momentId));
     if (this.activeMomentId) retainedMoments.add(this.activeMomentId);
     for (const id of this.moments.keys()) if (!retainedMoments.has(id)) this.moments.delete(id);
+    const retainedCallbackIds = new Set(this.callbacks.map(callback => callback.id));
+    this.usedCallbackIds = this.usedCallbackIds.filter(id => retainedCallbackIds.has(id));
   }
 }
 
@@ -386,7 +407,7 @@ function pruneMap<T>(map: Map<string, T>, limit: number, date: (value: T) => str
 function hasAreaValue(area: JourneyAreaCandidate): boolean { return Boolean(area.city || area.locality || area.neighborhood || area.region || area.areaType); }
 function areaSpecificity(area: JourneyAreaCandidate): number { return area.neighborhood ? 5 : area.locality ? 4 : area.city ? 3 : area.region ? 2 : area.areaType ? 1 : 0; }
 function areaName(area: JourneyAreaCandidate): string { return area.neighborhood ?? area.locality ?? area.city ?? area.region ?? area.areaType ?? ''; }
-function copyEntity(entity: JourneyEntityMemory): JourneyEntityMemory { return { ...entity, storyLevels: [...entity.storyLevels], evidenceRefs: [...entity.evidenceRefs], topics: [...entity.topics] }; }
+function copyEntity(entity: JourneyEntityMemory): JourneyEntityMemory { return { ...entity, storyLevels: [...entity.storyLevels], guideIds: [...entity.guideIds], evidenceRefs: [...entity.evidenceRefs], topics: [...entity.topics] }; }
 function copyTopic(topic: JourneyTopicMemory): JourneyTopicMemory { return { ...topic, entityIds: [...topic.entityIds] }; }
 function freezeCopy<T>(value: T): Readonly<T> { return deepFreeze(structuredClone(value)); }
 function deepFreeze<T>(value: T): Readonly<T> {

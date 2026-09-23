@@ -1,6 +1,7 @@
 import type { DiscoveryMode, NarrativePlan, NarrativePlanInput } from '@heycity/shared';
 import { discoveryConfig } from '../config';
 import { buildStoryBrief, StoryBrief, StoryContinuationState } from './storyBrief';
+import type { JourneyContext } from './journeyContext';
 import { EvidenceBundle } from './evidence';
 import { guidePolicy } from './guidePolicy';
 import type { NarrativeLevel } from '@heycity/shared';
@@ -43,7 +44,7 @@ export function createNarrativePlan(input: NarrativePlanInput, brief?: StoryBrie
 
 /** Same plan constructor owns safety in every path, including explicit long requests. */
 export function prepareNarrative(input: NarrativePlanInput, evidence: EvidenceBundle,
-  options: { level: NarrativeLevel; language: string; continuation?: StoryContinuationState }) {
+  options: { level: NarrativeLevel; language: string; continuation?: StoryContinuationState; journey?: JourneyContext }) {
   const policy = guidePolicy(input.guideId);
   const safe = createNarrativePlan({ ...input, guideId: policy.id });
   const brief = buildStoryBrief(safe, evidence, policy, options);

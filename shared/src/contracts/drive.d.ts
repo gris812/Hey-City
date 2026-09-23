@@ -134,6 +134,8 @@ export interface MomentPlan {
   relationship: MomentRelationship;
   intent: NarrativeIntent;
   delivery: NarrativeDelivery;
+  /** Validated earlier moment/entity references; never a raw transcript. */
+  priorContextRefs?: string[];
   attentionCue?: { relativeDirection?: 'ahead' | 'left' | 'right' };
 }
 export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }

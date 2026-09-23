@@ -9,7 +9,7 @@ const at = (seconds: number) => new Date(seconds * 1000).toISOString();
 function delivered(state: ReturnType<typeof createJourneyState>, input: {
   id: string; entityId: string; name: string; topics: string[]; refs: string[]; seconds: number;
 }): void {
-  state.startStory({ momentId: input.id, entityId: input.entityId, entityName: input.name, category: 'landmark', level: 'short', startedAt: at(input.seconds) });
+  state.startStory({ momentId: input.id, entityId: input.entityId, entityName: input.name, category: 'landmark', level: 'short', guideId: 'arthur', startedAt: at(input.seconds) });
   state.recordNarration({ momentId: input.id, topicKeys: input.topics, evidenceRefs: input.refs, narrativeSignature: `arthur:new_topic:${input.id}`, at: at(input.seconds + 1) });
 }
 
@@ -39,6 +39,7 @@ function run(): void {
   state.finishStory({ momentId: 'wall-street', reason: 'completed', endedAt: at(20), listenedSeconds: 10 });
   const heard = state.getSnapshot(at(20));
   assert.equal(heard.recent.entities[0].discussionCount, 1);
+  assert.deepEqual(heard.recent.entities[0].guideIds, ['arthur']);
   assert.deepEqual(heard.usedEvidenceRefs, ['e1', 'e2']);
   assert.equal(heard.recent.outcomes[0].reason, 'completed');
   assert.deepEqual(state.getUnusedEvidenceRefs('wall-street', ['e1', 'e2', 'e3']), ['e3']);
@@ -49,9 +50,14 @@ function run(): void {
   assert.equal(callback?.sourceEntityName, 'Wall Street');
   assert.equal(callback?.relationship, 'contrast');
   assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['architecture'] }), undefined, 'callbacks require a shared deterministic topic');
+  assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['finance'] })?.id, callback?.id, 'an unplayed callback remains available after planning fails');
+  state.finishStory({ momentId: 'federal-hall', reason: 'completed', endedAt: at(32), listenedSeconds: 2 });
+  state.recordCallbackUsed(callback!.id);
+  assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['finance'] }), undefined, 'a completed callback cannot be mechanically reused');
 
-  state.finishStory({ momentId: 'federal-hall', reason: 'skipped', endedAt: at(32) });
-  assert.equal(state.getSnapshot(at(32)).recent.entities.some(entity => entity.entityId === 'federal-hall'), false, 'skipped narration is not remembered as heard');
+  delivered(state, { id: 'skipped', entityId: 'skipped', name: 'Skipped place', topics: ['architecture'], refs: ['skip-1'], seconds: 35 });
+  state.finishStory({ momentId: 'skipped', reason: 'skipped', endedAt: at(36) });
+  assert.equal(state.getSnapshot(at(36)).recent.entities.some(entity => entity.entityId === 'skipped'), false, 'skipped narration is not remembered as heard');
   delivered(state, { id: 'trinity', entityId: 'trinity', name: 'Trinity Church', topics: ['architecture'], refs: ['e4'], seconds: 40 });
   state.markSuperseded('trinity', at(41));
   state.finishStory({ momentId: 'trinity', reason: 'completed', endedAt: at(42) });
