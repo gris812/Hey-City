@@ -43,6 +43,8 @@ const playResult: PingResult = {
     },
   },
   narrativePlan: {
+    level: 'auto', moment: { relationship: 'new_topic', intent: 'notice', delivery: 'brief_story' },
+    narrativeAngle: 'A historical detail', beats: [], mustAvoid: [], evidenceRefs: [],
     poiId: 'poi_federal_hall',
     placeName: 'Federal Hall',
     mode: 'vehicle',

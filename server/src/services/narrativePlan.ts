@@ -1,19 +1,30 @@
 import type { DiscoveryMode, NarrativePlan, NarrativePlanInput } from '@heycity/shared';
 import { discoveryConfig } from '../config';
+import { buildStoryBrief, StoryBrief, StoryContinuationState } from './storyBrief';
+import { EvidenceBundle } from './evidence';
+import { guidePolicy } from './guidePolicy';
+import type { NarrativeLevel } from '@heycity/shared';
 
 export interface MockNarration {
   transcriptText: string;
   estimatedDurationSec: number;
 }
 
-export function createNarrativePlan(input: NarrativePlanInput): NarrativePlan {
+export function createNarrativePlan(input: NarrativePlanInput, brief?: StoryBrief): NarrativePlan {
   const vehicleSafe = input.mode === 'vehicle';
   const maxDurationSec = vehicleSafe
     ? discoveryConfig.vehicleStoryMaxSeconds
     : Math.max(input.targetDurationSec, discoveryConfig.vehicleStoryMaxSeconds);
 
+  const { storySeed: _legacySource, ...publicInput } = input;
   return {
-    ...input,
+    ...publicInput,
+    level: brief?.level ?? 'auto',
+    moment: brief?.moment ?? { relationship: 'new_topic', intent: 'notice', delivery: 'brief_story' },
+    narrativeAngle: brief?.narrativeAngle ?? 'Notice the approved place',
+    beats: brief?.beats ?? [],
+    mustAvoid: brief?.constraints.forbiddenPatterns ?? [],
+    evidenceRefs: brief?.selectedEvidenceRefs ?? [],
     targetDurationSec: vehicleSafe
       ? clamp(
           input.targetDurationSec,
@@ -28,6 +39,15 @@ export function createNarrativePlan(input: NarrativePlanInput): NarrativePlan {
     },
     structure: ['hook', 'context', 'fact', 'closing'],
   };
+}
+
+/** Same plan constructor owns safety in every path, including explicit long requests. */
+export function prepareNarrative(input: NarrativePlanInput, evidence: EvidenceBundle,
+  options: { level: NarrativeLevel; language: string; continuation?: StoryContinuationState }) {
+  const policy = guidePolicy(input.guideId);
+  const safe = createNarrativePlan({ ...input, guideId: policy.id });
+  const brief = buildStoryBrief(safe, evidence, policy, options);
+  return { plan: createNarrativePlan(safe, brief), brief, policy };
 }
 
 export function createMockNarration(plan: NarrativePlan): MockNarration {

@@ -125,7 +125,27 @@ export interface NarrativePlanInput {
   targetDurationSec: number;
 }
 
+export type NarrativeLevel = 'auto' | 'short' | 'long';
+export type MomentRelationship = 'new_topic' | 'continuation' | 'callback' | 'contrast' | 'transition' | 'orientation';
+export type NarrativeIntent = 'notice' | 'orient' | 'surprise' | 'explain' | 'connect' | 'reflect';
+export type NarrativeDelivery = 'micro' | 'observation' | 'brief_story' | 'deep_story';
+export type NarrativeBeatKind = 'attention' | 'hook' | 'reveal' | 'context' | 'human' | 'contrast' | 'callback' | 'transition' | 'stop';
+export interface MomentPlan {
+  relationship: MomentRelationship;
+  intent: NarrativeIntent;
+  delivery: NarrativeDelivery;
+  attentionCue?: { relativeDirection?: 'ahead' | 'left' | 'right' };
+}
+export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }
+export interface StoryAvailability { short: boolean; long: boolean }
+
 export interface NarrativePlan extends NarrativePlanInput {
+  level: NarrativeLevel;
+  moment: MomentPlan;
+  narrativeAngle: string;
+  beats: NarrativeBeat[];
+  mustAvoid: string[];
+  evidenceRefs: string[];
   safety: {
     vehicleSafe: boolean;
     maxDurationSec: number;
@@ -155,6 +175,12 @@ export interface DrivePoi {
   geometry: { location: { lat: number; lng: number } };
 }
 
+/** Display-only source credit. Raw evidence and claim text remain server-internal. */
+export interface NarrativeAttribution {
+  label: string;
+  url?: string;
+}
+
 export interface DrivePingResult {
   nextAction: 'PLAY' | 'NONE';
   mode?: DiscoveryMode;
@@ -166,6 +192,7 @@ export interface DrivePingResult {
   narrativePlan?: NarrativePlan;
   transcriptText?: string;
   estimatedDurationSec?: number;
+  attribution?: NarrativeAttribution;
   circuitLimited?: boolean;
   aheadDiscovery?: AheadDiscoveryDiagnostic;
 }

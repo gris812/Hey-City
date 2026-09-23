@@ -77,7 +77,7 @@ async function run() {
     const session = createSession('u1', {mode:'walking',themeTags:['mixed'],narrationStyle:'documentary',lengthSec:60,leadTimeMin:2,voiceId:'dana',language:'en',autoplay:true});
     await evaluateAheadDiscovery({sessionId:session.id,movement:{latitude:38.627,longitude:-90.1994,headingDegrees:0,speedMps:1,accuracyMeters:10,timestamp:new Date().toISOString()},provider:{name:'google',searchAhead:async()=>[{providerId:'manual-museum',provider:'google',name:'Test Museum',targetType:'museum',latitude:38.627,longitude:-90.1994,providerTypes:['museum']}]}});
     const savedFetch = globalThis.fetch;
-    globalThis.fetch = async (url, options) => String(url).includes('wikipedia.org') ? new Response(JSON.stringify({query:{pages:{'123':{pageid:123,title:'Test Museum',coordinates:[{lat:38.627,lon:-90.1994}],extract:'The museum documents the history of this city and its river trade. Its collection includes architectural drawings and objects illustrating the development of transport and local industries.'}}}})) : savedFetch(url,options);
+    globalThis.fetch = async (url, options) => String(url).includes('wikipedia.org') ? new Response(JSON.stringify({query:{pages:{'123':{pageid:123,title:'Test Museum',coordinates:[{lat:38.627,lon:-90.1994}],extract:'The museum documents the history of this city and its river trade. Its collection includes architectural drawings and objects illustrating the development of transport and local industries. The museum opened its transport gallery in 1980.'}}}})) : savedFetch(url,options);
     try {
       const selected = await request('/sessions/'+session.id+'/select','slepak@stolbergco.com','admin','POST',{poiId:'manual-museum'});
       assert.equal(selected.status,200,'known discovery object can be selected explicitly');
@@ -95,11 +95,15 @@ async function run() {
       };
       try {
         const identification = await selectStory(session.id,'u1','manual-museum','identify','ru');
-        assert.match(identification.transcriptText, /Рассказать/);
+        assert.doesNotMatch(identification.transcriptText, /Рассказать/);
         assert.equal(durations.length,0,'identification needs neither LLM nor source enrichment');
-        await selectStory(session.id,'u1','manual-museum','short','ru');
         await selectStory(session.id,'u1','manual-museum','long','ru');
-        assert.deepEqual(durations,[30,120]);
+        await selectStory(session.id,'u1','manual-museum','short','ru');
+        assert.deepEqual(durations,[120,30]);
+        await assert.rejects(selectStory(session.id,'u1','manual-museum','long','ru'), /Недостаточно проверенной/,
+          'a three-claim object must not offer a detailed continuation after the short story consumes two claims');
+        // Exercise cancellation with a direct long request; the short continuation is intentionally unavailable above.
+        session.storyContinuation = undefined;
         let release!: () => void;
         let started!: () => void;
         const waiting = new Promise<void>(resolve => {started=resolve;});

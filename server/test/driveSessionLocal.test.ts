@@ -26,7 +26,7 @@ async function run(): Promise<void> {
   assert.equal(first.nextAction, 'PLAY');
   assert.equal(first.decision?.type, 'trigger_story');
   assert.ok(first.poi);
-  assert.match(first.audioUrl ?? '', /^https:\/\/example\.com\/tts\/artur\//);
+  assert.match(first.audioUrl ?? '', /^https:\/\/example\.com\/tts\/arthur\//);
   assert.ok(first.narrativePlan);
   assert.ok(first.transcriptText);
   assert.ok(first.estimatedDurationSec);
@@ -104,7 +104,9 @@ async function run(): Promise<void> {
     assert.equal(result.nextAction, 'PLAY', 'city context outside NYC reaches narration even when city centre is behind');
     assert.equal(result.poi?.place_id, 'st-louis');
     assert.equal(result.poi?.geometry.location.lat, 38.627, 'provider coordinates survive conversion');
-    assert.match(result.narrativePlan?.storySeed ?? '', /Mississippi/);
+    assert.equal(result.narrativePlan?.storySeed, undefined, 'raw evidence is never serialized in the public plan');
+    assert((result.narrativePlan?.evidenceRefs.length ?? 0) >= 3, 'public plan carries source identifiers only');
+    assert.deepEqual(result.attribution, { label:'Wikipedia · CC BY-SA', url:'https://en.wikipedia.org/?curid=1' }, 'automatic story exposes attribution without raw evidence');
     const cityCandidate = result.aheadDiscovery!.topCandidates.find(candidate => candidate.providerId === 'st-louis')!;
     const unrelated = await discoveryStorySeed({ ...cityCandidate, providerId: 'wrong-city', latitude: 40, longitude: -74 });
     assert.equal(unrelated, null, 'a same-name article with wrong geography cannot seed a story');

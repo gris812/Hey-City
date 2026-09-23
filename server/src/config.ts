@@ -125,7 +125,7 @@ export function getAheadDiscoveryConfig(env: NodeJS.ProcessEnv = process.env) {
     evaluationSeconds: num('AHEAD_DISCOVERY_EVALUATION_SECONDS', 20),
     movementRefreshMeters: num('AHEAD_DISCOVERY_MOVEMENT_REFRESH_M', 3000),
     movementRefreshSeconds: num('AHEAD_DISCOVERY_MOVEMENT_REFRESH_SECONDS', 180),
-    knowledgeTimeoutMs: num('DISCOVERY_KNOWLEDGE_TIMEOUT_MS', 5000),
+    knowledgeTimeoutMs: num('DISCOVERY_KNOWLEDGE_TIMEOUT_MS', 10000),
     walkingHeadingThresholdKmh: num('DISCOVERY_WALKING_HEADING_THRESHOLD_KMH', 10),
     highwayThresholdMps: float('DISCOVERY_HIGHWAY_THRESHOLD_MPS', 17.88),
     searchProfiles: {
@@ -257,14 +257,24 @@ export const googleMaps = {
     'places.id,places.displayName,places.location,places.types',
 };
 
+export const openAITextPricing = (model: string): { inputUsdPerMillion: number; outputUsdPerMillion: number } => {
+  if (model === 'gpt-5.6-luna') return { inputUsdPerMillion: 0.2, outputUsdPerMillion: 1.2 };
+  // Explicit overrides are required for unlisted models so accounting never silently uses Luna rates.
+  return { inputUsdPerMillion: 0.2, outputUsdPerMillion: 1.2 };
+};
+
+const defaultOpenAITextModel = 'gpt-5.6-luna';
+const configuredOpenAITextModel = process.env.OPENAI_TEXT_MODEL || defaultOpenAITextModel;
+const configuredOpenAITextPricing = openAITextPricing(configuredOpenAITextModel);
+
 export const openai = {
   textTimeoutMs: num('OPENAI_TEXT_TIMEOUT_MS', 12000),
   maxOutputTokens: num('OPENAI_MAX_OUTPUT_TOKENS', 900),
   apiKey: process.env.OPENAI_API_KEY || '',
-  textModel: process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini',
+  textModel: configuredOpenAITextModel,
   ttsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
-  textInputUsdPerMillion: float('OPENAI_TEXT_INPUT_USD_PER_MILLION', 0.1),
-  textOutputUsdPerMillion: float('OPENAI_TEXT_OUTPUT_USD_PER_MILLION', 0.6),
+  textInputUsdPerMillion: float('OPENAI_TEXT_INPUT_USD_PER_MILLION', configuredOpenAITextPricing.inputUsdPerMillion),
+  textOutputUsdPerMillion: float('OPENAI_TEXT_OUTPUT_USD_PER_MILLION', configuredOpenAITextPricing.outputUsdPerMillion),
   ttsInputUsdPerMillion: float('OPENAI_TTS_INPUT_USD_PER_MILLION', 0.6),
   ttsOutputUsdPerMillion: float('OPENAI_TTS_OUTPUT_USD_PER_MILLION', 12),
 };
@@ -297,6 +307,27 @@ export const narration = {
   lengthSecDefault: 90,
   leadTimeMinMin: 0.5,
   leadTimeMinMax: 6,
+};
+
+export const narrativeV2 = {
+  promptVersion: 'narrative-v2-m1.2',
+  policyVersion: 'guide-policy-m1.1',
+  evidenceVersion: 'evidence-m1.1',
+  minConfidence: num('NARRATIVE_MIN_CONFIDENCE', 0.7),
+  shortMinClaims: num('NARRATIVE_SHORT_MIN_CLAIMS', 1),
+  longMinClaims: num('NARRATIVE_LONG_MIN_CLAIMS', 3),
+  continuationMinClaims: num('NARRATIVE_CONTINUATION_MIN_CLAIMS', 2),
+  minClaimChars: num('NARRATIVE_MIN_CLAIM_CHARS', 30),
+  contextualCacheSeconds: num('NARRATIVE_CONTEXT_CACHE_SECONDS', 3600),
+  languageRatio: 0.5,
+  wordsPerSecond: num('NARRATIVE_WORDS_PER_SECOND', 2.5),
+  forbiddenPatterns: [
+    '^\\s*(?:I will tell you about|Let me tell you about|This historic building|Я расскажу вам|Позвольте рассказать|Это историческое здание)',
+    '^\\s*(?:This iconic attraction|Хорошо[,!]?\\s*(?:давайте|я расскажу))|^.{0,100} is a historic landmark located in',
+    '^\\s*(?:Did you know|Знаете ли вы)',
+    '^\\s*.{1,80} (?:was built in|был[ао]? построен[ао]? в) \\d{4}',
+    '(?:Would you like (?:to hear|to know more|me to tell)|Shall I tell|Рассказать (?:вам )?(?:больше|подробнее)|Хотите (?:узнать|услышать) больше)',
+  ],
 };
 
 export const themeTags = [

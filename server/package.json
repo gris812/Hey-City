@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "pretest": "npm run test:m1",
+    "test:m1": "ts-node test/configRegression.test.ts && ts-node test/narrativeExperience.test.ts && ts-node test/storyContinuation.test.ts",
+    "evaluate:m1": "ts-node test/evaluateNarrativeV2.ts",
     "build": "tsc",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "replay:drive": "ts-node src/scripts/replayDriveRoute.ts",

@@ -57,7 +57,7 @@ async function testLoginAndNavigation() {
     if (url.endsWith('/sessions/session-1/context')) {
       if (contextCalls++ === 0) assert.equal(dom.window.document.querySelector('#radar-scan').hidden, false, 'radar scans at actual GPS position during initial request');
       const request = JSON.parse(options.body || '{}');
-      return response({ nextAction: 'NONE', mode: request.speed >= 15 ? 'vehicle' : 'walking', speedKmh: request.speed, aheadDiscovery: { topCandidates: [] } });
+      return response({ nextAction: 'NONE', mode: request.speed >= 15 ? 'vehicle' : 'walking', speedKmh: request.speed, transcriptText:'Automatic story', attribution:{label:'Wikipedia · CC BY-SA',url:'https://example.test/automatic'}, aheadDiscovery: { topCandidates: [] } });
     }
     if (url.endsWith('/stories/voice-sample')) {
       voiceSampleRequest = JSON.parse(options.body || '{}');
@@ -99,6 +99,7 @@ async function testLoginAndNavigation() {
   await settle();
   assert.match(dom.window.document.querySelector('#top-status').textContent, /автомобиле/);
   assert.match(dom.window.document.querySelector('.area-label').textContent, /22 км\/ч/);
+  assert.equal(dom.window.document.querySelector('#automatic-attribution').href,'https://example.test/automatic','automatic attribution is rendered as a public credit');
   assert.equal(markerConstructions, 1);
   assert.equal(markerConstructions, 1, 'GPS does not recreate marker');
   assert.ok(markerMoves >= 1);
@@ -346,14 +347,20 @@ async function testCatalogUnitsAndCompass() {
   assert.equal(centres,1,'follow can be restored explicitly');
   dom.window.document.querySelector('#app').innerHTML = '<article class="walking-sheet"><div class="ambient-row"><h1 id="place-title"></h1><p id="place-copy"></p></div><span id="walk-status"></span><div id="story-audio"><button id="audio-toggle"></button></div></article>';
   let selectedId;
-  dom.window.fetch = async (url, options) => { if(url.endsWith('/select')) { selectedId=JSON.parse(options.body).poiId; return response({name:'Museum',transcriptText:'Verified story',audioUrl:''}); } return response({}); };
+  dom.window.fetch = async (url, options) => { if(url.endsWith('/select')) { selectedId=JSON.parse(options.body).poiId; return response({name:'Museum',transcriptText:'Verified story',audioUrl:'',attribution:{label:'Wikipedia · CC BY-SA',url:'https://example.test/museum'}}); } return response({}); };
   dom.window.inspectApp("state.sessionId='select-test'; state.lastResult={aheadDiscovery:{nearbyCandidates:[{providerId:'museum-id',name:'Museum',targetType:'museum',distanceMeters:100}]}}; renderNearbyList()");
   dom.window.document.querySelector('[data-poi]').click();
   await settle();
   assert.equal(selectedId,'museum-id','list click requests the selected provider ID');
   assert.equal(dom.window.document.querySelector('#place-copy').textContent,'Verified story');
   assert.equal(dom.window.document.querySelector('[data-poi]').getAttribute('aria-pressed'),'true');
-  assert.match(dom.window.document.querySelector('#story-levels').textContent,/Кратко|Brief story/);
+  assert.equal(dom.window.document.querySelectorAll('[data-level]').length,0,'no story offers without verified evidence');
+  assert.equal(dom.window.document.querySelector('.story-attribution').href,'https://example.test/museum','explicit attribution is rendered as a public credit');
+  dom.window.inspectApp('state.storyAvailability={short:true,long:false}; renderSelectedStory()');
+  assert.equal(dom.window.document.querySelectorAll('[data-level]').length,1);
+  assert.equal(dom.window.document.querySelector('[data-level]').dataset.level,'short');
+  dom.window.inspectApp('state.storyAvailability={short:true,long:true}; renderSelectedStory()');
+  assert.equal(dom.window.document.querySelectorAll('[data-level]').length,2);
   let releaseOld,releaseNew;
   dom.window.fetch=async (url,options)=>url.endsWith('/select') ? new Promise(resolve=>{ if(JSON.parse(options.body).level==='long') releaseOld=resolve;else releaseNew=resolve; }) : response({});
   const old = dom.window.inspectApp("selectNearbyPlace('museum-id','long')");

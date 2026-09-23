@@ -1,0 +1,35 @@
+{
+  "version": "m1.1",
+  "subjects": {
+    "federal-hall": {
+      "name": "Federal Hall", "category": "historical_landmark", "source": "https://www.nps.gov/feha/learn/historyculture/index.htm",
+      "claims": [
+        "George Washington took the oath of office as the first U.S. President at this site on April 30, 1789.",
+        "The original Federal Hall building was later demolished.",
+        "The current building opened in 1842 as a U.S. Custom House.",
+        "The current building later served as a U.S. Sub-Treasury."
+      ]
+    },
+    "golden-gate": {
+      "name": "Golden Gate Bridge", "category": "bridge", "source": "https://www.goldengate.org/bridge/history-research/",
+      "claims": [
+        "Construction of the Golden Gate Bridge began in 1933.",
+        "The Golden Gate Bridge opened in 1937.",
+        "When built, its 4,200-foot main span set a world record.",
+        "The bridge color is International Orange and was chosen in part for visibility in fog."
+      ]
+    },
+    "weak": { "name": "Example Local Monument", "category": "monument", "claims": [] }
+  },
+  "rubric": ["Grounding", "Opening", "Spoken rhythm", "Narrative focus", "Persona", "No encyclopedia pattern", "No generic CTA", "Continuation", "Safety"],
+  "scenarios": [
+    { "id": "G1", "subject": "federal-hall", "guide": "dana", "level": "short", "language": "ru", "required": ["conversational contrast", "one reveal", "site not current building"], "prohibited": ["date dump", "generic CTA"] },
+    { "id": "G2", "subject": "federal-hall", "guide": "arthur", "level": "short", "language": "ru", "required": ["site versus building", "precise historical framing", "restrained rhythm"], "prohibited": ["theatrical professor", "dense chronology"] },
+    { "id": "G3", "subject": "federal-hall", "guide": "dana", "level": "long", "language": "ru", "after": "G1", "required": ["new building context", "already-heard context"], "prohibited": ["repeated inauguration opening", "restart", "gold or silver not in evidence"] },
+    { "id": "G4", "subject": "golden-gate", "guide": "dana", "level": "short", "language": "ru", "required": ["visible feature", "engineering connection"], "prohibited": ["technical lecture"] },
+    { "id": "G5", "subject": "golden-gate", "guide": "arthur", "level": "short", "language": "ru", "required": ["structural significance", "precise detail"], "prohibited": ["unsupported geography"] },
+    { "id": "G6", "subject": "weak", "guide": "dana", "level": "short", "language": "ru", "required": ["identification only", "zero LLM calls"], "prohibited": ["story", "deep-story offer"] },
+    { "id": "G7", "required": ["reject bad encyclopedia style"], "prohibited": ["This iconic attraction", "Would you like to know more?", "Хорошо, давайте я расскажу..."] },
+    { "id": "G8", "required": ["distinct Dana and Arthur policies"], "prohibited": ["invented personal history", "influencer advertising", "pompous professor"] }
+  ]
+}

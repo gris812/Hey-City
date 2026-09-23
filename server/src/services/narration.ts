@@ -7,7 +7,11 @@ import { cacheTtl, discoveryConfig, media, openai } from '../config';
 import { createHash } from 'crypto';
 import { access, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createNarrativePlan } from './narrativePlan';
+import { prepareNarrative } from './narrativePlan';
+import { StoryBrief } from './storyBrief';
+import { GuidePolicy } from './guidePolicy';
+import { InsufficientEvidenceError, normalizeEvidence } from './evidence';
+import { getLocalPoiById } from './localPoi';
 import { narrativeGenerator } from './narrativeGenerator';
 import { recordUsage } from './usage';
 import { getGuide, guideVersion } from './guides';
@@ -53,27 +57,32 @@ export async function generateVoiceSample(
 }
 
 export async function generateNarration(input: GenerateNarrationInput): Promise<GenerateNarrationResult> {
-  const plan = createNarrativePlan({
+  const local = getLocalPoiById(input.poiId);
+  if (!local?.storySeed) throw new InsufficientEvidenceError();
+  const { plan, brief, policy } = prepareNarrative({
     poiId: input.poiId,
-    placeName: input.placeName,
+    placeName: local.name,
     mode: input.context === 'drive_discovery' ? 'vehicle' : 'walking',
     guideId: input.voiceId,
     themeTags: [input.theme],
     targetDurationSec: input.lengthSec,
-  });
+  }, normalizeEvidence({ id: local.id, name: local.name, category: local.type }, local.storySeed, 'curated'), { level: 'auto', language: input.lang });
   return generateNarrationFromPlan(plan, {
     language: input.lang,
     narrationStyle: input.style,
     userId: input.userId,
+    brief, policy,
   });
 }
 
 export async function generateNarrationFromPlan(
   plan: NarrativePlan,
-  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal }
+  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; brief: StoryBrief; policy: GuidePolicy }
 ): Promise<GenerateNarrationResult> {
   const generated = await narrativeGenerator.generate({
     plan,
+    brief: input.brief,
+    policy: input.policy,
     language: input.language,
     narrationStyle: input.narrationStyle,
     userId: input.userId,

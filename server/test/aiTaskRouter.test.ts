@@ -10,6 +10,7 @@ import type {
 import { NarrativeGenerator } from '../src/services/narrativeGenerator';
 import { OpenAIGenerativeProvider } from '../src/ai/openAiGenerativeProvider';
 import { openai } from '../src/config';
+import { fixture } from './narrativeFixtures';
 
 class StubProvider implements GenerativeProvider {
   readonly id = 'quality';
@@ -40,20 +41,10 @@ async function run(): Promise<void> {
   assert.equal(router.routeFor('poi_normalization'), 'deterministic');
   assert.equal(await router.generate({ task: 'poi_normalization', instructions: '', input: '' }), null);
 
-  const plan: NarrativePlan = {
-    poiId: 'router_test_unique_poi',
-    placeName: 'Federal Hall',
-    mode: 'walking',
-    guideId: 'dana',
-    themeTags: ['history'],
-    storySeed: 'George Washington took the oath of office here.',
-    targetDurationSec: 90,
-    safety: { vehicleSafe: false, maxDurationSec: 90, visualLoad: 'normal' },
-    structure: ['hook', 'context', 'fact', 'closing'],
-  };
+  const request = fixture({ id: 'router_test_unique_poi' });
   const generator = new NarrativeGenerator(router);
   const result = await generator.generate({
-    plan,
+    ...request,
     language: 'en',
     narrationStyle: 'documentary',
     userId: 'router-test-user',
@@ -63,10 +54,10 @@ async function run(): Promise<void> {
   assert.equal(provider.calls.length, 1);
   assert.equal(provider.calls[0].task, 'final_storytelling');
   assert.match(provider.calls[0].input, /"poiId":"router_test_unique_poi"/);
-  assert.match(provider.calls[0].input, /"targetDurationSec":90/);
+  assert.match(provider.calls[0].input, /"targetDurationSec":30/);
 
   await generator.generate({
-    plan: { ...plan, guideId: 'artur' },
+    ...fixture({ id: 'router_test_unique_poi', guide: 'artur' }),
     language: 'en',
     narrationStyle: 'documentary',
   });
@@ -79,7 +70,7 @@ async function run(): Promise<void> {
   };
   const fallbackGenerator = new NarrativeGenerator(new AITaskRouter([failingProvider], routes));
   const fallback = await fallbackGenerator.generate({
-    plan: { ...plan, poiId: 'router_fallback_unique_poi' },
+    ...fixture({ id: 'router_fallback_unique_poi' }),
     language: 'en',
     narrationStyle: 'documentary',
   });
@@ -95,8 +86,8 @@ async function run(): Promise<void> {
     };
     const raw = await new OpenAIGenerativeProvider().generate({task:'final_storytelling',instructions:'Russian',input:'Facts'});
     assert.equal(raw.text,'Здесь город встречается с рекой.','parse the real REST message envelope, not SDK-only output_text');
-    await assert.rejects(generator.generate({plan:{...plan,poiId:'wrong_language'},language:'ru',narrationStyle:'conversational'}),/Рассказ пока не готов/);
-    await assert.rejects(fallbackGenerator.generate({plan:{...plan,poiId:'no_raw_source',storySeed:'Category: city. Source: https://example.com\nEnglish evidence.'},language:'ru',narrationStyle:'conversational'}),/Рассказ пока не готов/);
+    await assert.rejects(generator.generate(fixture({id:'wrong_language',language:'ru'})),/language mismatch/);
+    await assert.rejects(fallbackGenerator.generate(fixture({id:'no_raw_source',language:'ru'})),/Рассказ пока не готов/);
   } finally {globalThis.fetch=savedFetch;openai.apiKey=savedKey;}
 
   console.log('aiTaskRouter tests passed');

@@ -7,7 +7,7 @@ const state = {
   tab: location.pathname === '/admin' ? 'admin' : 'map',
   sessionId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, candidateMarkers: [], profile: null, audioUrl: null,
   contextInFlight: false, initialScanComplete: false, starting: false, locationPromise: null, runId: 0,
-  followPosition: true, selectingPlace: false, selectionRevision:0, selectedPoi:null, selectionStatus:'', lastPoint: null, lastResult: null, walkStatus: '', movementMode: 'walking', speedKmh: null,
+  followPosition: true, selectingPlace: false, selectionRevision:0, selectedPoi:null, selectedAttribution:null, selectionStatus:'', lastPoint: null, lastResult: null, lastAttribution:null, walkStatus: '', movementMode: 'walking', speedKmh: null,
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
   guideLanguage: localStorage.getItem('heyCityGuideLanguage') || 'ru',
@@ -58,7 +58,7 @@ storyAudio.addEventListener('play', updateAudioControl);
 storyAudio.addEventListener('pause', updateAudioControl);
 storyAudio.addEventListener('ended', updateAudioControl);
 storyAudio.addEventListener('ended', () => {
-  if (state.selectedPoi && state.audioUrl) {state.selectionStatus=state.appLanguage==='ru'?'Рассказ завершён. Кратко или подробнее?':'Finished. Hear a brief story or more detail?';renderSelectedStory();}
+  if (state.selectedPoi && state.audioUrl) {state.selectionStatus=state.appLanguage==='ru'?'Воспроизведение завершено.':'Playback finished.';renderSelectedStory();}
   if (state.sessionId && state.audioUrl) api('/drive/session/story/finish', { method: 'POST', body: JSON.stringify({ sessionId: state.sessionId, reason: 'ended' }) }).catch(() => {
     state.walkStatus = state.appLanguage === 'ru' ? 'Не удалось завершить рассказ. Перезапустите прогулку.' : 'Could not finish the story. Restart the walk.';
     const status = document.querySelector('#walk-status'); if (status) status.textContent = state.walkStatus;
@@ -171,7 +171,7 @@ function mapView() {
   const mountedMap = shell(`<div id="map" class="map"><div class="map-state" id="map-state">${t('map.connecting')}</div></div><div class="map-failure" id="map-failure" hidden>${t('map.keyRejected')}</div><div class="map-shade" aria-hidden="true"></div><div class="radar-scan" id="radar-scan" hidden aria-hidden="true"><i class="radar-ring radar-ring-a"></i><i class="radar-ring radar-ring-b"></i></div>
     <header class="map-header"><button class="icon-button" id="open-menu" aria-label="${t('nav.settings')}">${icon('menu')}</button><div class="walking-status ${walking ? 'is-live' : ''}"><i></i><span id="top-status">${walking ? movementModeLabel() : t('map.mode')}</span></div><button class="guide-avatar" id="open-guide" aria-label="${esc(guide.name)}"><img src="${esc(guide.avatar)}" alt=""></button></header>
     <button class="map-locate" id="locate" aria-label="${t('map.locate')}">${icon('locate')}</button>
-    <article class="walking-sheet"><button class="sheet-handle" aria-label="Свернуть или раскрыть список" aria-expanded="true"></button><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${esc(guide.avatar)}" alt="${esc(guide.name)}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
+    <article class="walking-sheet"><button class="sheet-handle" aria-label="Свернуть или раскрыть список" aria-expanded="true"></button><div class="sheet-kicker"><span id="walk-status">${esc(walking ? state.walkStatus : t('map.ready'))}</span><span class="area-label">${walking ? movementMetaLabel() : t('map.nearby')}</span></div><div class="ambient-row"><img class="ambient-avatar" src="${esc(guide.avatar)}" alt="${esc(guide.name)}"><div><h1 id="place-title">${esc(lastTitle || t('map.listening'))}</h1><p id="place-copy">${esc(lastCopy || t('map.copy', { guide: guide.name }))}</p></div></div><a id="automatic-attribution" class="story-attribution" target="_blank" rel="noopener noreferrer" hidden></a><div class="story-audio" id="story-audio" ${state.audioUrl ? '' : 'hidden'}><button class="audio-button" id="audio-toggle">${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span></button></div><div class="sheet-actions"><button class="primary" id="start-walk" ${walking ? 'hidden' : ''}>${t('map.start')}</button><button class="secondary" id="stop-walk" ${walking ? '' : 'hidden'}>${t('map.stop')}</button></div></article>`, 'map');
   if (mountedMap) {
     document.querySelector('.sheet-handle').onclick = event => { const sheet = event.currentTarget.closest('.walking-sheet'); const collapsed = sheet.classList.toggle('is-collapsed'); event.currentTarget.setAttribute('aria-expanded', String(!collapsed)); if (state.followPosition) frameUserPosition(); };
     document.querySelector('#start-walk').addEventListener('click', startWalking); document.querySelector('#stop-walk').addEventListener('click', stopWalking); document.querySelector('#locate').addEventListener('click', toggleMapOrientation); document.querySelector('#open-menu').addEventListener('click', () => navigate('settings')); document.querySelector('#open-guide').addEventListener('click', () => openGuideProfile(state.guide)); document.querySelector('#audio-toggle')?.addEventListener('click', toggleStoryAudio);
@@ -194,6 +194,13 @@ function refreshMapView() {
   host.querySelector('.area-label').textContent = walking ? movementMetaLabel() : t('map.nearby');
   host.querySelector('#place-title').textContent = lastTitle || t('map.listening');
   host.querySelector('#place-copy').textContent = lastCopy || t('map.copy', { guide: guide.name });
+  const automaticAttribution = host.querySelector('#automatic-attribution');
+  const attribution = state.lastAttribution;
+  if (automaticAttribution) {
+    automaticAttribution.hidden = !attribution || Boolean(state.selectedPoi);
+    automaticAttribution.textContent = attribution?.label || '';
+    if (attribution?.url) automaticAttribution.href = attribution.url; else automaticAttribution.removeAttribute('href');
+  }
   host.querySelector('#start-walk').hidden = walking;
   host.querySelector('#start-walk').textContent = t('map.start');
   host.querySelector('#stop-walk').hidden = !walking;
@@ -335,16 +342,14 @@ async function updateLocation(position) {
     const result = await api(`/sessions/${state.sessionId}/context`, { method: 'POST', body: JSON.stringify({ lat, lng, heading: heading ?? null, speed: measuredSpeedKmh, accuracyMeters: accuracy, timestamp: Date.now(), discoveryOnly:true }) });
     if (state.sessionId !== sessionId) return;
     state.lastResult = result; state.movementMode = result.mode === 'vehicle' ? 'vehicle' : 'walking'; state.speedKmh = Number.isFinite(result.speedKmh) ? result.speedKmh : measuredSpeedKmh; state.walkStatus = result.nextAction === 'PLAY' ? t('map.speaking', { guide: guideCopy().name }) : t('map.listening');
+    if (result.attribution) state.lastAttribution = result.attribution;
     if (result.aheadDiscovery?.providerRefresh?.errorCode) {
       state.walkStatus = state.appLanguage === 'ru' ? 'Поиск объектов недоступен. Попробуйте позже.' : 'Place search is unavailable. Try again later.';
     }
     renderCandidateMarkers(result.aheadDiscovery?.nearbyCandidates || result.aheadDiscovery?.topCandidates || []);
     renderNearbyList();
+    refreshMapView();
     const title = result.poi?.name || result.target?.name || result.decision?.poiName; const statusNode = document.querySelector('#walk-status'); const titleNode = document.querySelector('#place-title'); const copyNode = document.querySelector('#place-copy'); const modeNode = document.querySelector('#top-status'); const metaNode = document.querySelector('.area-label'); if (statusNode) statusNode.textContent = state.walkStatus; if (modeNode) modeNode.textContent = movementModeLabel(); if (metaNode) metaNode.textContent = movementMetaLabel(); if (title && titleNode) titleNode.textContent = title; if (result.transcriptText && copyNode) copyNode.textContent = result.transcriptText;
-    if (result.nextAction === 'PLAY' && copyNode) {
-      const source = result.narrativePlan?.storySeed?.match(/https:\/\/en\.wikipedia\.org\/\?curid=\d+/)?.[0];
-      if (source) { const link = document.createElement('a'); link.href = source; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = ' Wikipedia · CC BY-SA'; copyNode.append(link); }
-    }
     if (result.audioUrl && result.nextAction === 'PLAY') { state.audioGuideId = requestedGuide; state.audioUrl = result.audioUrl; storyAudio.src = result.audioUrl; renderAudioControl(); storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); if (statusNode) statusNode.textContent = state.walkStatus; updateAudioControl(); }); }
     renderSelectedStory();
     if (result.suggestedPoiId && !state.selectingPlace && (!state.audioUrl || storyAudio.ended)) void selectNearbyPlace(result.suggestedPoiId,'identify');
@@ -395,7 +400,7 @@ function renderCandidateMarkers(candidates) {
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
 function updateAudioControl() { renderAudioControl(); renderNearbyList(); }
 function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.error) { storyAudio.src = state.audioUrl; storyAudio.load(); } if (storyAudio.paused) storyAudio.play().catch(() => showLocationError({message:t('map.tapPlay')})); else storyAudio.pause(); }
-function stopWalking(refresh = true) { state.selectionRevision++; state.selectionController?.abort(); state.selectingPlace=false; state.selectedPoi=null; state.selectionStatus=""; state.lastContextAt=0; state.lastResult=null; state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; void syncScreenLock(); state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); storyAudio.load(); syncMediaSession(); if (refresh && state.tab === 'map') render(); }
+function stopWalking(refresh = true) { state.selectionRevision++; state.selectionController?.abort(); state.selectingPlace=false; state.selectedPoi=null; state.selectedAttribution=null; state.selectionStatus=""; state.lastContextAt=0; state.lastResult=null; state.lastAttribution=null; state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; void syncScreenLock(); state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); storyAudio.load(); syncMediaSession(); if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
   const historyItems = state.profile?.history || [];
@@ -695,18 +700,19 @@ function renderSelectedStory() {
   if (status) status.textContent = state.selectionStatus;
   if (!controls) {controls=document.createElement('div');controls.id='story-levels';sheet.querySelector('.ambient-row').after(controls);}
   const ru = state.appLanguage === 'ru';
-  controls.innerHTML = `<button class="secondary" data-level="short">${ru ? 'Кратко' : 'Brief story'}</button><button class="secondary" data-level="long">${ru ? 'Подробнее' : 'More detail'}</button>`;
+  controls.innerHTML = `${state.storyAvailability?.short ? `<button class="secondary" data-level="short">${ru ? 'Кратко' : 'Brief story'}</button>` : ''}${state.storyAvailability?.long ? `<button class="secondary" data-level="long">${ru ? 'Подробнее' : 'More detail'}</button>` : ''}`;
   controls.querySelectorAll('[data-level]').forEach(button=>{button.onclick=()=>selectNearbyPlace(selected.providerId,button.dataset.level);});
-  if (state.selectedSource) {const link=document.createElement('a');link.href=state.selectedSource;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Wikipedia · CC BY-SA';controls.append(link);}
+  const attribution = state.selectedAttribution || (state.selectedSource ? {label:'Wikipedia · CC BY-SA',url:state.selectedSource} : null);
+  if (attribution) {const credit=attribution.url?document.createElement('a'):document.createElement('span');if(attribution.url){credit.href=attribution.url;credit.target='_blank';credit.rel='noopener noreferrer';}credit.className='story-attribution';credit.textContent=attribution.label;controls.append(credit);}
 }
 function resetSelectionForLanguage() {
   state.selectionRevision++;state.selectionController?.abort();state.selectingPlace=false;
   state.audioUrl=null;storyAudio.pause();storyAudio.removeAttribute('src');storyAudio.load();
-  state.selectedText='';state.selectedSource=null;
+  state.selectedText='';state.selectedSource=null;state.selectedAttribution=null;
   state.selectionStatus=state.appLanguage==='ru'?'Язык изменён. Выберите «Кратко» или «Подробнее».':'Language changed. Choose a story length.';
   if (state.sessionId) void api(`/sessions/${state.sessionId}/guide`,{method:'PUT',body:JSON.stringify({guideId:state.guide,language:state.guideLanguage})}).catch(showLocationError);
 }
-async function selectNearbyPlace(poiId, level = 'short') {
+async function selectNearbyPlace(poiId, level = 'identify') {
   if (!state.sessionId) return;
   const pool = state.lastResult?.aheadDiscovery?.nearbyCandidates || state.lastResult?.aheadDiscovery?.topCandidates || [];
   const candidate = pool.find(c=>c.providerId===poiId) || (state.selectedPoi?.providerId===poiId ? state.selectedPoi : null);
@@ -715,14 +721,17 @@ async function selectNearbyPlace(poiId, level = 'short') {
   const revision = ++state.selectionRevision;
   state.selectionController?.abort();
   const controller = new AbortController(); state.selectionController = controller;
-  state.selectingPlace = true; state.selectedPoi = candidate; state.selectedText=''; state.selectedSource=null;
+  state.selectingPlace = true; state.selectedPoi = candidate; state.selectedText=''; state.selectedSource=null; state.selectedAttribution=null; state.storyAvailability=null;
   state.selectionStatus = state.appLanguage === 'ru' ? `Выбрано: ${candidate.name}. ${level === 'identify' ? 'Знакомлю с местом…' : 'Готовлю рассказ…'}` : `Selected: ${candidate.name}. Preparing…`;
   storyAudio.pause(); state.audioUrl=null; storyAudio.removeAttribute('src'); storyAudio.load(); primeStoryAudio();
   renderNearbyList(); renderAudioControl();
   try {
     const result = await api('/sessions/' + sessionId + '/select', {method:'POST',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(35000)]),body:JSON.stringify({poiId,level,language:state.guideLanguage})});
     if (state.sessionId!==sessionId || revision!==state.selectionRevision) return;
-    state.audioUrl=result.audioUrl; state.audioGuideId=state.guide; state.selectedText=result.transcriptText;state.selectedSource=result.sourceUrl;
+    state.audioUrl=result.audioUrl; state.audioGuideId=state.guide; state.selectedText=result.transcriptText;state.selectedSource=result.sourceUrl;state.selectedAttribution=result.attribution;state.storyAvailability=result.availability;
+    if (level === 'identify') void api(`/sessions/${sessionId}/objects/${encodeURIComponent(poiId)}/availability`,{signal:controller.signal}).then(availability=>{
+      if (state.sessionId===sessionId && revision===state.selectionRevision) {state.storyAvailability=availability;renderSelectedStory();}
+    }).catch(()=>{});
     state.selectionStatus = state.appLanguage === 'ru' ? `${level==='identify' ? 'Знакомство' : level==='short' ? 'Краткий рассказ' : 'Подробный рассказ'}: ${candidate.name}` : `${level}: ${candidate.name}`;
     renderSelectedStory(); renderAudioControl();
     if (result.audioUrl) {storyAudio.src=result.audioUrl; await storyAudio.play().catch(()=>{state.selectionStatus=t('map.tapPlay');renderSelectedStory();});}
