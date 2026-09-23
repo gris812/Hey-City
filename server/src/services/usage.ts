@@ -12,10 +12,53 @@ export interface UsageEvent {
   metadata?: Record<string, unknown>;
 }
 
+export type ExperienceTelemetryOperation =
+  | 'experience_decision'
+  | 'story_started'
+  | 'story_outcome'
+  | 'callback_used';
+
+export interface ExperienceDecisionEvent {
+  sessionId: string;
+  at: string;
+  context: {
+    movementMode: 'walking' | 'vehicle';
+    locationBucket: string;
+    headingBucket?: number;
+    speedBucket?: string;
+    areaType?: string;
+    candidateDensity: number;
+  };
+  candidates: Array<{
+    id: string;
+    targetType?: string;
+    distanceBucket?: string;
+    score?: number;
+    excludedReason?: string;
+  }>;
+  decision: {
+    type: 'hold' | 'trigger_story';
+    selectedTargetId?: string;
+    triggerReason?: string;
+    holdReason?: string;
+    momentRelationship?: string;
+  };
+  outcome?: {
+    completed?: boolean;
+    skipped?: boolean;
+    paused?: boolean;
+    superseded?: boolean;
+    askedMore?: boolean;
+    askedQuestion?: boolean;
+    listenedSeconds?: number;
+  };
+}
+
 const memoryEvents: Array<UsageEvent & { createdAt: string }> = [];
 
 export async function recordUsage(event: UsageEvent): Promise<void> {
-  event = { ...event, userId: event.userId ?? requestContext.getStore()?.userId };
+  const userId = event.userId ?? requestContext.getStore()?.userId;
+  event = { ...event, userId: isGuestUserId(userId) ? undefined : userId };
   if (!databaseEnabled()) {
     memoryEvents.push({ ...event, createdAt: new Date().toISOString() });
     return;
@@ -28,6 +71,90 @@ export async function recordUsage(event: UsageEvent): Promise<void> {
       event.inputTokens ?? 0, event.outputTokens ?? 0, event.estimatedCostUsd ?? 0,
       JSON.stringify(event.metadata ?? {})]
   );
+}
+
+/** Records the canonical M2 event shape through the product telemetry boundary. */
+export async function recordExperienceDecision(
+  event: ExperienceDecisionEvent,
+  userId?: string
+): Promise<void> {
+  await recordExperienceEvent('experience_decision', event, userId);
+}
+
+/**
+ * Uses the same allow-listed representation for every M2 lifecycle operation.
+ * This deliberately excludes coordinates, narration text, and unknown fields.
+ */
+export async function recordExperienceEvent(
+  operation: ExperienceTelemetryOperation,
+  event: ExperienceDecisionEvent,
+  userId?: string
+): Promise<void> {
+  await recordUsage({
+    userId,
+    category: 'product',
+    operation,
+    metadata: sanitizeExperienceDecisionEvent(event),
+  });
+}
+
+const MAX_EXPERIENCE_CANDIDATES = 20;
+const MAX_EXPERIENCE_TEXT_LENGTH = 120;
+
+function sanitizeExperienceDecisionEvent(event: ExperienceDecisionEvent): Record<string, unknown> {
+  const text = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value.slice(0, MAX_EXPERIENCE_TEXT_LENGTH) : undefined;
+  const finiteNumber = (value: unknown, min = -Number.MAX_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : undefined;
+  const boolean = (value: unknown): boolean | undefined => typeof value === 'boolean' ? value : undefined;
+  const optional = <T>(key: string, value: T | undefined, target: Record<string, T>): void => {
+    if (value !== undefined) target[key] = value;
+  };
+
+  const context: Record<string, unknown> = {
+    movementMode: event.context.movementMode,
+    locationBucket: text(event.context.locationBucket) ?? 'unknown',
+    candidateDensity: finiteNumber(event.context.candidateDensity, 0, 10000) ?? 0,
+  };
+  optional('headingBucket', finiteNumber(event.context.headingBucket, 0, 360), context);
+  optional('speedBucket', text(event.context.speedBucket), context);
+  optional('areaType', text(event.context.areaType), context);
+
+  const candidates = event.candidates.slice(0, MAX_EXPERIENCE_CANDIDATES).map((candidate) => {
+    const safe: Record<string, unknown> = { id: text(candidate.id) ?? 'unknown' };
+    optional('targetType', text(candidate.targetType), safe);
+    optional('distanceBucket', text(candidate.distanceBucket), safe);
+    optional('score', finiteNumber(candidate.score), safe);
+    optional('excludedReason', text(candidate.excludedReason), safe);
+    return safe;
+  });
+
+  const decision: Record<string, unknown> = { type: event.decision.type };
+  optional('selectedTargetId', text(event.decision.selectedTargetId), decision);
+  optional('triggerReason', text(event.decision.triggerReason), decision);
+  optional('holdReason', text(event.decision.holdReason), decision);
+  optional('momentRelationship', text(event.decision.momentRelationship), decision);
+
+  const metadata: Record<string, unknown> = {
+    sessionId: text(event.sessionId) ?? 'unknown',
+    at: text(event.at) ?? new Date().toISOString(),
+    context,
+    candidates,
+    decision,
+  };
+  if (event.outcome) {
+    const outcome: Record<string, unknown> = {};
+    for (const key of ['completed', 'skipped', 'paused', 'superseded', 'askedMore', 'askedQuestion'] as const) {
+      optional(key, boolean(event.outcome[key]), outcome);
+    }
+    optional('listenedSeconds', finiteNumber(event.outcome.listenedSeconds, 0, 86400), outcome);
+    metadata.outcome = outcome;
+  }
+  return metadata;
+}
+
+function isGuestUserId(userId: string | undefined): boolean {
+  return typeof userId === 'string' && userId.startsWith('guest_');
 }
 
 export async function adminSummary(days = 30): Promise<Record<string, unknown>> {

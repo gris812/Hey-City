@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { databaseEnabled, query } from './database';
 import { recordUsage } from './usage';
+import { getUserById } from './user';
 
 /**
  * History: trips, listened POI, saved items. MVP: in-memory; production: DB.
@@ -16,6 +17,35 @@ export interface HistoryItem {
   style?: string;
   timestamp: string;
   metadata?: Record<string, unknown>;
+}
+
+/** Structured M2 fields stored on the existing compatible poi_listened record. */
+export interface JourneyHistoryMetadata extends Record<string, unknown> {
+  momentId: string;
+  storyLevel?: string;
+  outcome?: string;
+  topicKeys?: string[];
+  evidenceRefs?: string[];
+  guideId?: string;
+  area?: JourneyAreaSummary;
+}
+
+export interface JourneyAreaSummary {
+  city?: string;
+  locality?: string;
+  neighborhood?: string;
+  region?: string;
+  areaType?: string;
+  source?: string;
+}
+
+export interface JourneyHistoryInput {
+  poiId?: string;
+  placeId?: string;
+  mode?: string;
+  theme?: string;
+  style?: string;
+  metadata: JourneyHistoryMetadata;
 }
 
 const items = new Map<string, HistoryItem>();
@@ -51,6 +81,32 @@ export async function addToHistory(
   byUser.set(userId, list);
   if (record.type === 'poi_listened') await recordUsage({ userId, category: 'product', operation: 'object_viewed' });
   return record;
+}
+
+/**
+ * Persists an M2 story moment only for signed-in users who have opted into
+ * history. Guest continuity remains session-owned and is never written here.
+ */
+export async function recordJourneyHistory(
+  userId: string,
+  item: JourneyHistoryInput
+): Promise<HistoryItem | undefined> {
+  if (isGuestUserId(userId)) return undefined;
+  if (item.metadata.outcome !== 'completed') return undefined;
+  const user = await getUserById(userId);
+  if (!user?.historyEnabled) return undefined;
+  const metadata = sanitizeJourneyHistoryMetadata(item.metadata);
+  if (!metadata) return undefined;
+
+  return addToHistory(userId, {
+    type: 'poi_listened',
+    poiId: item.poiId,
+    placeId: item.placeId,
+    mode: item.mode,
+    theme: item.theme,
+    style: item.style,
+    metadata,
+  });
 }
 
 export async function getHistory(userId: string): Promise<HistoryItem[]> {
@@ -104,6 +160,20 @@ function fromHistoryRow(row: HistoryRow): HistoryItem {
 }
 
 export async function wasPoiListenedRecently(userId: string, placeId: string, withinHours: number): Promise<boolean> {
+  if (isGuestUserId(userId)) return false;
+  if (databaseEnabled()) {
+    const [row] = await query<{ listened: boolean | string }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM history_items
+         WHERE user_id=$1
+           AND type='poi_listened'
+           AND (place_id=$2 OR poi_id=$2)
+           AND created_at >= now() - ($3::numeric * interval '1 hour')
+       ) AS listened`,
+      [userId, placeId, Math.max(0, withinHours)]
+    );
+    return row?.listened === true || row?.listened === 'true';
+  }
   const list = await getHistory(userId);
   const cutoff = Date.now() - withinHours * 60 * 60 * 1000;
   return list.some(
@@ -111,4 +181,45 @@ export async function wasPoiListenedRecently(userId: string, placeId: string, wi
       (h.type === 'poi_listened' && (h.placeId === placeId || h.poiId === placeId)) &&
       new Date(h.timestamp).getTime() >= cutoff
   );
+}
+
+function isGuestUserId(userId: string): boolean {
+  return userId.startsWith('guest_');
+}
+
+const MAX_HISTORY_TEXT_LENGTH = 120;
+const MAX_HISTORY_TOPICS = 12;
+const MAX_HISTORY_EVIDENCE_REFS = 100;
+
+function sanitizeJourneyHistoryMetadata(input: JourneyHistoryMetadata): JourneyHistoryMetadata | undefined {
+  const text = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.length > 0 ? value.slice(0, MAX_HISTORY_TEXT_LENGTH) : undefined;
+  const textList = (values: unknown, limit: number): string[] | undefined => {
+    if (!Array.isArray(values)) return undefined;
+    return values.filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .slice(0, limit)
+      .map((value) => value.slice(0, MAX_HISTORY_TEXT_LENGTH));
+  };
+  const momentId = text(input.momentId);
+  if (!momentId) return undefined;
+  const metadata: JourneyHistoryMetadata = { momentId };
+  const storyLevel = text(input.storyLevel);
+  const outcome = text(input.outcome);
+  const topicKeys = textList(input.topicKeys, MAX_HISTORY_TOPICS);
+  const evidenceRefs = textList(input.evidenceRefs, MAX_HISTORY_EVIDENCE_REFS);
+  const guideId = text(input.guideId);
+  if (storyLevel !== undefined) metadata.storyLevel = storyLevel;
+  if (outcome !== undefined) metadata.outcome = outcome;
+  if (topicKeys !== undefined) metadata.topicKeys = topicKeys;
+  if (evidenceRefs !== undefined) metadata.evidenceRefs = evidenceRefs;
+  if (guideId !== undefined) metadata.guideId = guideId;
+  if (input.area) {
+    const area: JourneyAreaSummary = {};
+    for (const key of ['city', 'locality', 'neighborhood', 'region', 'areaType', 'source'] as const) {
+      const value = text(input.area[key]);
+      if (value !== undefined) area[key] = value;
+    }
+    if (Object.keys(area).length > 0) metadata.area = area;
+  }
+  return metadata;
 }
