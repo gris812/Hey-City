@@ -1,0 +1,11 @@
+{
+  "version": "m2.1",
+  "durationMinutes": 20,
+  "scenarios": [
+    { "id": "R1", "name": "Financial District multi-object journey", "expected": ["valid_callback", "no_repeated_entity", "no_repeated_evidence"] },
+    { "id": "R2", "name": "Skipped story", "expected": ["skipped_outcome", "no_phantom_callback"] },
+    { "id": "R3", "name": "Short then detailed", "expected": ["continuation", "merged_evidence_refs", "no_repeated_evidence"] },
+    { "id": "R4", "name": "Area transition", "expected": ["area_updated", "stale_area_expires", "unknown_area_not_invented"] },
+    { "id": "R5", "name": "History disabled", "expected": ["session_continuity", "no_durable_history_write"] }
+  ]
+}
