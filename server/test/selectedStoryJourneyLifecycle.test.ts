@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createSession, finishActiveStory, pingSession, stopSession } from '../src/services/driveSession';
+import { createSession, finishActiveStory, getSession, pingSession, stopSession } from '../src/services/driveSession';
 import { evaluateAheadDiscovery } from '../src/services/aheadDiscovery';
 import { selectStory } from '../src/services/selectedStory';
 import { narrativeGenerator, NarrativeGenerationRequest } from '../src/services/narrativeGenerator';
@@ -95,7 +95,7 @@ async function run() {
       assert.equal(staleAutomatic.nextAction,'NONE','a superseded automatic generation cannot claim playback');
       assert.equal(racing.journeyState.getActiveMoment(),undefined,'late generation cannot replace explicit selection');
       assert.deepEqual(racing.journeyState.getSnapshot().recent.entities,[],'unheard generation never commits memory');
-    } finally {stopSession(racing.id);}
+    } finally {stopSession(racing.id); assert.equal(getSession(racing.id),null,'stopped session releases JourneyState');}
   } finally {
     globalThis.fetch = originalFetch;
     narrativeGenerator.generate = originalGenerate;

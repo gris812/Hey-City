@@ -96,6 +96,16 @@ function run(): void {
   assert.ok(bounded.usedEvidenceRefs.length <= 3);
   assert.ok(bounded.recent.narrativeSignatures.length <= 2);
 
+  for (let index = 0; index < 60; index++) {
+    const id = `volume-${index}`;
+    delivered(state,{id,entityId:id,name:id,topics:[id],refs:[id],seconds:100 + index * 2});
+    state.finishStory({momentId:id,reason:'completed',endedAt:at(101 + index * 2)});
+  }
+  const volume = state.getSnapshot(at(230));
+  assert.ok(volume.recent.entities.length <= 2 && volume.recent.topics.length <= 2 &&
+    volume.recent.outcomes.length <= 2 && volume.usedEvidenceRefs.length <= 3 &&
+    volume.recent.narrativeSignatures.length <= 2,'high-volume memory remains within configured caps');
+
   console.log('journeyContext tests passed');
 }
 
