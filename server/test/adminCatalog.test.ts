@@ -100,7 +100,7 @@ async function run() {
         await selectStory(session.id,'u1','manual-museum','long','ru');
         await selectStory(session.id,'u1','manual-museum','short','ru');
         assert.deepEqual(durations,[120,30]);
-        await finishActiveStory(session.id, 'ended');
+        await finishActiveStory(session.id, 'ended', session.journeyState.getActiveMoment()?.momentId);
         await assert.rejects(selectStory(session.id,'u1','manual-museum','long','ru'), /Недостаточно проверенной/,
           'a three-claim object must not offer a detailed continuation after the short story consumes two claims');
         // Exercise cancellation with a direct long request; the short continuation is intentionally unavailable above.

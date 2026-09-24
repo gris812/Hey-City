@@ -1,4 +1,4 @@
-import { getSession } from './driveSession';
+import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from './driveSession';
 import { sessionDiscoveryCandidate } from './aheadDiscovery';
 import { discoveryEvidence } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
@@ -28,7 +28,6 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
   // A superseded short segment was never confirmed as heard, so it cannot feed M1 continuation.
   const activeMoment = session.journeyState?.getActiveMoment();
   if (activeMoment?.level === 'short' && session.storyContinuation?.poiId === activeMoment.entityId) session.storyContinuation = undefined;
-  session.activeCallbackId = undefined;
   // Requests which have not generated narration never receive a moment record.
   session.journeyState?.markSuperseded();
   session.storyRequest?.abort();
@@ -42,6 +41,8 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
   let succeeded = false;
   const check = () => { request.signal.throwIfAborted(); if (getSession(id) !== session) throw new StorySelectionError(404,'Session not found'); };
   try {
+    if (activeMoment) await recordSessionSuperseded(session, activeMoment.entityId);
+    check();
     let result;
     let evidence: EvidenceBundle | null = null;
     let availability: StoryAvailability = { short: false, long: false };
@@ -76,20 +77,21 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
       const selectedEvidenceRefs = planned?.brief.selectedEvidenceRefs ?? [];
       session.journeyState?.startStory({
         momentId, entityId: poiId, entityName: candidate.name, category: evidence?.category ?? candidate.targetType,
-        level: level as 'short' | 'long', guideId: canonicalGuideId(params.voiceId),
+        level: level as 'short' | 'long', guideId: canonicalGuideId(params.voiceId), callbackId: planned?.brief.journey?.callback?.id,
       });
-    session.journeyState?.recordNarration({
+      session.journeyState?.recordNarration({
         momentId, evidenceRefs: selectedEvidenceRefs, topicKeys,
         narrativeSignature: planned ? `${planned.policy.id}:${planned.plan.moment.relationship}:${planned.plan.moment.intent}:${planned.brief.beats.map(beat => beat.kind).join(',')}` : undefined,
-    });
-    session.activeCallbackId = planned?.brief.journey?.callback?.id;
+      });
+      await recordSessionStoryStarted(session, poiId);
+      check();
     }
     session.alreadyListening = !!result.audioUrl;
     session.lastStoryStartedAt = Date.now();
     (session.spokenProviderIds ??= new Set()).add(poiId);
     succeeded = true;
     const attribution = evidence ? publicAttribution(evidence) : undefined;
-    return {...result,poiId,name:candidate.name,level,language:params.language,sourceUrl:attribution?.url,attribution,availability};
+    return {...result,poiId,name:candidate.name,level,language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability};
   } finally {
     if (session.storyRequest === request) {session.storyRequest = undefined; if (!succeeded) session.alreadyListening = false;}
   }

@@ -54,6 +54,8 @@ function run(): void {
   state.finishStory({ momentId: 'federal-hall', reason: 'completed', endedAt: at(32), listenedSeconds: 2 });
   state.recordCallbackUsed(callback!.id);
   assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['finance'] }), undefined, 'a completed callback cannot be mechanically reused');
+  assert.equal(state.getSnapshot(at(32)).callbacks.some(item => item.id === callback.id), false,
+    'consumed callbacks are absent from the planning snapshot');
 
   delivered(state, { id: 'skipped', entityId: 'skipped', name: 'Skipped place', topics: ['architecture'], refs: ['skip-1'], seconds: 35 });
   state.finishStory({ momentId: 'skipped', reason: 'skipped', endedAt: at(36) });
@@ -76,6 +78,13 @@ function run(): void {
 
   const snapshot = state.getSnapshot(at(50));
   assert.throws(() => (snapshot.recent.entities as unknown as Array<unknown>).push({}), TypeError, 'snapshot arrays are immutable copies');
+
+  const restored = createJourneyState('restored', {entities: 2});
+  restored.hydrateRecentHistory([{entityId:'prior',at:at(45),level:'short',topicKeys:['Finance'],evidenceRefs:['old-ref']}]);
+  assert.equal(restored.getSnapshot(at(50)).recent.entities[0].entityId, 'prior');
+  assert.deepEqual(restored.getUnusedEvidenceRefs('prior',['old-ref','new-ref']),['new-ref']);
+  assert.equal(restored.selectCallback({entityId:'another',topicKeys:['finance']}), undefined,
+    'persisted history cannot invent a callback heard in the active session');
 
   // More than each configured cap retains only the newest deterministic entries.
   delivered(state, { id: 'four', entityId: 'four', name: 'Four', topics: ['four'], refs: ['e5'], seconds: 60 });

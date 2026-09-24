@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { databaseEnabled, query } from './database';
 import { recordUsage } from './usage';
 import { getUserById } from './user';
+import type { RecentJourneyHistory, JourneyStoryLevel } from './journeyContext';
 
 /**
  * History: trips, listened POI, saved items. MVP: in-memory; production: DB.
@@ -117,6 +118,34 @@ export async function getHistory(userId: string): Promise<HistoryItem[]> {
   }
   const ids = byUser.get(userId) ?? [];
   return ids.map((id) => items.get(id)).filter(Boolean) as HistoryItem[];
+}
+
+/** One bounded read at session start, after checking the user's current history setting. */
+export async function getRecentJourneyHistory(userId: string, limit = 20): Promise<RecentJourneyHistory[]> {
+  if (isGuestUserId(userId) || !(await getUserById(userId))?.historyEnabled) return [];
+  const capped = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const records = databaseEnabled()
+    ? (await query<HistoryRow>(`SELECT id,user_id,type,poi_id,place_id,mode,theme,style,metadata,created_at
+      FROM history_items WHERE user_id=$1 AND type='poi_listened'
+      AND created_at >= now() - interval '30 days'
+      ORDER BY created_at DESC LIMIT $2`, [userId, capped])).map(fromHistoryRow)
+    : (await getHistory(userId)).filter(item => item.type === 'poi_listened' && Date.parse(item.timestamp) >= cutoff)
+      .sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, capped);
+  return records.flatMap(record => {
+    const entityId = record.placeId ?? record.poiId;
+    if (!entityId) return [];
+    const metadata = record.metadata ?? {};
+    const list = (value: unknown, cap: number): string[] => Array.isArray(value)
+      ? value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+        .slice(0, cap).map(entry => entry.slice(0, MAX_HISTORY_TEXT_LENGTH)) : [];
+    const level = metadata.storyLevel;
+    return [{entityId, at: record.timestamp,
+      level: level === 'short' || level === 'long' || level === 'auto' ? level as JourneyStoryLevel : undefined,
+      guideId: typeof metadata.guideId === 'string' ? metadata.guideId.slice(0, MAX_HISTORY_TEXT_LENGTH) : undefined,
+      topicKeys: list(metadata.topicKeys, MAX_HISTORY_TOPICS),
+      evidenceRefs: list(metadata.evidenceRefs, MAX_HISTORY_EVIDENCE_REFS)}];
+  });
 }
 
 export async function deleteAllHistory(userId: string): Promise<void> {

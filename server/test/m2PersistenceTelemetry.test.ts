@@ -16,7 +16,7 @@ async function run(): Promise<void> {
   Pool.prototype.query = execute as never;
 
   const { initializeDatabase, query } = await import('../src/services/database');
-  const { recordJourneyHistory, wasPoiListenedRecently } = await import('../src/services/history');
+  const { recordJourneyHistory, wasPoiListenedRecently, getRecentJourneyHistory } = await import('../src/services/history');
   const { recordExperienceDecision } = await import('../src/services/usage');
   await initializeDatabase();
   await query("INSERT INTO users(id,email,history_enabled) VALUES('history_on','on@example.com',true),('history_off','off@example.com',false)");
@@ -31,6 +31,9 @@ async function run(): Promise<void> {
   assert.equal((await recordJourneyHistory('history_off', item)), undefined);
   assert.equal((await recordJourneyHistory('guest_city_1234567', item)), undefined);
   assert.equal((await query('SELECT id FROM history_items')).length, 1, 'only opted-in signed-in user receives history');
+  assert.equal((await getRecentJourneyHistory('history_on'))[0].entityId, 'place-1');
+  assert.deepEqual(await getRecentJourneyHistory('history_off'), []);
+  assert.deepEqual(await getRecentJourneyHistory('guest_city_1234567'), []);
   assert.equal(await wasPoiListenedRecently('guest_city_1234567', 'place-1', 1), false);
   assert.equal(await wasPoiListenedRecently('history_on', 'place-1', 1), true);
   await query("UPDATE history_items SET created_at=now() - interval '2 hours' WHERE user_id='history_on'");

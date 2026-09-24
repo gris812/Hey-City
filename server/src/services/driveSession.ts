@@ -59,8 +59,9 @@ export interface DriveSession {
   storyContinuation?: StoryContinuationState;
   journeyState: JourneyState;
   lastExperienceDecision?: string;
+  lastExperienceAtMs?: number;
+  lastDecisionCandidates?: ExperienceDecisionEvent['candidates'];
   areaAnchor?: { latitude: number; longitude: number };
-  activeCallbackId?: string;
   spokenProviderIds?: Set<string>;
   knowledgeOffset?: number;
   pendingMode?: DiscoveryMode;
@@ -148,6 +149,7 @@ export function setMuted(sessionId: string, muted: boolean): void {
 export async function finishActiveStory(
   sessionId: string,
   reason: StoryFinishReason = 'ended',
+  momentId?: string,
   listenedSeconds?: number,
 ): Promise<StoryFinishResult | null> {
   const session = sessions.get(sessionId);
@@ -155,6 +157,9 @@ export async function finishActiveStory(
 
   const activeStoryWasPlaying = session.alreadyListening;
   const moment = session.journeyState.getActiveMoment();
+  if (!moment || !momentId || moment.momentId !== momentId) {
+    return {ok:false,stale:true,activeStoryWasPlaying:false,reason};
+  }
   session.alreadyListening = false;
   session.nextPoi = undefined;
   if (moment) {
@@ -163,7 +168,7 @@ export async function finishActiveStory(
     if (reason === 'ended' && moment.level === 'long') session.storyContinuation = undefined;
     const snap = session.journeyState.getSnapshot();
     if (reason === 'ended') {
-      if (session.activeCallbackId) session.journeyState.recordCallbackUsed(session.activeCallbackId);
+      if (moment.callbackId) session.journeyState.recordCallbackUsed(moment.callbackId);
       await recordJourneyHistory(session.userId, {
         poiId: moment.entityId, placeId: moment.entityId,
         mode: session.params.mode === 'walking' ? 'walking' : 'drive_discovery',
@@ -178,12 +183,11 @@ export async function finishActiveStory(
     await recordExperienceEvent('story_outcome', experienceEvent(session, {
       type: 'trigger_story', selectedTargetId: moment.entityId,
       outcome: reason,
-    }), session.userId);
-    if (reason === 'ended' && session.activeCallbackId) await recordExperienceEvent('callback_used',
+    }, 0, new Date().toISOString(), listenedSeconds), session.userId);
+    if (reason === 'ended' && moment.callbackId) await recordExperienceEvent('callback_used',
       experienceEvent(session, {type:'trigger_story',selectedTargetId:moment.entityId,
         momentRelationship:'callback'}), session.userId);
   }
-  session.activeCallbackId = undefined;
   if (reason !== 'ended') session.storyContinuation = undefined;
 
   return {
@@ -230,6 +234,7 @@ export async function pingSession(
     forceRefresh: forceAheadRefresh,
     nowMs: now,
   });
+  if (sessions.get(sessionId) !== session) return {nextAction:'NONE'};
   const at = new Date(now).toISOString();
   session.journeyState.updateMovement({mode: activeMode, latitude: lat, longitude: lng,
     headingDegrees: heading ?? undefined, speedKmh, observedAt: at});
@@ -260,6 +265,10 @@ export async function pingSession(
   }
   if (session.pendingMode) {
     return { nextAction: 'NONE', mode: activeMode, speedKmh, aheadDiscovery };
+  }
+  if (session.storyRequest) {
+    return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+      decision:{type:'hold',reason:'already_listening'}};
   }
   const userId = session.userId;
   const circuitOpen = isCircuitOpen(userId);
@@ -341,6 +350,10 @@ export async function pingSession(
     if (storyAvailability(evidence).short) { evidenceByPoi.set(candidate.poiId, evidence); storyCandidates.push(candidate); }
   }
   session.lastCandidates = [...livePlaces.values(), ...localCandidates.map(localCandidateToNearbyPlace)];
+  session.lastDecisionCandidates = storyCandidates.slice(0, 12).map(candidate => ({
+    id: candidate.poiId,
+    distanceBucket: candidate.distanceMeters < 500 ? 'near' : candidate.distanceMeters < 3000 ? 'mid' : 'far',
+  }));
 
   const decision = evaluateDiscoveryDecision({
     mode: activeMode,
@@ -382,22 +395,41 @@ export async function pingSession(
     return { nextAction:'NONE',mode:activeMode,speedKmh,decision:{type:'hold',reason:'anti_repeat'},aheadDiscovery };
   }
   const { plan: narrativePlan, brief, policy } = planned;
+  if (session.storyRequest || sessions.get(sessionId) !== session) {
+    return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+      decision:{type:'hold',reason:'already_listening'}};
+  }
   // The public decision carries product fields, never legacy source prose.
   delete decision.narrativePlanInput.storySeed;
+  const request = new AbortController();
+  session.storyRequest = request;
+  session.alreadyListening = true;
+  let narration;
+  try {
+    narration = await generateNarrationFromPlan(narrativePlan, {
+      brief, policy, language: session.params.language,
+      narrationStyle: session.params.narrationStyle, userId, signal: request.signal,
+    });
+    request.signal.throwIfAborted();
+    if (sessions.get(sessionId) !== session || session.storyRequest !== request) throw new Error('Story request superseded');
+  } catch (error) {
+    if (request.signal.aborted || sessions.get(sessionId) !== session || session.storyRequest !== request)
+      return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+        decision:{type:'hold',reason:'already_listening'}};
+    throw error;
+  } finally {
+    if (session.storyRequest === request) {
+      session.storyRequest = undefined;
+      if (!narration) session.alreadyListening = false;
+    }
+  }
   session.storyContinuation = undefined;
-  const narration = await generateNarrationFromPlan(narrativePlan, {
-    brief, policy,
-    language: session.params.language,
-    narrationStyle: session.params.narrationStyle,
-    userId,
-  });
 
   const momentId = `moment_${randomUUID()}`;
   session.journeyState.startStory({momentId,entityId:decision.poiId,entityName:place.name,
-    category:selectedEvidence.category,level:'auto',guideId:policy.id,startedAt:at});
+    category:selectedEvidence.category,level:'auto',guideId:policy.id,callbackId:brief.journey?.callback?.id,startedAt:at});
   session.journeyState.recordNarration({momentId,evidenceRefs:brief.selectedEvidenceRefs,topicKeys,
     narrativeSignature:`${policy.id}:${brief.moment.relationship}:${brief.moment.intent}:${brief.beats.map(beat=>beat.kind).join(',')}`,at});
-  session.activeCallbackId = brief.journey?.callback?.id;
 
   session.nextPoi = {
     place,
@@ -412,9 +444,13 @@ export async function pingSession(
     triggerReason:decision.triggerReason,momentRelationship:brief.moment.relationship},now,storyCandidates.length);
   await recordExperienceEvent('story_started', experienceEvent(session,
     {type:'trigger_story',selectedTargetId:decision.poiId}), userId);
+  if (sessions.get(sessionId) !== session || session.journeyState.getActiveMoment()?.momentId !== momentId)
+    return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+      decision:{type:'hold',reason:'already_listening'}};
 
   return {
     nextAction: 'PLAY',
+    momentId,
     mode: activeMode,
     speedKmh,
     poi: place,
@@ -431,8 +467,8 @@ export async function pingSession(
 
 function experienceEvent(session: DriveSession, decision: {
   type: 'hold' | 'trigger_story'; selectedTargetId?: string; triggerReason?: string;
-  holdReason?: string; momentRelationship?: string; outcome?: StoryFinishReason;
-}, candidateDensity = 0, at = new Date().toISOString()): ExperienceDecisionEvent {
+  holdReason?: string; momentRelationship?: string; outcome?: StoryFinishReason | 'superseded';
+}, candidateDensity = 0, at = new Date().toISOString(), listenedSeconds?: number): ExperienceDecisionEvent {
   const movement = session.journeyState.getSnapshot(at).movement;
   return {
     sessionId: session.id, at,
@@ -444,13 +480,15 @@ function experienceEvent(session: DriveSession, decision: {
       areaType: session.journeyState.getSnapshot(at).area.areaType,
       candidateDensity,
     },
-    candidates: [],
+    candidates: session.lastDecisionCandidates ?? [],
     decision: { type: decision.type, selectedTargetId: decision.selectedTargetId,
       triggerReason: decision.triggerReason, holdReason: decision.holdReason,
       momentRelationship: decision.momentRelationship },
     outcome: decision.outcome ? {
       completed: decision.outcome === 'ended', skipped: decision.outcome === 'skipped',
       paused: decision.outcome === 'paused',
+      superseded: decision.outcome === 'superseded',
+      listenedSeconds: Number.isFinite(listenedSeconds) ? listenedSeconds : undefined,
     } : undefined,
   };
 }
@@ -459,6 +497,20 @@ async function recordDecisionIfChanged(session: DriveSession, decision: Paramete
   atMs: number, candidateDensity: number): Promise<void> {
   const key = `${decision.type}:${decision.selectedTargetId ?? decision.holdReason ?? ''}`;
   if (session.lastExperienceDecision === key && decision.type === 'hold') return;
+  if (decision.type === 'hold' && session.lastExperienceAtMs !== undefined &&
+      atMs - session.lastExperienceAtMs < journeyMemory.decisionTelemetryMinMs) return;
   session.lastExperienceDecision = key;
+  session.lastExperienceAtMs = atMs;
   await recordExperienceDecision(experienceEvent(session, decision, candidateDensity, new Date(atMs).toISOString()), session.userId);
+}
+
+/** Explicit selection shares the same bounded product telemetry boundary as automatic narration. */
+export async function recordSessionStoryStarted(session: DriveSession, poiId: string): Promise<void> {
+  await recordExperienceEvent('story_started', experienceEvent(session,
+    {type:'trigger_story',selectedTargetId:poiId}), session.userId);
+}
+
+export async function recordSessionSuperseded(session: DriveSession, entityId: string): Promise<void> {
+  await recordExperienceEvent('story_outcome', experienceEvent(session,
+    {type:'trigger_story',selectedTargetId:entityId,outcome:'superseded'}), session.userId);
 }

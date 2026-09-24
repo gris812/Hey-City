@@ -126,6 +126,7 @@ export interface JourneyAreaCandidate extends Omit<JourneyArea, 'source'> {
 
 export interface StartJourneyStoryInput {
   momentId: string;
+  callbackId?: string;
   entityId: string;
   entityName: string;
   category?: string;
@@ -154,6 +155,16 @@ export interface SelectJourneyCallbackInput {
   topicKeys: string[];
   relationship?: JourneyCallbackRelationship;
   at?: string;
+}
+
+/** Coarse prior-session context. It cannot become a current-session callback source. */
+export interface RecentJourneyHistory {
+  entityId: string;
+  at: string;
+  level?: JourneyStoryLevel;
+  guideId?: string;
+  topicKeys?: string[];
+  evidenceRefs?: string[];
 }
 
 interface JourneyMoment extends StartJourneyStoryInput {
@@ -199,6 +210,29 @@ export class JourneyState {
 
   constructor(readonly sessionId: string, limits: Partial<JourneyMemoryLimits> = {}) {
     this.limits = validateLimits({ ...JOURNEY_MEMORY_DEFAULT_LIMITS, ...limits });
+  }
+
+  hydrateRecentHistory(records: RecentJourneyHistory[]): void {
+    for (const record of [...records].reverse().slice(-this.limits.entities)) {
+      if (!record.entityId || !Number.isFinite(Date.parse(record.at))) continue;
+      const topics = normalizeTopics(record.topicKeys ?? []).slice(0, this.limits.topics);
+      const refs = unique(record.evidenceRefs ?? []).slice(0, this.limits.evidenceRefs);
+      const current = this.entities.get(record.entityId);
+      this.entities.set(record.entityId, current ? {
+        ...current, lastDiscussedAt: record.at, discussionCount: current.discussionCount + 1,
+        storyLevels: unique([...current.storyLevels, ...(record.level ? [record.level] : [])]) as JourneyStoryLevel[],
+        guideIds: unique([...current.guideIds, ...(record.guideId ? [record.guideId] : [])]),
+        topics: unique([...current.topics, ...topics]), evidenceRefs: unique([...current.evidenceRefs, ...refs]),
+      } : {
+        entityId: record.entityId, name: record.entityId, firstSeenAt: record.at,
+        lastDiscussedAt: record.at, discussionCount: 1,
+        storyLevels: record.level ? [record.level] : [], guideIds: record.guideId ? [record.guideId] : [],
+        evidenceRefs: refs, topics, outcome: 'completed',
+      });
+      for (const topic of topics) this.upsertTopic(topic, record.entityId, record.at);
+      this.usedEvidenceRefs = trimNewest(unique([...this.usedEvidenceRefs, ...refs]), this.limits.evidenceRefs);
+    }
+    this.prune();
   }
 
   updateMovement(movement: JourneyMovement): void {
@@ -253,11 +287,11 @@ export class JourneyState {
     if (momentId) this.setOutcome(momentId, 'superseded', at);
   }
 
-  getActiveMoment(): Readonly<JourneyOutcomeMemory & { entityId: string; entityName: string; delivered: boolean; evidenceRefs: string[]; topicKeys: string[] }> | undefined {
+  getActiveMoment(): Readonly<JourneyOutcomeMemory & { entityId: string; entityName: string; delivered: boolean; evidenceRefs: string[]; topicKeys: string[]; callbackId?: string }> | undefined {
     const moment = this.activeMomentId ? this.moments.get(this.activeMomentId) : undefined;
     return moment ? freezeCopy({ momentId: moment.momentId, entityId: moment.entityId, entityName: moment.entityName,
       startedAt: moment.startedAt, level: moment.level, delivered: moment.delivered,
-      evidenceRefs: moment.evidenceRefs, topicKeys: moment.topicKeys }) : undefined;
+      evidenceRefs: moment.evidenceRefs, topicKeys: moment.topicKeys, callbackId: moment.callbackId }) : undefined;
   }
 
   getUnusedEvidenceRefs(entityId: string, availableEvidenceRefs: string[]): string[] {
@@ -323,7 +357,8 @@ export class JourneyState {
         questions: this.questions.map(question => ({ ...question })),
         narrativeSignatures: [...this.narrativeSignatures],
       },
-      callbacks: this.callbacks.map(callback => ({ ...callback, evidenceRefs: [...callback.evidenceRefs] })),
+      callbacks: this.callbacks.filter(callback => !this.usedCallbackIds.includes(callback.id))
+        .map(callback => ({ ...callback, evidenceRefs: [...callback.evidenceRefs] })),
       usedEvidenceRefs: [...this.usedEvidenceRefs],
     };
     return freezeCopy(snapshot);

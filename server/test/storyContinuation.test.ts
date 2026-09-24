@@ -38,7 +38,7 @@ async function run() {
     const short = await selectStory(session.id,'m1-user','m1-one','short');
     assert.deepEqual(short.attribution, {label:'Wikipedia · CC BY-SA',url:'https://en.wikipedia.org/?curid=1'}, 'explicit story exposes display-only attribution');
     const previous = session.storyContinuation!.previousTranscript;
-    await finishActiveStory(session.id, 'ended');
+    await finishActiveStory(session.id, 'ended', session.journeyState.getActiveMoment()?.momentId);
     await selectStory(session.id,'m1-user','m1-one','long');
     assert.equal(calls.at(-1)!.brief.continuation?.previousTranscript,previous,'T6 successful short is shared context');
     await selectStory(session.id,'m1-user','m1-two','identify');

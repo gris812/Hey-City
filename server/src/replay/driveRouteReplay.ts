@@ -74,7 +74,7 @@ export async function runDriveRouteReplay(
 
   for (const event of fixture.events) {
     if (event.type === 'finish_story') {
-      const result = await finishActiveStory(session.id, event.reason);
+      const result = await finishActiveStory(session.id, event.reason, session.journeyState.getActiveMoment()?.momentId);
       steps.push({
         type: 'finish_story',
         atMs: event.atMs,

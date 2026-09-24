@@ -340,6 +340,7 @@ export const journeyMemory = {
   narrativeSignatures: num('JOURNEY_NARRATIVE_SIGNATURES', 12),
   areaTtlMs: num('JOURNEY_AREA_TTL_MS', 10 * 60 * 1000),
   areaMoveMeters: num('JOURNEY_AREA_MOVE_METERS', 3000),
+  decisionTelemetryMinMs: num('JOURNEY_DECISION_TELEMETRY_MIN_MS', 30_000),
 };
 
 export const themeTags = [

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createSession, finishActiveStory, stopSession } from '../src/services/driveSession';
+import { createSession, finishActiveStory, pingSession, stopSession } from '../src/services/driveSession';
 import { evaluateAheadDiscovery } from '../src/services/aheadDiscovery';
 import { selectStory } from '../src/services/selectedStory';
 import { narrativeGenerator, NarrativeGenerationRequest } from '../src/services/narrativeGenerator';
@@ -37,7 +37,7 @@ async function run() {
     assert.equal(first.entityId, 'selected-one');
     assert.equal(session.journeyState.getSnapshot().recent.outcomes.length, 0, 'starting is not completion');
 
-    await finishActiveStory(session.id, 'ended');
+    await finishActiveStory(session.id, 'ended', session.journeyState.getActiveMoment()?.momentId);
     assert.equal(session.journeyState.getSnapshot().recent.outcomes.at(-1)?.reason, 'completed');
     assert.ok(session.storyContinuation, 'M1 short continuation survives completion');
 
@@ -52,6 +52,11 @@ async function run() {
       'a new explicit selection supersedes the active moment');
     assert.equal(session.journeyState.getActiveMoment()?.entityId, 'selected-two');
     assert.equal(session.storyContinuation?.poiId, 'selected-two', 'a different selected POI replaces the prior M1 continuation');
+    const staleFinish = await finishActiveStory(session.id, 'ended', longMoment.momentId);
+    assert.equal(staleFinish?.stale, true, 'an old audio callback cannot finish a newer selection');
+    assert.equal(session.journeyState.getActiveMoment()?.entityId, 'selected-two');
+    assert.equal(session.journeyState.getSnapshot().recent.outcomes.some(outcome =>
+      outcome.entityId === 'selected-two' && outcome.reason === 'completed'), false);
 
     await selectStory(session.id, 'selected-journey-user', 'selected-two', 'long');
     assert.equal(calls.at(-1)?.brief.continuation, undefined, 'a superseded short segment cannot become ALREADY HEARD context');
@@ -61,6 +66,36 @@ async function run() {
     await selectStory(session.id, 'selected-journey-user', 'selected-one', 'identify');
     assert.equal(session.journeyState.getActiveMoment(), undefined, 'identification does not create a factual journey moment');
     assert.equal(session.journeyState.getSnapshot().recent.outcomes.length, outcomesBeforeIdentify + 1, 'identification only supersedes the existing factual moment');
+
+    const racing = createSession('selected-journey-user', session.params);
+    try {
+      await evaluateAheadDiscovery({
+        sessionId: racing.id,
+        movement: {latitude:40.7074,longitude:-74.0104,headingDegrees:180,speedMps:10,
+          accuracyMeters:10,timestamp:new Date().toISOString()},
+        provider: {name:'google',searchAhead:async () => [{providerId:'race-choice',provider:'google' as const,
+          name:'Chosen Place',targetType:'museum' as const,latitude:40.7074,longitude:-74.0104,
+          providerTypes:['museum']}]},
+      });
+      let startGeneration!: () => void;
+      const generationStarted = new Promise<void>(resolve => {startGeneration = resolve;});
+      let releaseGeneration!: () => void;
+      const generationGate = new Promise<void>(resolve => {releaseGeneration = resolve;});
+      narrativeGenerator.generate = async request => {
+        startGeneration();
+        await generationGate;
+        return {text:'Late automatic narration',providerId:'fixture',cached:false};
+      };
+      const automatic = pingSession(racing.id,40.7074,-74.0104,180,35,Date.now());
+      await generationStarted;
+      const selected = await selectStory(racing.id,'selected-journey-user','race-choice','identify');
+      assert.equal(selected.level,'identify');
+      releaseGeneration();
+      const staleAutomatic = await automatic;
+      assert.equal(staleAutomatic.nextAction,'NONE','a superseded automatic generation cannot claim playback');
+      assert.equal(racing.journeyState.getActiveMoment(),undefined,'late generation cannot replace explicit selection');
+      assert.deepEqual(racing.journeyState.getSnapshot().recent.entities,[],'unheard generation never commits memory');
+    } finally {stopSession(racing.id);}
   } finally {
     globalThis.fetch = originalFetch;
     narrativeGenerator.generate = originalGenerate;

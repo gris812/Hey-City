@@ -82,6 +82,7 @@ async function run(): Promise<void> {
 
   const first = await post<{
       nextAction: 'PLAY' | 'NONE';
+      momentId?: string;
       decision?: { type: string; poiId?: string };
       narrativePlan?: { poiId: string; mode: string; safety: { vehicleSafe: boolean } };
       estimatedDurationSec?: number;
@@ -122,6 +123,7 @@ async function run(): Promise<void> {
       reason: string;
   }>(app, `/sessions/${start.sessionId}/story/end`, {
       reason: 'skipped',
+      momentId: first.momentId,
     });
   assert.equal(storyEnd.ok, true);
   assert.equal(storyEnd.activeStoryWasPlaying, true);

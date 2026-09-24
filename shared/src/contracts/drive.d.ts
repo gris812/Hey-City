@@ -185,6 +185,8 @@ export interface NarrativeAttribution {
 
 export interface DrivePingResult {
   nextAction: 'PLAY' | 'NONE';
+  /** Opaque playback identity required by the finish endpoint. */
+  momentId?: string;
   mode?: DiscoveryMode;
   speedKmh?: number;
   poi?: DrivePoi;
@@ -201,6 +203,7 @@ export interface DrivePingResult {
 
 export interface StoryFinishResult {
   ok: boolean;
+  stale?: boolean;
   activeStoryWasPlaying: boolean;
   reason: StoryFinishReason;
 }

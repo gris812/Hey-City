@@ -9,10 +9,12 @@ import {
   stopSession,
   pingSession,
   DriveSessionParams,
+  recordSessionSuperseded,
 } from '../services/driveSession';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from '../services/localPoi';
 import { recordUsage } from '../services/usage';
 import { getGuide, listGuides } from '../services/guides';
+import { getRecentJourneyHistory } from '../services/history';
 
 export async function startSession(req: AuthRequest, res: Response): Promise<void> {
   if (!req.user) {
@@ -49,6 +51,7 @@ export async function startSession(req: AuthRequest, res: Response): Promise<voi
   };
 
   const session = createSession(req.user.userId, params);
+  if (user?.historyEnabled) session.journeyState.hydrateRecentHistory(await getRecentJourneyHistory(user.id));
   await recordUsage({ userId: req.user.userId, category: 'product', operation: 'session_started' });
   res.json({ sessionId: session.id });
 }
@@ -68,7 +71,9 @@ export async function stopSessionHandler(req: AuthRequest, res: Response): Promi
     res.status(404).json({ error: 'Session not found' });
     return;
   }
+  const active = session.journeyState.getActiveMoment();
   stopSession(sessionId);
+  if (active) await recordSessionSuperseded(session, active.entityId);
   await recordUsage({ userId: req.user.userId, category: 'product', operation: 'session_ended' });
   res.json({ ok: true });
 }
@@ -163,12 +168,14 @@ export async function finishActiveStoryHandler(req: AuthRequest, res: Response):
   }
 
   const bodyReason = req.body?.reason;
+  const momentId = req.body?.momentId;
+  if (typeof momentId !== 'string' || !momentId) { res.status(400).json({error:'momentId required'}); return; }
   const reason: StoryFinishReason =
     bodyReason === 'skipped' || bodyReason === 'paused' || bodyReason === 'ended'
       ? bodyReason
       : 'ended';
   const listenedSeconds = req.body?.listenedSeconds;
-  const result = await finishActiveStory(sessionId, reason,
+  const result = await finishActiveStory(sessionId, reason, momentId,
     typeof listenedSeconds === 'number' && Number.isFinite(listenedSeconds) ? listenedSeconds : undefined);
   res.json(result);
 }
