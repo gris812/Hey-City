@@ -16,17 +16,11 @@ A policy module must remain deterministic and provider-independent. Moving a rul
 - `callbackTopicPolicy.ts` — evidence-backed callback topic catalog and matching rules.
 - `guideNarrativePolicy.ts` — Dana/Arthur aliases, common guide constraints, persona behavior and preferred beat sequences.
 - `narrativeQualityPolicy.ts` — forbidden spoken openings/CTAs, beat objectives, deterministic beat variants and narrative angles.
+- `discoveryTaxonomyPolicy.ts` — ordered provider-type mapping, Ahead Discovery deny/cultural exceptions, narrative target categories, and compatibility taxonomy for legacy Nearby Places.
+- `discoveryRankingPolicy.ts` — category priorities and popularity interpretation weights/caps.
 
-## Good future candidates
+## Discovery compatibility note
 
-These are intentionally **not** moved in the callback refactor because they deserve separate regression-safe changes:
-
-1. **Discovery taxonomy policy**
-   - current locations: `services/aheadDiscoveryFiltering.ts` and `config.ts:placeTypes`.
-   - Google type mapping, deny/allow categories, and cultural exceptions currently have overlapping definitions and should have one canonical taxonomy.
-
-2. **Discovery category/ranking policy**
-   - current location: `services/aheadDiscoveryScoring.ts` category priorities and popularity composition.
-   - category priorities are product choices and should be separated from the scoring algorithm.
+Ahead Discovery and the older Nearby Places pipeline previously used overlapping but non-equivalent type catalogs. Ahead Discovery allows a cultural exception such as `museum + store`; legacy Nearby Places rejects any forbidden tag and also supports legacy-only categories such as `church` and `library`. Both rules now live explicitly in `discoveryTaxonomyPolicy.ts`; their runtime behavior remains separate and unchanged.
 
 Operational numbers such as cache TTLs, timeouts, memory caps, cooldown seconds and provider rate limits should normally remain in `config.ts` / environment configuration rather than move into product-policy files.

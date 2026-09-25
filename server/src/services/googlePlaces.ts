@@ -2,7 +2,8 @@
  * Google Places API: Nearby Search only. Place Details only when POI selected for story.
  * All keys server-side. Budget: respect MAX_PLACES_CALLS_PER_MINUTE_PER_USER.
  */
-import { googleMaps, placeTypes, poi, cacheTtl, placesRadius } from '../config';
+import { googleMaps, poi, cacheTtl, placesRadius } from '../config';
+import { isLegacyNearbyTypeAllowed } from '../policies/discoveryTaxonomyPolicy';
 import { cacheGet, cacheSet, nearbyCacheKey } from './cache';
 import { encodeGeohash, headingBucket, speedBucket, pointAhead } from './geo';
 import { recordUsage } from './usage';
@@ -18,9 +19,7 @@ export interface NearbyPlace {
 }
 
 function filterPlace(p: NearbyPlace): boolean {
-  const hasAllowed = p.types?.some((t) => placeTypes.allowed.includes(t));
-  const hasForbidden = p.types?.some((t) => placeTypes.forbidden.includes(t));
-  if (hasForbidden || !hasAllowed) return false;
+  if (!isLegacyNearbyTypeAllowed(p.types ?? [])) return false;
   const rating = p.rating ?? 0;
   const total = p.user_ratings_total ?? 0;
   if (rating < poi.minRating && total < poi.minUserRatingsTotal) return false;

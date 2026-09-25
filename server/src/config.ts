@@ -219,33 +219,6 @@ export const cacheTtl = {
   ttsAudioDays: num('CACHE_TTS_AUDIO_DAYS', 30),
 };
 
-/** Allowed place types for Drive Discovery (noise filtered out) */
-export const placeTypes = {
-  allowed: [
-    'tourist_attraction',
-    'museum',
-    'park',
-    'church',
-    'synagogue',
-    'hindu_temple',
-    'mosque',
-    'art_gallery',
-    'stadium',
-    'university',
-    'city_hall',
-    'library',
-  ],
-  forbidden: [
-    'gas_station',
-    'convenience_store',
-    'atm',
-    'parking',
-    'car_wash',
-    'bank',
-    'store',
-  ],
-};
-
 export const googleMaps = {
   apiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   placesUsdPerThousand: float('GOOGLE_PLACES_USD_PER_THOUSAND', 32),
