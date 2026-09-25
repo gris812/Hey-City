@@ -90,6 +90,7 @@ function assertContext(
 function runScenario(scenario: ReplayScenario): void {
   const state = createJourneyState(`replay-${scenario.id}`, scenario.areaTtlMs ? { areaTtlMs: scenario.areaTtlMs } : undefined);
   let activeMomentId: string | undefined;
+  let activeCallbackId: string | undefined;
   let persistentJourneyWrites = 0;
 
   for (const [index, event] of scenario.events.entries()) {
@@ -100,19 +101,23 @@ function runScenario(scenario: ReplayScenario): void {
       state.updateArea(event.area ? { ...event.area, source: 'discovery' } : { source: 'unknown' }, at(event.atMs));
     } else if (event.type === 'story_started') {
       activeMomentId = `${scenario.id}-m${index}`;
-      state.startStory({ momentId: activeMomentId, entityId: event.entityId, entityName: event.entityName, level: event.level ?? 'auto', startedAt: at(event.atMs) });
+      const callback = state.selectCallback({entityId:event.entityId,topicKeys:event.topics,
+        relationship:event.callback?.relationship,at:at(event.atMs)});
+      activeCallbackId = callback?.id;
+      callbackSourceEntityIds = callback ? [callback.sourceEntityId] : [];
+      state.startStory({ momentId: activeMomentId, entityId: event.entityId, entityName: event.entityName, level: event.level ?? 'auto', callbackId: activeCallbackId, startedAt: at(event.atMs) });
       state.recordNarration({ momentId: activeMomentId, evidenceRefs: event.evidenceRefs, topicKeys: event.topics, at: at(event.atMs) });
       if (scenario.historyEnabled !== false) persistentJourneyWrites += 0; // JourneyState never persists; integration owns durable history.
       if (event.callback) {
-        const callback = state.selectCallback({ entityId: event.entityId, topicKeys: event.topics, relationship: event.callback.relationship, at: at(event.atMs) });
-        callbackSourceEntityIds = callback ? [callback.sourceEntityId] : [];
         assert.equal(callback?.sourceEntityId, event.callback.sourceEntityId, `${scenario.id}@${event.atMs}: callback source`);
         assert.equal(callback?.topicKey, event.callback.topicKey, `${scenario.id}@${event.atMs}: callback topic`);
       }
     } else if (event.type === 'story_finished') {
       assert.ok(activeMomentId, `${scenario.id}@${event.atMs}: finish has active story`);
       state.finishStory({ momentId: activeMomentId!, reason: event.reason, endedAt: at(event.atMs), listenedSeconds: event.reason === 'completed' ? 50 : 3 });
+      if (event.reason === 'completed' && activeCallbackId) state.recordCallbackUsed(activeCallbackId);
       activeMomentId = undefined;
+      activeCallbackId = undefined;
     } else if (event.type === 'story_candidate') {
       unusedEvidenceRefs = state.getUnusedEvidenceRefs(event.entityId, event.evidenceRefs);
       if (event.callback) {
@@ -121,7 +126,8 @@ function runScenario(scenario: ReplayScenario): void {
         assert.equal(callback?.sourceEntityId, event.callback.sourceEntityId, `${scenario.id}@${event.atMs}: callback source`);
         assert.equal(callback?.topicKey, event.callback.topicKey, `${scenario.id}@${event.atMs}: callback topic`);
       } else {
-        callbackSourceEntityIds = state.getSnapshot(at(event.atMs)).callbacks.map(callback => callback.sourceEntityId);
+        const callback = state.selectCallback({entityId:event.entityId,topicKeys:event.topics,at:at(event.atMs)});
+        callbackSourceEntityIds = callback ? [callback.sourceEntityId] : [];
       }
     }
     assertContext(scenario, event, state, persistentJourneyWrites, callbackSourceEntityIds, unusedEvidenceRefs);

@@ -2,7 +2,7 @@ import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from '
 import { sessionDiscoveryCandidate } from './aheadDiscovery';
 import { discoveryEvidence } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
-import { EvidenceBundle, publicAttribution, storyAvailability } from './evidence';
+import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
 import type { StoryAvailability } from '@heycity/shared';
 import { generateIdentification, generateNarrationFromPlan } from './narration';
@@ -58,7 +58,7 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
       if (!evidence || !(level === 'long' ? availability.long : availability.short)) throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.');
       const duration = level === 'long' ? narration.detailedSeconds : narration.briefSeconds;
       const journey = session.journeyState;
-      const topicKeys = [...params.themeTags, evidence.category];
+      const topicKeys = [...params.themeTags, evidence.category, ...specificCallbackTopics(evidence)];
       // Callbacks are validated only against previously completed moments.
       journey?.selectCallback({ entityId: poiId, topicKeys });
       planned = prepareNarrative({poiId,placeName:candidate.name,mode:params.mode ?? 'walking',guideId:params.voiceId,themeTags:params.themeTags,targetDurationSec:duration}, evidence,
@@ -73,7 +73,7 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
     // Generation succeeding starts an active factual moment; completion remains the finish endpoint's responsibility.
     // Identification is an orientation utterance, without evidence or callback memory.
     if (level !== 'identify') {
-      const topicKeys = [...params.themeTags, evidence?.category ?? candidate.targetType];
+      const topicKeys = [...params.themeTags, evidence?.category ?? candidate.targetType, ...(evidence ? specificCallbackTopics(evidence) : [])];
       const selectedEvidenceRefs = planned?.brief.selectedEvidenceRefs ?? [];
       session.journeyState?.startStory({
         momentId, entityId: poiId, entityName: candidate.name, category: evidence?.category ?? candidate.targetType,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createJourneyState } from '../src/services/journeyContext';
-import { normalizeEvidence, InsufficientEvidenceError } from '../src/services/evidence';
+import { normalizeEvidence, InsufficientEvidenceError, specificCallbackTopics } from '../src/services/evidence';
 import { prepareNarrative } from '../src/services/narrativePlan';
 
 const claims = 'The original building housed the first Congress of the United States. George Washington took the oath here in 1789. The original building was demolished in 1812. The current building opened as a customs house in 1842.';
@@ -31,7 +31,20 @@ function run() {
   assert.equal(withCallback.plan.moment.relationship,'callback');
   assert.deepEqual(withCallback.plan.moment.priorContextRefs,['wall-heard','wall']);
   assert.equal(withCallback.brief.journey?.callback?.sourceEntityName,'Wall Street');
+  assert.equal(withCallback.brief.journey?.callback?.targetEntityId,'federal');
   assert(!JSON.stringify(withCallback.plan).includes('wall-claim'),'previous evidence text stays outside public plan');
+
+  const laterTarget = {...input,poiId:'customs-house',placeName:'Customs House'};
+  const laterEvidence = normalizeEvidence({id:'customs-house',name:'Customs House',category:'historical_landmark'},claims,'curated');
+  const abandoned = prepareNarrative(laterTarget,laterEvidence,{level:'auto',language:'en',journey:state.getSnapshot(at(9))});
+  assert.equal(abandoned.brief.journey?.callback,undefined,
+    'a callback planned for Federal Hall cannot leak into another financial-history target');
+  assert.equal(abandoned.plan.moment.relationship,'new_topic');
+  const genericEvidence = normalizeEvidence({id:'park',name:'Park',category:'historical_landmark'},
+    'The park opened in 1890 beside a public square. Visitors crossed its paths during daily walks.','curated');
+  assert.deepEqual(specificCallbackTopics(genericEvidence),[],'broad history preference adds no evidence-grounded callback topic');
+  assert.equal(prepareNarrative({...input,poiId:'park',placeName:'Park',themeTags:['history']},genericEvidence,
+    {level:'auto',language:'en',journey:state.getSnapshot(at(9))}).brief.journey?.callback,undefined);
 
   state.startStory({momentId:'federal-heard',entityId:'federal',entityName:'Federal Hall',level:'auto',startedAt:at(10)});
   state.recordNarration({momentId:'federal-heard',topicKeys:['financial_history','historical_landmark'],

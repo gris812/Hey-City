@@ -67,6 +67,28 @@ async function run() {
     assert.equal(session.journeyState.getActiveMoment(), undefined, 'identification does not create a factual journey moment');
     assert.equal(session.journeyState.getSnapshot().recent.outcomes.length, outcomesBeforeIdentify + 1, 'identification only supersedes the existing factual moment');
 
+    const cadence = createSession('selected-journey-user', session.params);
+    try {
+      await evaluateAheadDiscovery({
+        sessionId:cadence.id,
+        movement:{latitude:38.627,longitude:-90.1994,headingDegrees:0,speedMps:1,
+          accuracyMeters:10,timestamp:new Date().toISOString()},
+        provider:{name:'google',searchAhead:async () => ['alpha','beta','gamma'].map(id => ({
+          providerId:`policy-${id}`,provider:'google' as const,name:`Policy ${id}`,
+          targetType:'museum' as const,latitude:38.627,longitude:-90.1994,providerTypes:['museum'],
+        }))},
+      });
+      const callbackIds: Array<string | undefined> = [];
+      for (const id of ['alpha','beta','gamma']) {
+        await selectStory(cadence.id,'selected-journey-user',`policy-${id}`,'short');
+        callbackIds.push(calls.at(-1)?.brief.journey?.callback?.id);
+        await finishActiveStory(cadence.id,'ended',cadence.journeyState.getActiveMoment()?.momentId);
+      }
+      assert.equal(callbackIds[0],undefined,'first story has no source');
+      assert.ok(callbackIds[1],'specific evidence allows one grounded callback despite broad history preference');
+      assert.equal(callbackIds[2],undefined,'third consecutive same-theme story respects callback minimum gap');
+    } finally {stopSession(cadence.id);}
+
     const racing = createSession('selected-journey-user', session.params);
     try {
       await evaluateAheadDiscovery({

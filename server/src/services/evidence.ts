@@ -48,6 +48,16 @@ export function verifiedItems(bundle: EvidenceBundle): EvidenceItem[] {
     item.claim.trim().toLowerCase() !== `${bundle.subjectName} ${bundle.category}`.toLowerCase() &&
     !/https?:\/\/|\b(?:Category|Source|CC BY-SA)\s*:/i.test(item.claim));
 }
+/** Narrow deterministic links supported by actual verified claims, never by profile tags alone. */
+export function specificCallbackTopics(bundle: EvidenceBundle): string[] {
+  const claims = verifiedItems(bundle).map(item => item.claim).join(' ').toLowerCase();
+  const topics: string[] = [];
+  if (/\b(?:financial|finance|banking|banks?|stock|trading|commerce|customs|treasury)\b/i.test(claims)) topics.push('financial_history');
+  if (/\b(?:congress|legislature|city hall|civic|election|government)\b/i.test(claims)) topics.push('civic_history');
+  if (bundle.category === 'bridge' && /\b(?:span|suspension|cable|engineer|construction|structure)\b/i.test(claims)) topics.push('bridge_engineering');
+  if (/\b(?:art deco|beaux.arts|gothic|neoclassical|greek revival|roman(esque)?)\b/i.test(claims)) topics.push('architectural_style');
+  return topics;
+}
 export function publicAttribution(bundle: EvidenceBundle): NarrativeAttribution | undefined {
   const label = bundle.attribution?.label.trim();
   if (!label) return undefined;

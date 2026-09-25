@@ -12,7 +12,7 @@ import type {
 import { randomUUID } from 'node:crypto';
 import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings, journeyMemory } from '../config';
 import { discoveryEvidence } from './discoveryKnowledge';
-import { EvidenceBundle, InsufficientEvidenceError, normalizeEvidence, publicAttribution, storyAvailability } from './evidence';
+import { EvidenceBundle, InsufficientEvidenceError, normalizeEvidence, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import type { StoryContinuationState } from './storyBrief';
 import type { DiscoveryCandidate as StoryCandidate } from './driveDecision';
 import { NearbyPlace } from './googlePlaces';
@@ -93,6 +93,7 @@ export function createSession(userId: string, params: DriveSessionParams): Drive
       entities: journeyMemory.recentEntities, topics: journeyMemory.recentTopics,
       outcomes: journeyMemory.recentOutcomes, questions: journeyMemory.recentQuestions,
       callbacks: journeyMemory.callbacks, evidenceRefs: journeyMemory.usedEvidenceRefs,
+      callbackMinCompletedGap: journeyMemory.callbackMinCompletedGap,
       narrativeSignatures: journeyMemory.narrativeSignatures, areaTtlMs: journeyMemory.areaTtlMs,
     }),
   };
@@ -383,7 +384,7 @@ export async function pingSession(
     storySeed: decision.narrativePlanInput.storySeed,
   });
   const selectedEvidence = evidenceByPoi.get(decision.poiId)!;
-  const topicKeys = [...new Set([...session.params.themeTags.filter(tag => tag !== 'mixed'), selectedEvidence.category])];
+  const topicKeys = [...new Set([...session.params.themeTags.filter(tag => tag !== 'mixed'), selectedEvidence.category, ...specificCallbackTopics(selectedEvidence)])];
   session.journeyState.selectCallback({entityId:decision.poiId,topicKeys,at});
   let planned;
   try {

@@ -336,6 +336,7 @@ export const journeyMemory = {
   recentOutcomes: num('JOURNEY_RECENT_OUTCOMES', 20),
   recentQuestions: num('JOURNEY_RECENT_QUESTIONS', 10),
   callbacks: num('JOURNEY_CALLBACKS', 8),
+  callbackMinCompletedGap: num('JOURNEY_CALLBACK_MIN_COMPLETED_GAP', 2),
   usedEvidenceRefs: num('JOURNEY_USED_EVIDENCE_REFS', 100),
   narrativeSignatures: num('JOURNEY_NARRATIVE_SIGNATURES', 12),
   areaTtlMs: num('JOURNEY_AREA_TTL_MS', 10 * 60 * 1000),

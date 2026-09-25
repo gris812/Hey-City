@@ -67,6 +67,7 @@ export interface JourneyQuestionMemory {
 
 export interface JourneyCallback {
   id: string;
+  targetEntityId: string;
   sourceEntityId: string;
   sourceEntityName: string;
   sourceMomentId: string;
@@ -102,6 +103,7 @@ export interface JourneyMemoryLimits {
   outcomes: number;
   questions: number;
   callbacks: number;
+  callbackMinCompletedGap: number;
   evidenceRefs: number;
   narrativeSignatures: number;
   areaTtlMs: number;
@@ -113,6 +115,7 @@ export const JOURNEY_MEMORY_DEFAULT_LIMITS: Readonly<JourneyMemoryLimits> = Obje
   outcomes: 20,
   questions: 10,
   callbacks: 8,
+  callbackMinCompletedGap: 2,
   evidenceRefs: 100,
   narrativeSignatures: 12,
   areaTtlMs: 30 * 60 * 1000,
@@ -203,6 +206,7 @@ export class JourneyState {
   private callbacks: JourneyCallback[] = [];
   /** Callback ids confirmed as spoken in this session, ordered by use time. */
   private usedCallbackIds: string[] = [];
+  private completedSinceCallback?: number;
   private usedEvidenceRefs: string[] = [];
   private narrativeSignatures: string[] = [];
   private readonly moments = new Map<string, JourneyMoment>();
@@ -300,8 +304,9 @@ export class JourneyState {
   }
 
   selectCallback(input: SelectJourneyCallbackInput): JourneyCallback | undefined {
-    const topics = normalizeTopics(input.topicKeys);
+    const topics = normalizeTopics(input.topicKeys).filter(isSpecificCallbackTopic);
     if (!input.entityId || !topics.length) return undefined;
+    if (!this.callbackGapSatisfied()) return undefined;
     const source = [...this.moments.values()]
       .filter(moment => moment.entityId !== input.entityId && moment.delivered && moment.outcome === 'completed')
       .sort((a, b) => dateMs(b.endedAt ?? b.startedAt) - dateMs(a.endedAt ?? a.startedAt) || a.momentId.localeCompare(b.momentId))
@@ -316,6 +321,7 @@ export class JourneyState {
     if (existing) return freezeCopy(existing);
     const callback: JourneyCallback = {
       id,
+      targetEntityId: input.entityId,
       sourceEntityId: source.entityId,
       sourceEntityName: source.entityName,
       sourceMomentId: source.momentId,
@@ -336,6 +342,11 @@ export class JourneyState {
   recordCallbackUsed(callbackId: string): void {
     if (!this.callbacks.some(callback => callback.id === callbackId) || this.usedCallbackIds.includes(callbackId)) return;
     this.usedCallbackIds = trimNewest([...this.usedCallbackIds, callbackId], this.limits.outcomes);
+    this.completedSinceCallback = 0;
+  }
+
+  private callbackGapSatisfied(): boolean {
+    return this.completedSinceCallback === undefined || this.completedSinceCallback >= this.limits.callbackMinCompletedGap;
   }
 
   recordQuestion(question: Omit<JourneyQuestionMemory, 'at'> & { at?: string }): void {
@@ -357,7 +368,7 @@ export class JourneyState {
         questions: this.questions.map(question => ({ ...question })),
         narrativeSignatures: [...this.narrativeSignatures],
       },
-      callbacks: this.callbacks.filter(callback => !this.usedCallbackIds.includes(callback.id))
+      callbacks: this.callbacks.filter(callback => this.callbackGapSatisfied() && !this.usedCallbackIds.includes(callback.id))
         .map(callback => ({ ...callback, evidenceRefs: [...callback.evidenceRefs] })),
       usedEvidenceRefs: [...this.usedEvidenceRefs],
     };
@@ -380,6 +391,7 @@ export class JourneyState {
       const entity = this.entities.get(moment.entityId);
       if (entity) entity.outcome = reason;
     }
+    if (reason === 'completed' && this.completedSinceCallback !== undefined) this.completedSinceCallback += 1;
     this.outcomes = trimNewest([...this.outcomes, { momentId, entityId: moment.entityId, startedAt: moment.startedAt,
       endedAt, reason, level: moment.level, listenedSeconds }], this.limits.outcomes);
     this.prune();
@@ -433,6 +445,10 @@ function validateLimits(limits: JourneyMemoryLimits): JourneyMemoryLimits {
 function assertFinite(value: number, name: string): void { if (!Number.isFinite(value)) throw new Error(`Journey movement ${name} must be finite`); }
 function dateMs(value: string): number { const result = Date.parse(value); if (!Number.isFinite(result)) throw new Error(`Invalid journey timestamp: ${value}`); return result; }
 function normalizeTopics(topics: string[]): string[] { return unique(topics.map(topic => topic.trim().toLowerCase())); }
+/** Broad profile preferences and place categories are insufficient callback evidence. */
+export function isSpecificCallbackTopic(topic: string): boolean {
+  return ['financial_history', 'civic_history', 'bridge_engineering', 'architectural_style'].includes(topic);
+}
 function trimNewest<T>(values: T[], limit: number): T[] { return values.slice(-limit); }
 function sortNewest<T>(values: T[], date: (value: T) => string): T[] { return values.sort((a, b) => dateMs(date(b)) - dateMs(date(a))); }
 function pruneMap<T>(map: Map<string, T>, limit: number, date: (value: T) => string): void {

@@ -32,7 +32,7 @@ function run(): void {
   assert.equal(moved.area.source, 'local');
   assert.equal(state.getSnapshot(at(3)).area.source, 'unknown', 'stale area expires without a provider lookup');
 
-  delivered(state, { id: 'wall-street', entityId: 'wall-street', name: 'Wall Street', topics: ['Finance', 'history'], refs: ['e1', 'e2'], seconds: 10 });
+  delivered(state, { id: 'wall-street', entityId: 'wall-street', name: 'Wall Street', topics: ['financial_history', 'history'], refs: ['e1', 'e2'], seconds: 10 });
   assert.equal(state.getSnapshot(at(11)).recent.outcomes.length, 0, 'generation/audio availability is not completion');
   assert.deepEqual(state.getSnapshot(at(11)).recent.entities, [], 'unheard narration is not remembered as discussed');
   assert.deepEqual(state.getSnapshot(at(11)).usedEvidenceRefs, [], 'unheard narration does not consume evidence');
@@ -44,16 +44,21 @@ function run(): void {
   assert.equal(heard.recent.outcomes[0].reason, 'completed');
   assert.deepEqual(state.getUnusedEvidenceRefs('wall-street', ['e1', 'e2', 'e3']), ['e3']);
 
-  delivered(state, { id: 'federal-hall', entityId: 'federal-hall', name: 'Federal Hall', topics: ['finance', 'politics'], refs: ['e3'], seconds: 30 });
-  const callback = state.selectCallback({ entityId: 'federal-hall', topicKeys: ['finance'], relationship: 'contrast', at: at(31) });
+  delivered(state, { id: 'federal-hall', entityId: 'federal-hall', name: 'Federal Hall', topics: ['financial_history', 'politics'], refs: ['e3'], seconds: 30 });
+  assert.equal(state.selectCallback({entityId:'another-history-site',topicKeys:['history'],at:at(31)}),undefined,
+    'a shared broad preference cannot force a callback');
+  const callback = state.selectCallback({ entityId: 'federal-hall', topicKeys: ['financial_history'], relationship: 'contrast', at: at(31) });
   assert.equal(callback?.sourceMomentId, 'wall-street');
   assert.equal(callback?.sourceEntityName, 'Wall Street');
   assert.equal(callback?.relationship, 'contrast');
   assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['architecture'] }), undefined, 'callbacks require a shared deterministic topic');
-  assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['finance'] })?.id, callback?.id, 'an unplayed callback remains available after planning fails');
+  assert.equal(callback?.targetEntityId,'federal-hall');
+  assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['financial_history'] })?.id, callback?.id, 'an unplayed callback remains available after planning fails');
   state.finishStory({ momentId: 'federal-hall', reason: 'completed', endedAt: at(32), listenedSeconds: 2 });
   state.recordCallbackUsed(callback!.id);
-  assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['finance'] }), undefined, 'a completed callback cannot be mechanically reused');
+  assert.equal(state.selectCallback({ entityId: 'federal-hall', topicKeys: ['financial_history'] }), undefined, 'a completed callback cannot be mechanically reused');
+  assert.equal(state.selectCallback({ entityId: 'third-site', topicKeys: ['financial_history'] }),undefined,
+    'new target cannot use another callback immediately after one was consumed');
   assert.equal(state.getSnapshot(at(32)).callbacks.some(item => item.id === callback.id), false,
     'consumed callbacks are absent from the planning snapshot');
 
@@ -83,8 +88,29 @@ function run(): void {
   restored.hydrateRecentHistory([{entityId:'prior',at:at(45),level:'short',topicKeys:['Finance'],evidenceRefs:['old-ref']}]);
   assert.equal(restored.getSnapshot(at(50)).recent.entities[0].entityId, 'prior');
   assert.deepEqual(restored.getUnusedEvidenceRefs('prior',['old-ref','new-ref']),['new-ref']);
-  assert.equal(restored.selectCallback({entityId:'another',topicKeys:['finance']}), undefined,
+  assert.equal(restored.selectCallback({entityId:'another',topicKeys:['financial_history']}), undefined,
     'persisted history cannot invent a callback heard in the active session');
+
+  const cadence = createJourneyState('cadence',{callbackMinCompletedGap:2});
+  delivered(cadence,{id:'source',entityId:'source',name:'Source',topics:['financial_history'],refs:['s'],seconds:1});
+  cadence.finishStory({momentId:'source',reason:'completed',endedAt:at(2)});
+  const used = cadence.selectCallback({entityId:'target',topicKeys:['financial_history'],at:at(3)})!;
+  const plannedLater = cadence.selectCallback({entityId:'planned-later',topicKeys:['financial_history'],at:at(3)});
+  assert.ok(plannedLater);
+  cadence.startStory({momentId:'target',entityId:'target',entityName:'Target',level:'auto',callbackId:used.id,startedAt:at(3)});
+  cadence.recordNarration({momentId:'target',evidenceRefs:['t'],topicKeys:['financial_history']});
+  cadence.finishStory({momentId:'target',reason:'completed',endedAt:at(4)});
+  cadence.recordCallbackUsed(used.id);
+  assert.equal(cadence.getSnapshot(at(4)).callbacks.some(item => item.id === plannedLater?.id),false,
+    'preplanned callbacks are also hidden from StoryBrief during cadence hold');
+  assert.equal(cadence.selectCallback({entityId:'next',topicKeys:['financial_history']}),undefined);
+  for (let index = 0; index < 2; index++) {
+    delivered(cadence,{id:`gap-${index}`,entityId:`gap-${index}`,name:'Gap',topics:['financial_history'],refs:[`gap-${index}`],seconds:5 + index * 2});
+    cadence.finishStory({momentId:`gap-${index}`,reason:'completed',endedAt:at(6 + index * 2)});
+    if (index === 0) assert.equal(cadence.selectCallback({entityId:'next',topicKeys:['financial_history']}),undefined);
+  }
+  assert.ok(cadence.selectCallback({entityId:'next',topicKeys:['financial_history']}),
+    'callback can recur only after the configured number of completed non-callback stories');
 
   // More than each configured cap retains only the newest deterministic entries.
   delivered(state, { id: 'four', entityId: 'four', name: 'Four', topics: ['four'], refs: ['e5'], seconds: 60 });

@@ -1,6 +1,6 @@
 import type { MomentPlan, NarrativeBeat, NarrativeLevel, NarrativePlanInput } from '@heycity/shared';
 import { narrativeV2 } from '../config';
-import { EvidenceBundle, InsufficientEvidenceError, selectedEvidenceItems, storyAvailability, verifiedItems } from './evidence';
+import { EvidenceBundle, InsufficientEvidenceError, selectedEvidenceItems, specificCallbackTopics, storyAvailability, verifiedItems } from './evidence';
 import { GuidePolicy } from './guidePolicy';
 import type { JourneyContext, JourneyCallback } from './journeyContext';
 
@@ -35,8 +35,9 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
   if (!(options.level === 'long' ? available.long : available.short)) throw new InsufficientEvidenceError();
   const city = evidence.category === 'city' || evidence.category === 'region';
   const journey = options.journey;
-  const topics = [...new Set([...input.themeTags.filter(tag => tag !== 'mixed'), evidence.category])];
-  const callback = continuation ? undefined : journey?.callbacks.find(item => item.sourceEntityId !== input.poiId && topics.includes(item.topicKey));
+  const topics = specificCallbackTopics(evidence);
+  const callback = continuation ? undefined : journey?.callbacks.find(item =>
+    item.targetEntityId === input.poiId && item.sourceEntityId !== input.poiId && topics.includes(item.topicKey));
   const moment: MomentPlan = {
     relationship: continuation ? 'continuation' : callback ? callback.relationship : city ? 'orientation' : 'new_topic',
     intent: continuation || callback ? 'connect' : city ? 'orient' : policy.id === 'arthur' ? 'explain' : 'surprise',

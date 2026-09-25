@@ -170,6 +170,51 @@
             "unusedEvidenceRefs": [],
             "currentTargetId": null
           }
+        },
+        {
+          "atMs": 840000,
+          "type": "story_started",
+          "entityId": "broad-a",
+          "entityName": "History Site A",
+          "topics": ["history"],
+          "evidenceRefs": ["broad-a-1"],
+          "expect": {"callbackSourceEntityIds": []}
+        },
+        {
+          "atMs": 880000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {"currentTargetId": null}
+        },
+        {
+          "atMs": 920000,
+          "type": "story_started",
+          "entityId": "broad-b",
+          "entityName": "History Site B",
+          "topics": ["history"],
+          "evidenceRefs": ["broad-b-1"],
+          "expect": {"callbackSourceEntityIds": []}
+        },
+        {
+          "atMs": 960000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {"currentTargetId": null}
+        },
+        {
+          "atMs": 1000000,
+          "type": "story_started",
+          "entityId": "broad-c",
+          "entityName": "History Site C",
+          "topics": ["history"],
+          "evidenceRefs": ["broad-c-1"],
+          "expect": {"callbackSourceEntityIds": []}
+        },
+        {
+          "atMs": 1040000,
+          "type": "story_finished",
+          "reason": "completed",
+          "expect": {"currentTargetId": null}
         }
       ]
     },
