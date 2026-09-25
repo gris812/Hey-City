@@ -1,5 +1,6 @@
 import type { MomentPlan, NarrativeBeat, NarrativeLevel, NarrativePlanInput } from '@heycity/shared';
 import { narrativeV2 } from '../config';
+import { NARRATIVE_FORBIDDEN_PATTERNS, narrativeAngle, narrativeBeatKinds, narrativeBeatObjective } from '../policies/narrativeQualityPolicy';
 import { EvidenceBundle, InsufficientEvidenceError, selectedEvidenceItems, specificCallbackTopics, storyAvailability, verifiedItems } from './evidence';
 import { GuidePolicy } from './guidePolicy';
 import type { JourneyContext, JourneyCallback } from './journeyContext';
@@ -44,21 +45,10 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
     delivery: options.level === 'long' && input.mode !== 'vehicle' ? 'deep_story' : 'brief_story',
     ...(callback || continuation ? { priorContextRefs: callback ? [callback.sourceMomentId, callback.sourceEntityId] : [input.poiId] } : {}),
   };
-  const objectives: Record<string, string> = {
-    attention: 'Open with a concrete observation or contrast supported by the evidence; do not invent what is visible.',
-    hook: 'Make one evidence-backed detail worth noticing, without a label or promise to narrate.',
-    context: 'Give only the context needed to understand the reveal; distinguish place and building when supported.',
-    reveal: options.level === 'long' ? 'Add supported context beyond the already-heard reveal.' : 'Choose one strong factual reveal. Leave other facts for a later detailed story instead of listing all claims.',
-    contrast: 'Connect that detail to another supplied fact; avoid unsupported comparisons.',
-    stop: 'End naturally on the meaning of the detail, with no generic CTA.',
-    callback: 'Briefly connect to what was already heard without restating its opening or repeating its facts.',
-  };
-  const defaultKinds = callback ? ['callback' as const, 'context' as const, 'reveal' as const, 'stop' as const] : policy.preferredBeats;
-  let kinds = continuation ? ['callback' as const, 'context' as const, 'reveal' as const, 'stop' as const] : defaultKinds;
-  const signature = `${policy.id}:${moment.relationship}:${moment.intent}:${kinds.join(',')}`;
-  if (!continuation && !callback && journey?.recent.narrativeSignatures.at(-1) === signature) {
-    kinds = ['context', 'contrast', 'reveal', 'stop'];
-  }
+  const initialKinds = narrativeBeatKinds({ preferredBeats: policy.preferredBeats, hasCallback: Boolean(callback), continuation: Boolean(continuation), repeatSignature: false });
+  const signature = `${policy.id}:${moment.relationship}:${moment.intent}:${initialKinds.join(',')}`;
+  const kinds = narrativeBeatKinds({ preferredBeats: policy.preferredBeats, hasCallback: Boolean(callback), continuation: Boolean(continuation),
+    repeatSignature: !continuation && !callback && journey?.recent.narrativeSignatures.at(-1) === signature });
   const items = verifiedItems(evidence);
   const used = new Set(journey?.usedEvidenceRefs ?? []);
   const preferredItems = selectedEvidenceItems(evidence, policy.id, options.level, Boolean(continuation));
@@ -73,8 +63,8 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
   if (selectedItems.length < (continuation ? narrativeV2.continuationMinClaims : narrativeV2.shortMinClaims)) throw new InsufficientEvidenceError();
   return {
     subject: { id: input.poiId, name: input.placeName, category: evidence.category }, moment, level: options.level,
-    narrativeAngle: `${continuation ? 'New context beyond the already-heard story' : city ? 'A grounded sense of this city' : evidence.category === 'bridge' ? policy.id === 'arthur' ? 'Engineering significance of a supported structural detail' : 'A supported visible feature opens an engineering story' : policy.id === 'arthur' ? 'Historical or architectural meaning of a precise detail' : 'A human-scale reveal connecting past and present'}; category=${evidence.category}; theme=${input.themeTags.join(',') || 'mixed'}`,
-    beats: kinds.map(kind => ({ kind, objective: objectives[kind] ?? 'Use only a relevant supplied claim.' })),
+    narrativeAngle: narrativeAngle({ continuation: Boolean(continuation), city, category: evidence.category, guideId: policy.id, themeTags: input.themeTags }),
+    beats: kinds.map(kind => ({ kind, objective: narrativeBeatObjective(kind, options.level) })),
     evidence: { ...evidence, items }, selectedEvidenceRefs: selectedItems.map(item => item.id), continuation,
     ...(journey ? { journey: {
       area: journey.area.source === 'unknown' ? undefined : journey.area,
@@ -83,6 +73,6 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
       usedEvidenceRefs: [...used], callback,
       recentNarrativeSignatures: [...journey.recent.narrativeSignatures],
     } } : {}),
-    constraints: { targetDurationSec: input.targetDurationSec, language: options.language, forbiddenPatterns: [...narrativeV2.forbiddenPatterns] },
+    constraints: { targetDurationSec: input.targetDurationSec, language: options.language, forbiddenPatterns: [...NARRATIVE_FORBIDDEN_PATTERNS] },
   };
 }

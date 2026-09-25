@@ -14,25 +14,18 @@ A policy module must remain deterministic and provider-independent. Moving a rul
 ## Current
 
 - `callbackTopicPolicy.ts` — evidence-backed callback topic catalog and matching rules.
+- `guideNarrativePolicy.ts` — Dana/Arthur aliases, common guide constraints, persona behavior and preferred beat sequences.
+- `narrativeQualityPolicy.ts` — forbidden spoken openings/CTAs, beat objectives, deterministic beat variants and narrative angles.
 
 ## Good future candidates
 
 These are intentionally **not** moved in the callback refactor because they deserve separate regression-safe changes:
 
-1. **Guide narrative policies**
-   - current location: `services/guidePolicy.ts`
-   - behavior text and preferred beat sequences for Dana/Arthur.
-   - should become an editable guide narrative policy/catalog as guide personalities expand.
-
-2. **Narrative quality / beat policy**
-   - current locations: `config.ts:narrativeV2.forbiddenPatterns` and `services/storyBrief.ts` beat objectives/angle rules.
-   - should centralize forbidden openings/CTAs, beat objectives, and deterministic angle rules.
-
-3. **Discovery taxonomy policy**
+1. **Discovery taxonomy policy**
    - current locations: `services/aheadDiscoveryFiltering.ts` and `config.ts:placeTypes`.
    - Google type mapping, deny/allow categories, and cultural exceptions currently have overlapping definitions and should have one canonical taxonomy.
 
-4. **Discovery category/ranking policy**
+2. **Discovery category/ranking policy**
    - current location: `services/aheadDiscoveryScoring.ts` category priorities and popularity composition.
    - category priorities are product choices and should be separated from the scoring algorithm.
 
