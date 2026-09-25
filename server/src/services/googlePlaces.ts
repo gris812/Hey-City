@@ -4,6 +4,7 @@
  */
 import { googleMaps, poi, cacheTtl, placesRadius } from '../config';
 import { isLegacyNearbyTypeAllowed } from '../policies/discoveryTaxonomyPolicy';
+import { legacyNearbyPlacesRankingPolicy } from '../policies/discoveryRankingPolicy';
 import { cacheGet, cacheSet, nearbyCacheKey } from './cache';
 import { encodeGeohash, headingBucket, speedBucket, pointAhead } from './geo';
 import { recordUsage } from './usage';
@@ -27,9 +28,16 @@ function filterPlace(p: NearbyPlace): boolean {
 }
 
 function scorePlace(p: NearbyPlace, themeTags: string[]): number {
+  return legacyNearbyPopularityScore(p);
+}
+
+export function legacyNearbyPopularityScore(p: Pick<NearbyPlace, 'rating' | 'user_ratings_total'>): number {
   let score = 0;
-  if (p.rating) score += p.rating * 10;
-  if (p.user_ratings_total) score += Math.min(p.user_ratings_total / 100, 50);
+  if (p.rating) score += p.rating * legacyNearbyPlacesRankingPolicy.ratingMultiplier;
+  if (p.user_ratings_total) score += Math.min(
+    p.user_ratings_total / legacyNearbyPlacesRankingPolicy.ratingCountDivisor,
+    legacyNearbyPlacesRankingPolicy.ratingCountContributionCap
+  );
   return score;
 }
 

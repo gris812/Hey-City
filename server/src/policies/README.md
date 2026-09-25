@@ -17,7 +17,7 @@ A policy module must remain deterministic and provider-independent. Moving a rul
 - `guideNarrativePolicy.ts` — Dana/Arthur aliases, common guide constraints, persona behavior and preferred beat sequences.
 - `narrativeQualityPolicy.ts` — forbidden spoken openings/CTAs, beat objectives, deterministic beat variants and narrative angles.
 - `discoveryTaxonomyPolicy.ts` — ordered provider-type mapping, Ahead Discovery deny/cultural exceptions, narrative target categories, and compatibility taxonomy for legacy Nearby Places.
-- `discoveryRankingPolicy.ts` — category priorities and popularity interpretation weights/caps.
+- `discoveryRankingPolicy.ts` — Ahead Discovery category priorities/popularity interpretation and the separate legacy Nearby Places popularity constants.
 
 ## Discovery compatibility note
 

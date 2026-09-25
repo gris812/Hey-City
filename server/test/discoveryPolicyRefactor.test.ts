@@ -7,12 +7,10 @@ import {
   isLegacyNearbyTypeAllowed,
   providerTargetType,
 } from '../src/policies/discoveryTaxonomyPolicy';
-import {
-  DISCOVERY_CATEGORY_PRIORITY,
-  DISCOVERY_POPULARITY_POLICY,
-} from '../src/policies/discoveryRankingPolicy';
+import { aheadDiscoveryRankingPolicy, legacyNearbyPlacesRankingPolicy } from '../src/policies/discoveryRankingPolicy';
 import { chooseBestCandidate, popularityScore, rankCandidates, scoreCandidate } from '../src/services/aheadDiscoveryScoring';
 import { normalizeTargetType } from '../src/services/aheadDiscoveryFiltering';
+import { legacyNearbyPopularityScore } from '../src/services/googlePlaces';
 
 function candidate(targetType: AheadDiscoveryTargetType, input: Partial<DiscoveryCandidate> = {}): DiscoveryCandidate {
   return {
@@ -65,16 +63,20 @@ assert.equal(isLegacyNearbyTypeAllowed(['point_of_interest']), false);
 assert.equal(aheadDiscoveryTaxonomy.forbiddenRule,'cultural_exception_then_forbidden');
 assert.equal(legacyNearbyPlacesTaxonomy.precedence,'forbidden_first');
 
-assert.deepEqual(DISCOVERY_CATEGORY_PRIORITY, {
+assert.deepEqual(aheadDiscoveryRankingPolicy.categoryPriority, {
   city:1,town:1,locality:1,region:2,national_park:2,natural_feature:2,
   historical_landmark:3,cultural_landmark:3,state_park:4,bridge:4,
   monument:5,visitor_center:5,museum:6,university:6,park:7,other_significant_place:8,
 });
-assert.deepEqual(DISCOVERY_POPULARITY_POLICY,
+assert.deepEqual(aheadDiscoveryRankingPolicy.popularity,
   {ratingMaximum:5,ratingWeight:0.35,ratingCountCap:5000,ratingCountWeight:0.65});
 assert.equal(popularityScore(5,10), 0.3513, 'high rating / low review baseline');
 assert.equal(popularityScore(4,5000), 0.9299999999999999, 'lower rating / high review baseline');
 assert.equal(popularityScore(5,10000), 1, 'review count remains capped at 5000');
+assert.deepEqual(legacyNearbyPlacesRankingPolicy,
+  {ratingMultiplier:10,ratingCountDivisor:100,ratingCountContributionCap:50});
+assert.equal(legacyNearbyPopularityScore({rating:4.5,user_ratings_total:1200}),57,
+  'legacy Nearby Places popularity order remains unchanged');
 
 const baselineScores: Record<string, number> = {
   city:0.739,historical_landmark:0.659,bridge:0.619,museum:0.539,park:0.499,university:0.539,

@@ -2,8 +2,7 @@ import { aheadDiscovery } from '../config';
 import { discoverySearchProfile } from './discoverySearchProfile';
 import type { MovementContext } from './aheadDiscoveryTypes';
 import type { CandidateEvaluation, DiscoveryCandidate } from './aheadDiscoveryTypes';
-import { DISCOVERY_CATEGORY_PRIORITY, DISCOVERY_CATEGORY_PRIORITY_FALLBACK,
-  DISCOVERY_CATEGORY_PRIORITY_RANGE, DISCOVERY_POPULARITY_POLICY } from '../policies/discoveryRankingPolicy';
+import { aheadDiscoveryRankingPolicy } from '../policies/discoveryRankingPolicy';
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -11,9 +10,9 @@ function clamp01(value: number): number {
 
 export function popularityScore(rating?: number, userRatingCount?: number): number {
   return clamp01(
-    ((rating ?? 0) / DISCOVERY_POPULARITY_POLICY.ratingMaximum) * DISCOVERY_POPULARITY_POLICY.ratingWeight +
-    Math.min(userRatingCount ?? 0, DISCOVERY_POPULARITY_POLICY.ratingCountCap) /
-      DISCOVERY_POPULARITY_POLICY.ratingCountCap * DISCOVERY_POPULARITY_POLICY.ratingCountWeight
+    ((rating ?? 0) / aheadDiscoveryRankingPolicy.popularity.ratingMaximum) * aheadDiscoveryRankingPolicy.popularity.ratingWeight +
+    Math.min(userRatingCount ?? 0, aheadDiscoveryRankingPolicy.popularity.ratingCountCap) /
+      aheadDiscoveryRankingPolicy.popularity.ratingCountCap * aheadDiscoveryRankingPolicy.popularity.ratingCountWeight
   );
 }
 
@@ -43,8 +42,8 @@ export function scoreCandidate(
     reasons.push('distance inside prototype corridor');
   }
 
-  const priority = DISCOVERY_CATEGORY_PRIORITY[candidate.targetType] ?? DISCOVERY_CATEGORY_PRIORITY_FALLBACK;
-  const categoryScore = 1 - (priority - 1) / DISCOVERY_CATEGORY_PRIORITY_RANGE;
+  const priority = aheadDiscoveryRankingPolicy.categoryPriority[candidate.targetType] ?? aheadDiscoveryRankingPolicy.categoryPriorityFallback;
+  const categoryScore = 1 - (priority - 1) / aheadDiscoveryRankingPolicy.categoryPriorityRange;
   reasons.push(`category priority ${priority}`);
 
   const popularity = popularityScore(candidate.rating, candidate.userRatingCount);

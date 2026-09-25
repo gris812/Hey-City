@@ -1,6 +1,6 @@
 import type { AheadDiscoveryTargetType } from '@heycity/shared';
 
-export const DISCOVERY_CATEGORY_PRIORITY: Readonly<Record<AheadDiscoveryTargetType, number>> = Object.freeze({
+const CATEGORY_PRIORITY: Readonly<Record<AheadDiscoveryTargetType, number>> = Object.freeze({
   city: 1,
   town: 1,
   locality: 1,
@@ -19,12 +19,23 @@ export const DISCOVERY_CATEGORY_PRIORITY: Readonly<Record<AheadDiscoveryTargetTy
   other_significant_place: 8,
 });
 
-export const DISCOVERY_POPULARITY_POLICY = Object.freeze({
+const POPULARITY = Object.freeze({
   ratingMaximum: 5,
   ratingWeight: 0.35,
   ratingCountCap: 5000,
   ratingCountWeight: 0.65,
 });
 
-export const DISCOVERY_CATEGORY_PRIORITY_FALLBACK = 8;
-export const DISCOVERY_CATEGORY_PRIORITY_RANGE = 7;
+export const aheadDiscoveryRankingPolicy = Object.freeze({
+  categoryPriority: CATEGORY_PRIORITY,
+  categoryPriorityFallback: 8,
+  categoryPriorityRange: 7,
+  popularity: POPULARITY,
+});
+
+/** Existing Nearby Places order is a separate legacy compatibility formula. */
+export const legacyNearbyPlacesRankingPolicy = Object.freeze({
+  ratingMultiplier: 10,
+  ratingCountDivisor: 100,
+  ratingCountContributionCap: 50,
+});
