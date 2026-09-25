@@ -2,28 +2,18 @@ import { aheadDiscovery } from '../config';
 import { discoverySearchProfile } from './discoverySearchProfile';
 import type { MovementContext } from './aheadDiscoveryTypes';
 import type { CandidateEvaluation, DiscoveryCandidate } from './aheadDiscoveryTypes';
-
-const categoryPriority: Record<DiscoveryCandidate['targetType'], number> = {
-  city: 1,
-  town: 1,
-  locality: 1,
-  region: 2,
-  national_park: 2,
-  natural_feature: 2,
-  historical_landmark: 3,
-  cultural_landmark: 3,
-  state_park: 4,
-  bridge: 4,
-  monument: 5,
-  visitor_center: 5,
-  museum: 6,
-  university: 6,
-  park: 7,
-  other_significant_place: 8,
-};
+import { aheadDiscoveryRankingPolicy } from '../policies/discoveryRankingPolicy';
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+export function popularityScore(rating?: number, userRatingCount?: number): number {
+  return clamp01(
+    ((rating ?? 0) / aheadDiscoveryRankingPolicy.popularity.ratingMaximum) * aheadDiscoveryRankingPolicy.popularity.ratingWeight +
+    Math.min(userRatingCount ?? 0, aheadDiscoveryRankingPolicy.popularity.ratingCountCap) /
+      aheadDiscoveryRankingPolicy.popularity.ratingCountCap * aheadDiscoveryRankingPolicy.popularity.ratingCountWeight
+  );
 }
 
 export function scoreCandidate(
@@ -52,14 +42,11 @@ export function scoreCandidate(
     reasons.push('distance inside prototype corridor');
   }
 
-  const priority = categoryPriority[candidate.targetType] ?? 8;
-  const categoryScore = 1 - (priority - 1) / 7;
+  const priority = aheadDiscoveryRankingPolicy.categoryPriority[candidate.targetType] ?? aheadDiscoveryRankingPolicy.categoryPriorityFallback;
+  const categoryScore = 1 - (priority - 1) / aheadDiscoveryRankingPolicy.categoryPriorityRange;
   reasons.push(`category priority ${priority}`);
 
-  const popularityScore = clamp01(
-    ((candidate.rating ?? 0) / 5) * 0.35 +
-      Math.min(candidate.userRatingCount ?? 0, 5000) / 5000 * 0.65
-  );
+  const popularity = popularityScore(candidate.rating, candidate.userRatingCount);
 
   const stabilityScore = currentTargetId === candidate.providerId ? 1 : 0;
   if (stabilityScore) reasons.push('retained current target stability bonus');
@@ -68,7 +55,7 @@ export function scoreCandidate(
     aheadDiscovery.weights.ahead * aheadScore +
     aheadDiscovery.weights.distance * distanceScore +
     aheadDiscovery.weights.category * categoryScore +
-    aheadDiscovery.weights.popularity * popularityScore +
+    aheadDiscovery.weights.popularity * popularity +
     aheadDiscovery.weights.stability * stabilityScore;
 
   return {
@@ -83,9 +70,7 @@ export function chooseBestCandidate(
   currentTarget?: DiscoveryCandidate,
   movement?: MovementContext
 ): { selected: CandidateEvaluation | null; replaced: boolean; retained: boolean } {
-  const scored = candidates
-    .map((candidate) => scoreCandidate(candidate, currentTarget?.providerId, movement))
-    .sort((a, b) => b.score - a.score);
+  const scored = rankCandidates(candidates, currentTarget?.providerId, movement);
   const best = scored[0];
   if (!best) return { selected: null, replaced: false, retained: false };
 
@@ -106,4 +91,11 @@ export function chooseBestCandidate(
     replaced: false,
     retained: Boolean(current),
   };
+}
+
+export function rankCandidates(candidates: DiscoveryCandidate[], currentTargetId?: string,
+  movement?: MovementContext): CandidateEvaluation[] {
+  return candidates
+    .map((candidate) => scoreCandidate(candidate, currentTargetId, movement))
+    .sort((a, b) => b.score - a.score);
 }
