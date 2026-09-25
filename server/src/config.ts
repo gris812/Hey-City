@@ -321,13 +321,6 @@ export const narrativeV2 = {
   contextualCacheSeconds: num('NARRATIVE_CONTEXT_CACHE_SECONDS', 3600),
   languageRatio: 0.5,
   wordsPerSecond: num('NARRATIVE_WORDS_PER_SECOND', 2.5),
-  forbiddenPatterns: [
-    '^\\s*(?:I will tell you about|Let me tell you about|This historic building|Я расскажу вам|Позвольте рассказать|Это историческое здание)',
-    '^\\s*(?:This iconic attraction|Хорошо[,!]?\\s*(?:давайте|я расскажу))|^.{0,100} is a historic landmark located in',
-    '^\\s*(?:Did you know|Знаете ли вы)',
-    '^\\s*.{1,80} (?:was built in|был[ао]? построен[ао]? в) \\d{4}',
-    '(?:Would you like (?:to hear|to know more|me to tell)|Shall I tell|Рассказать (?:вам )?(?:больше|подробнее)|Хотите (?:узнать|услышать) больше)',
-  ],
 };
 
 export const journeyMemory = {
