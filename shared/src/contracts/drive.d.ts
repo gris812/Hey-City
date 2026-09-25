@@ -134,6 +134,8 @@ export interface MomentPlan {
   relationship: MomentRelationship;
   intent: NarrativeIntent;
   delivery: NarrativeDelivery;
+  /** Validated earlier moment/entity references; never a raw transcript. */
+  priorContextRefs?: string[];
   attentionCue?: { relativeDirection?: 'ahead' | 'left' | 'right' };
 }
 export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }
@@ -183,6 +185,8 @@ export interface NarrativeAttribution {
 
 export interface DrivePingResult {
   nextAction: 'PLAY' | 'NONE';
+  /** Opaque playback identity required by the finish endpoint. */
+  momentId?: string;
   mode?: DiscoveryMode;
   speedKmh?: number;
   poi?: DrivePoi;
@@ -199,6 +203,7 @@ export interface DrivePingResult {
 
 export interface StoryFinishResult {
   ok: boolean;
+  stale?: boolean;
   activeStoryWasPlaying: boolean;
   reason: StoryFinishReason;
 }

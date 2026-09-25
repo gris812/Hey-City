@@ -67,7 +67,7 @@ async function testLoginAndNavigation() {
     if (url.endsWith('/sessions/session-1/end')) return response({ ok: true });
     throw new Error(`Unexpected request: ${url}`);
   };
-  dom.window.eval(source + "\nwindow.testAudioUrl = value => { state.audioUrl = value; };");
+  dom.window.eval(source + "\nwindow.testAudioUrl = value => { state.audioUrl = value; state.momentId = 'moment-test'; };");
   assert.match(dom.window.document.body.textContent, /Город говорит/);
   dom.window.document.querySelector('#email').value = 'tester@example.com';
   dom.window.document.querySelector('#auth-form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -91,7 +91,7 @@ async function testLoginAndNavigation() {
   dom.window.testAudioUrl('https://api.example/story.mp3');
   audioElements[0].dispatchEvent(new dom.window.Event('ended'));
   await settle();
-  assert.deepEqual(finishedStory, { sessionId: 'session-1', reason: 'ended' }, 'audio completion releases backend story gate');
+  assert.deepEqual(finishedStory, { sessionId: 'session-1', momentId: 'moment-test', reason: 'ended' }, 'audio completion releases only the matching backend story');
   assert.match(dom.window.document.querySelector('#open-guide img').src, /dana-v3-avatar.png$/);
   const firstFix = locationCallback({ coords: { latitude: 40.7, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });
   await locationCallback({ coords: { latitude: 40.7001, longitude: -74, heading: 90, speed: 6, accuracy: 8 } });

@@ -82,6 +82,7 @@ export class NarrativeGenerator {
           (policy.id === 'dana' ? 'Dana notices a human-scale contrast and sounds contemporary and conversational; she does not list chronology. ' : '') +
           (policy.id === 'arthur' ? 'Arthur calmly explains why one precise historical or architectural distinction matters; he does not ask “Did you know?”. ' : '') +
           (brief.continuation ? 'Continue from ALREADY HEARD as shared context. Do not repeat its opening, subject introduction, or facts already stated. Lead with a transition into unused evidence and add only new supported context. ' : 'This is a standalone spoken moment. ') +
+          (brief.journey?.callback ? 'A validated earlier delivered moment is supplied as a callback opportunity. Mention it briefly only through the allowed relationship and shared topic, without adding earlier factual claims or suggesting an unheard story occurred. ' : 'Do not claim we discussed a previous place. ') +
           'For city context describe the city without claiming its centre is ahead or giving directions.',
         input:
           `Language: ${request.language}\n` +
@@ -91,7 +92,13 @@ export class NarrativeGenerator {
           `GUIDE STYLE (not facts or product decisions): ${JSON.stringify(policy)}\n` +
           `FORBIDDEN BEHAVIOR: metadata, navigation decisions, unsupported facts, ${JSON.stringify(plan.mustAvoid)}\n` +
           `Word budget: ${wordBudget}\n` +
-          `ALREADY HEARD: ${JSON.stringify(brief.continuation?.previousTranscript ?? null)}`,
+          `ALREADY HEARD: ${JSON.stringify(brief.continuation?.previousTranscript ?? null)}\n` +
+          `VALIDATED JOURNEY CONTEXT: ${JSON.stringify({area: brief.journey?.area, callback: brief.journey?.callback && {
+            sourceEntityName: brief.journey.callback.sourceEntityName,
+            sourceMomentId: brief.journey.callback.sourceMomentId,
+            sharedTopic: brief.journey.callback.topicKey,
+            relationship: brief.journey.callback.relationship,
+          }})}`,
       });
       if (!generated) throw new Error('Narrative provider unavailable');
       text = generated.text.trim();
@@ -124,7 +131,9 @@ export function narrativeFingerprint(request: NarrativeGenerationRequest): strin
   return hash(JSON.stringify({ prompt: [aiRouting.promptVersion, narrativeV2.promptVersion], policy,
     plan, language: request.language, style: request.narrationStyle,
     evidence: [brief.evidence.sourceVersion, brief.evidence.items],
-    continuation: brief.continuation ? hash(brief.continuation.previousTranscript) : null }));
+    continuation: brief.continuation ? hash(brief.continuation.previousTranscript) : null,
+    journey: brief.journey ? {area: brief.journey.area, callback: brief.journey.callback,
+      selectedEvidenceRefs: brief.selectedEvidenceRefs} : null }));
 }
 
 function lengthBucket(sec: number): number {

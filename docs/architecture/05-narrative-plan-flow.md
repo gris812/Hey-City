@@ -94,6 +94,30 @@ approved discovery decision
 only a display label and optional safe URL; it is rendered as a credit and is never supplied to or
 spoken by the model.
 
+## M2 journey context
+
+An active `DriveSession` owns one bounded, server-only `JourneyState`. A ping updates its movement
+and area from already available discovery candidates. After Discovery approves a target, the
+StoryBrief builder receives a validated JourneyContext snapshot. It can select unused evidence,
+rotate narrative beats, or attach a callback to a completed earlier moment with a shared product
+topic. It cannot change the approved target or Discovery ranking. The public `MomentPlan` carries
+only `priorContextRefs`; raw transcripts and exact movement coordinates remain server-only.
+Callbacks bind to the intended target and require a narrow topic grounded in verified evidence;
+broad profile tags such as `history` never qualify alone. After a confirmed callback, the session
+requires the configured number of ordinary completed stories before another callback can appear,
+including callbacks previously planned for an abandoned target.
+
+Generating narration stages a moment but does not mark it heard. Only a confirmed finish records
+completed evidence and entity memory. Skipped and superseded stories cannot become callback
+sources. Optional durable `poi_listened` history metadata is written at completion for signed-in
+users with history enabled; guest and history-disabled sessions still keep in-memory continuity.
+At session start, an opted-in signed-in user receives at most 20 completed history records from
+the last 30 days as coarse entity, topic, and evidence anti-repeat context. Historical records
+cannot become in-session callback sources. A finish request carries the moment ID returned with
+playback, so a delayed callback cannot finish a newer story.
+Bounded product events in `usage_events` use coarse location buckets and omit transcripts and raw
+evidence. Journey planning adds no LLM or Maps lookup.
+
 ## NarrativePlan shape
 
 Recommended MVP shape:

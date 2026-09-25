@@ -85,7 +85,7 @@ async function run() {
       assert.equal((await request('/sessions/'+session.id+'/select','slepak@stolbergco.com','admin','POST',{poiId:'invented-id'})).status,404,'arbitrary IDs cannot seed stories');
       const { selectStory } = await import('../src/services/selectedStory');
       const { narrativeGenerator } = await import('../src/services/narrativeGenerator');
-      const { stopSession } = await import('../src/services/driveSession');
+      const { stopSession, finishActiveStory } = await import('../src/services/driveSession');
       const originalGenerate = narrativeGenerator.generate;
       const durations: number[] = [];
       narrativeGenerator.generate = async ({plan, language}) => {
@@ -100,6 +100,7 @@ async function run() {
         await selectStory(session.id,'u1','manual-museum','long','ru');
         await selectStory(session.id,'u1','manual-museum','short','ru');
         assert.deepEqual(durations,[120,30]);
+        await finishActiveStory(session.id, 'ended', session.journeyState.getActiveMoment()?.momentId);
         await assert.rejects(selectStory(session.id,'u1','manual-museum','long','ru'), /Недостаточно проверенной/,
           'a three-claim object must not offer a detailed continuation after the short story consumes two claims');
         // Exercise cancellation with a direct long request; the short continuation is intentionally unavailable above.

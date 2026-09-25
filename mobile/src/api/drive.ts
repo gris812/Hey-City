@@ -46,12 +46,13 @@ export async function stopDriveSession(sessionId: string, guestId?: string): Pro
 export async function finishDriveStory(
   sessionId: string,
   reason: StoryFinishReason,
-  guestId?: string
+  guestId?: string,
+  momentId?: string,
 ): Promise<StoryFinishResult> {
   return apiFetch('/drive/session/story/finish', {
     method: 'POST',
     headers: guestHeaders(guestId),
-    body: { sessionId, reason },
+    body: { sessionId, reason, momentId },
   });
 }
 

@@ -9,16 +9,19 @@ import type {
   StoryFinishReason,
   StoryFinishResult,
 } from '@heycity/shared';
-import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings } from '../config';
+import { randomUUID } from 'node:crypto';
+import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings, journeyMemory } from '../config';
 import { discoveryEvidence } from './discoveryKnowledge';
-import { EvidenceBundle, normalizeEvidence, publicAttribution, storyAvailability } from './evidence';
+import { EvidenceBundle, InsufficientEvidenceError, normalizeEvidence, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import type { StoryContinuationState } from './storyBrief';
 import type { DiscoveryCandidate as StoryCandidate } from './driveDecision';
-import { getUserById } from './user';
 import { NearbyPlace } from './googlePlaces';
 import { isCircuitOpen } from './budget';
 import { wasPoiListenedRecently } from './history';
-import { addToHistory } from './history';
+import { recordJourneyHistory } from './history';
+import { createJourneyState, JourneyState } from './journeyContext';
+import { distanceMeters, encodeGeohash, headingBucket, speedBucket } from './geo';
+import { recordExperienceDecision, recordExperienceEvent, ExperienceDecisionEvent } from './usage';
 import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
 import { prepareNarrative } from './narrativePlan';
@@ -54,6 +57,11 @@ export interface DriveSession {
   alreadyListening: boolean;
   storyRequest?: AbortController;
   storyContinuation?: StoryContinuationState;
+  journeyState: JourneyState;
+  lastExperienceDecision?: string;
+  lastExperienceAtMs?: number;
+  lastDecisionCandidates?: ExperienceDecisionEvent['candidates'];
+  areaAnchor?: { latitude: number; longitude: number };
   spokenProviderIds?: Set<string>;
   knowledgeOffset?: number;
   pendingMode?: DiscoveryMode;
@@ -81,6 +89,13 @@ export function createSession(userId: string, params: DriveSessionParams): Drive
     lastCandidates: [],
     alreadyListening: false,
     pendingModeSamples: 0,
+    journeyState: createJourneyState(id, {
+      entities: journeyMemory.recentEntities, topics: journeyMemory.recentTopics,
+      outcomes: journeyMemory.recentOutcomes, questions: journeyMemory.recentQuestions,
+      callbacks: journeyMemory.callbacks, evidenceRefs: journeyMemory.usedEvidenceRefs,
+      callbackMinCompletedGap: journeyMemory.callbackMinCompletedGap,
+      narrativeSignatures: journeyMemory.narrativeSignatures, areaTtlMs: journeyMemory.areaTtlMs,
+    }),
   };
   sessions.set(id, session);
   return session;
@@ -122,6 +137,7 @@ export function getSession(sessionId: string): DriveSession | null {
 
 export function stopSession(sessionId: string): boolean {
   sessions.get(sessionId)?.storyRequest?.abort();
+  sessions.get(sessionId)?.journeyState.markSuperseded();
   clearAheadDiscoverySession(sessionId);
   return sessions.delete(sessionId);
 }
@@ -131,16 +147,49 @@ export function setMuted(sessionId: string, muted: boolean): void {
   if (s) s.muted = muted;
 }
 
-export function finishActiveStory(
+export async function finishActiveStory(
   sessionId: string,
-  reason: StoryFinishReason = 'ended'
-): StoryFinishResult | null {
+  reason: StoryFinishReason = 'ended',
+  momentId?: string,
+  listenedSeconds?: number,
+): Promise<StoryFinishResult | null> {
   const session = sessions.get(sessionId);
   if (!session) return null;
 
   const activeStoryWasPlaying = session.alreadyListening;
+  const moment = session.journeyState.getActiveMoment();
+  if (!moment || !momentId || moment.momentId !== momentId) {
+    return {ok:false,stale:true,activeStoryWasPlaying:false,reason};
+  }
   session.alreadyListening = false;
   session.nextPoi = undefined;
+  if (moment) {
+    session.journeyState.finishStory({ momentId: moment.momentId, reason: reason === 'ended' ? 'completed' : reason,
+      listenedSeconds: Number.isFinite(listenedSeconds) && (listenedSeconds ?? 0) >= 0 ? Math.min(86400, listenedSeconds!) : undefined });
+    if (reason === 'ended' && moment.level === 'long') session.storyContinuation = undefined;
+    const snap = session.journeyState.getSnapshot();
+    if (reason === 'ended') {
+      if (moment.callbackId) session.journeyState.recordCallbackUsed(moment.callbackId);
+      await recordJourneyHistory(session.userId, {
+        poiId: moment.entityId, placeId: moment.entityId,
+        mode: session.params.mode === 'walking' ? 'walking' : 'drive_discovery',
+        theme: session.params.themeTags[0], style: session.params.narrationStyle,
+        metadata: { momentId: moment.momentId, storyLevel: moment.level, outcome: 'completed',
+          topicKeys: [...moment.topicKeys], evidenceRefs: [...moment.evidenceRefs],
+          guideId: session.params.voiceId,
+          area: snap.area.source === 'unknown' ? undefined : { ...snap.area },
+        },
+      });
+    }
+    await recordExperienceEvent('story_outcome', experienceEvent(session, {
+      type: 'trigger_story', selectedTargetId: moment.entityId,
+      outcome: reason,
+    }, 0, new Date().toISOString(), listenedSeconds), session.userId);
+    if (reason === 'ended' && moment.callbackId) await recordExperienceEvent('callback_used',
+      experienceEvent(session, {type:'trigger_story',selectedTargetId:moment.entityId,
+        momentRelationship:'callback'}), session.userId);
+  }
+  if (reason !== 'ended') session.storyContinuation = undefined;
 
   return {
     ok: true,
@@ -186,6 +235,25 @@ export async function pingSession(
     forceRefresh: forceAheadRefresh,
     nowMs: now,
   });
+  if (sessions.get(sessionId) !== session) return {nextAction:'NONE'};
+  const at = new Date(now).toISOString();
+  session.journeyState.updateMovement({mode: activeMode, latitude: lat, longitude: lng,
+    headingDegrees: heading ?? undefined, speedKmh, observedAt: at});
+  const areaCandidates = aheadDiscovery.topCandidates
+    .filter(candidate => ['city', 'town', 'locality', 'region'].includes(candidate.targetType) &&
+      candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters)
+    .map(candidate => ({
+      ...(candidate.targetType === 'region' ? {region: candidate.name} :
+        candidate.targetType === 'city' ? {city: candidate.name} : {locality: candidate.name}),
+      areaType: candidate.targetType, source: 'discovery' as const, distanceMeters: candidate.distanceMeters,
+    }));
+  if (areaCandidates.length) {
+    session.journeyState.updateAreaFromCandidates(areaCandidates, at);
+    session.areaAnchor = {latitude: lat, longitude: lng};
+  } else if (session.areaAnchor && distanceMeters(session.areaAnchor.latitude, session.areaAnchor.longitude, lat, lng) > journeyMemory.areaMoveMeters) {
+    session.journeyState.updateArea({source:'unknown'}, at);
+    session.areaAnchor = undefined;
+  }
   if (discoveryOnly) {
     const suggested = !session.alreadyListening && !session.storyRequest &&
       !session.muted && !isCircuitOpen(session.userId) &&
@@ -198,6 +266,10 @@ export async function pingSession(
   }
   if (session.pendingMode) {
     return { nextAction: 'NONE', mode: activeMode, speedKmh, aheadDiscovery };
+  }
+  if (session.storyRequest) {
+    return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+      decision:{type:'hold',reason:'already_listening'}};
   }
   const userId = session.userId;
   const circuitOpen = isCircuitOpen(userId);
@@ -279,6 +351,10 @@ export async function pingSession(
     if (storyAvailability(evidence).short) { evidenceByPoi.set(candidate.poiId, evidence); storyCandidates.push(candidate); }
   }
   session.lastCandidates = [...livePlaces.values(), ...localCandidates.map(localCandidateToNearbyPlace)];
+  session.lastDecisionCandidates = storyCandidates.slice(0, 12).map(candidate => ({
+    id: candidate.poiId,
+    distanceBucket: candidate.distanceMeters < 500 ? 'near' : candidate.distanceMeters < 3000 ? 'mid' : 'far',
+  }));
 
   const decision = evaluateDiscoveryDecision({
     mode: activeMode,
@@ -296,6 +372,7 @@ export async function pingSession(
   });
 
   if (decision.type === 'hold') {
+    await recordDecisionIfChanged(session, {type:'hold',holdReason:decision.reason}, now, storyCandidates.length);
     return { nextAction: 'NONE', mode: activeMode, speedKmh, decision, aheadDiscovery };
   }
 
@@ -307,16 +384,53 @@ export async function pingSession(
     storySeed: decision.narrativePlanInput.storySeed,
   });
   const selectedEvidence = evidenceByPoi.get(decision.poiId)!;
-  const { plan: narrativePlan, brief, policy } = prepareNarrative(decision.narrativePlanInput, selectedEvidence, { level: 'auto', language: session.params.language });
+  const topicKeys = [...new Set([...session.params.themeTags.filter(tag => tag !== 'mixed'), selectedEvidence.category, ...specificCallbackTopics(selectedEvidence)])];
+  session.journeyState.selectCallback({entityId:decision.poiId,topicKeys,at});
+  let planned;
+  try {
+    planned = prepareNarrative(decision.narrativePlanInput, selectedEvidence,
+      { level: 'auto', language: session.params.language, journey: session.journeyState.getSnapshot(at) });
+  } catch (error) {
+    if (!(error instanceof InsufficientEvidenceError)) throw error;
+    await recordDecisionIfChanged(session, {type:'hold',holdReason:'anti_repeat'}, now, storyCandidates.length);
+    return { nextAction:'NONE',mode:activeMode,speedKmh,decision:{type:'hold',reason:'anti_repeat'},aheadDiscovery };
+  }
+  const { plan: narrativePlan, brief, policy } = planned;
+  if (session.storyRequest || sessions.get(sessionId) !== session) {
+    return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+      decision:{type:'hold',reason:'already_listening'}};
+  }
   // The public decision carries product fields, never legacy source prose.
   delete decision.narrativePlanInput.storySeed;
+  const request = new AbortController();
+  session.storyRequest = request;
+  session.alreadyListening = true;
+  let narration;
+  try {
+    narration = await generateNarrationFromPlan(narrativePlan, {
+      brief, policy, language: session.params.language,
+      narrationStyle: session.params.narrationStyle, userId, signal: request.signal,
+    });
+    request.signal.throwIfAborted();
+    if (sessions.get(sessionId) !== session || session.storyRequest !== request) throw new Error('Story request superseded');
+  } catch (error) {
+    if (request.signal.aborted || sessions.get(sessionId) !== session || session.storyRequest !== request)
+      return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+        decision:{type:'hold',reason:'already_listening'}};
+    throw error;
+  } finally {
+    if (session.storyRequest === request) {
+      session.storyRequest = undefined;
+      if (!narration) session.alreadyListening = false;
+    }
+  }
   session.storyContinuation = undefined;
-  const narration = await generateNarrationFromPlan(narrativePlan, {
-    brief, policy,
-    language: session.params.language,
-    narrationStyle: session.params.narrationStyle,
-    userId,
-  });
+
+  const momentId = `moment_${randomUUID()}`;
+  session.journeyState.startStory({momentId,entityId:decision.poiId,entityName:place.name,
+    category:selectedEvidence.category,level:'auto',guideId:policy.id,callbackId:brief.journey?.callback?.id,startedAt:at});
+  session.journeyState.recordNarration({momentId,evidenceRefs:brief.selectedEvidenceRefs,topicKeys,
+    narrativeSignature:`${policy.id}:${brief.moment.relationship}:${brief.moment.intent}:${brief.beats.map(beat=>beat.kind).join(',')}`,at});
 
   session.nextPoi = {
     place,
@@ -327,20 +441,17 @@ export async function pingSession(
   session.alreadyListening = Boolean(narration.audioUrl);
   (session.spokenProviderIds ??= new Set()).add(decision.poiId);
 
-  const user = await getUserById(userId);
-  if (user?.historyEnabled) {
-    await addToHistory(userId, {
-      type: 'poi_listened',
-      placeId: place.place_id,
-      poiId: place.place_id,
-      mode: activeMode === 'walking' ? 'walking' : 'drive_discovery',
-      theme: session.params.themeTags[0],
-      style: session.params.narrationStyle,
-    });
-  }
+  await recordDecisionIfChanged(session, {type:'trigger_story',selectedTargetId:decision.poiId,
+    triggerReason:decision.triggerReason,momentRelationship:brief.moment.relationship},now,storyCandidates.length);
+  await recordExperienceEvent('story_started', experienceEvent(session,
+    {type:'trigger_story',selectedTargetId:decision.poiId}), userId);
+  if (sessions.get(sessionId) !== session || session.journeyState.getActiveMoment()?.momentId !== momentId)
+    return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
+      decision:{type:'hold',reason:'already_listening'}};
 
   return {
     nextAction: 'PLAY',
+    momentId,
     mode: activeMode,
     speedKmh,
     poi: place,
@@ -353,4 +464,54 @@ export async function pingSession(
     attribution: publicAttribution(selectedEvidence),
     aheadDiscovery,
   };
+}
+
+function experienceEvent(session: DriveSession, decision: {
+  type: 'hold' | 'trigger_story'; selectedTargetId?: string; triggerReason?: string;
+  holdReason?: string; momentRelationship?: string; outcome?: StoryFinishReason | 'superseded';
+}, candidateDensity = 0, at = new Date().toISOString(), listenedSeconds?: number): ExperienceDecisionEvent {
+  const movement = session.journeyState.getSnapshot(at).movement;
+  return {
+    sessionId: session.id, at,
+    context: {
+      movementMode: movement?.mode ?? session.params.mode ?? 'vehicle',
+      locationBucket: movement ? encodeGeohash(movement.latitude, movement.longitude, 5) : 'unknown',
+      headingBucket: movement?.headingDegrees === undefined ? undefined : headingBucket(movement.headingDegrees),
+      speedBucket: movement?.speedKmh === undefined ? undefined : speedBucket(movement.speedKmh),
+      areaType: session.journeyState.getSnapshot(at).area.areaType,
+      candidateDensity,
+    },
+    candidates: session.lastDecisionCandidates ?? [],
+    decision: { type: decision.type, selectedTargetId: decision.selectedTargetId,
+      triggerReason: decision.triggerReason, holdReason: decision.holdReason,
+      momentRelationship: decision.momentRelationship },
+    outcome: decision.outcome ? {
+      completed: decision.outcome === 'ended', skipped: decision.outcome === 'skipped',
+      paused: decision.outcome === 'paused',
+      superseded: decision.outcome === 'superseded',
+      listenedSeconds: Number.isFinite(listenedSeconds) ? listenedSeconds : undefined,
+    } : undefined,
+  };
+}
+
+async function recordDecisionIfChanged(session: DriveSession, decision: Parameters<typeof experienceEvent>[1],
+  atMs: number, candidateDensity: number): Promise<void> {
+  const key = `${decision.type}:${decision.selectedTargetId ?? decision.holdReason ?? ''}`;
+  if (session.lastExperienceDecision === key && decision.type === 'hold') return;
+  if (decision.type === 'hold' && session.lastExperienceAtMs !== undefined &&
+      atMs - session.lastExperienceAtMs < journeyMemory.decisionTelemetryMinMs) return;
+  session.lastExperienceDecision = key;
+  session.lastExperienceAtMs = atMs;
+  await recordExperienceDecision(experienceEvent(session, decision, candidateDensity, new Date(atMs).toISOString()), session.userId);
+}
+
+/** Explicit selection shares the same bounded product telemetry boundary as automatic narration. */
+export async function recordSessionStoryStarted(session: DriveSession, poiId: string): Promise<void> {
+  await recordExperienceEvent('story_started', experienceEvent(session,
+    {type:'trigger_story',selectedTargetId:poiId}), session.userId);
+}
+
+export async function recordSessionSuperseded(session: DriveSession, entityId: string): Promise<void> {
+  await recordExperienceEvent('story_outcome', experienceEvent(session,
+    {type:'trigger_story',selectedTargetId:entityId,outcome:'superseded'}), session.userId);
 }

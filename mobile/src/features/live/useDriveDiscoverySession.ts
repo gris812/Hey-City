@@ -56,6 +56,7 @@ export function useDriveDiscoverySession(input: {
   const [aheadRefreshLoading, setAheadRefreshLoading] = useState(false);
   const [aheadRefreshStatus, setAheadRefreshStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
   const guestId = identity.status === 'guest' ? identity.guestId : undefined;
@@ -85,6 +86,7 @@ export function useDriveDiscoverySession(input: {
         guestId,
       });
       setSessionId(id);
+      activeMomentIdRef.current = null;
       setDriveDiscoveryOn(true);
       setLocalPlaybackState('idle');
     } catch (e) {
@@ -99,6 +101,7 @@ export function useDriveDiscoverySession(input: {
       await stopDriveSession(sessionId, guestId);
     } catch (_) {}
     setSessionId(null);
+    activeMomentIdRef.current = null;
     setDriveDiscoveryOn(false);
     clearDrivePingInterval(pingIntervalRef);
     setLastResult(null);
@@ -165,6 +168,7 @@ export function useDriveDiscoverySession(input: {
         );
         setLastResult(result);
         if (result.nextAction === 'PLAY' && result.poi) {
+          activeMomentIdRef.current = result.momentId ?? null;
           setPlayingName(result.poi.name);
           setLocalPlaybackState((current) => (current === 'paused' ? current : 'playing'));
         } else if (result.decision?.type !== 'hold' || result.decision.reason !== 'already_listening') {
@@ -189,10 +193,12 @@ export function useDriveDiscoverySession(input: {
   };
 
   const finishStory = async (reason: StoryFinishReason) => {
-    if (!sessionId) return;
+    if (!sessionId || !activeMomentIdRef.current) return;
     setSessionError(null);
     try {
-      const result = await finishDriveStory(sessionId, reason, guestId);
+      const result = await finishDriveStory(sessionId, reason, guestId, activeMomentIdRef.current);
+      if (result.stale) return;
+      activeMomentIdRef.current = null;
       setPlayingName(null);
       setLocalPlaybackState(reason === 'paused' ? 'paused' : 'completed');
       setLastResult({
