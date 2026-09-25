@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { NarrativeAttribution, StoryAvailability } from '@heycity/shared';
 import { narrativeV2 } from '../config';
+import { callbackTopicsForEvidence } from '../policies/callbackTopicPolicy';
 
 /** Server-only source material. Attribution must never be read aloud. */
 export interface EvidenceItem {
@@ -50,13 +51,7 @@ export function verifiedItems(bundle: EvidenceBundle): EvidenceItem[] {
 }
 /** Narrow deterministic links supported by actual verified claims, never by profile tags alone. */
 export function specificCallbackTopics(bundle: EvidenceBundle): string[] {
-  const claims = verifiedItems(bundle).map(item => item.claim).join(' ').toLowerCase();
-  const topics: string[] = [];
-  if (/\b(?:financial|finance|banking|banks?|stock|trading|commerce|customs|treasury)\b/i.test(claims)) topics.push('financial_history');
-  if (/\b(?:congress|legislature|city hall|civic|election|government)\b/i.test(claims)) topics.push('civic_history');
-  if (bundle.category === 'bridge' && /\b(?:span|suspension|cable|engineer|construction|structure)\b/i.test(claims)) topics.push('bridge_engineering');
-  if (/\b(?:art deco|beaux.arts|gothic|neoclassical|greek revival|roman(esque)?)\b/i.test(claims)) topics.push('architectural_style');
-  return topics;
+  return callbackTopicsForEvidence(bundle.category, verifiedItems(bundle).map(item => item.claim));
 }
 export function publicAttribution(bundle: EvidenceBundle): NarrativeAttribution | undefined {
   const label = bundle.attribution?.label.trim();
