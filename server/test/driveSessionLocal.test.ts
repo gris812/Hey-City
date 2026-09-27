@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createSession, finishActiveStory, pingSession } from '../src/services/driveSession';
+import { createSession, finishActiveStory, pingSession, stopSession } from '../src/services/driveSession';
 import { googleMaps } from '../src/config';
 import { discoveryStorySeed } from '../src/services/discoveryKnowledge';
 
@@ -63,6 +63,21 @@ async function run(): Promise<void> {
   assert.equal(third.nextAction, 'NONE');
   assert.equal(third.decision?.type, 'hold');
   assert.equal(third.decision?.reason, 'cooldown_active');
+
+  // M3 review regression: generation may succeed while TTS returns no audio.
+  // In that production state DriveSession owns no playback, but the retained
+  // context must not create a permanent conversation/automatic-narration lock.
+  const textOnly = createSession('text-only-tts-failure', { ...session.params });
+  try {
+    const generated = await pingSession(textOnly.id, 40.7074, -74.0104, 180, 35, 50_000);
+    assert.equal(generated.nextAction, 'PLAY');
+    textOnly.alreadyListening = false; // exact post-generation state when narration.audioUrl === ''
+    assert.equal(textOnly.conversationRuntime.getActiveStoryContext()?.momentId, generated.momentId);
+    assert.equal(textOnly.conversationRuntime.blocksNarration(), false);
+    const later = await pingSession(textOnly.id, 40.7073, -74.0105, 92, 35, 250_000);
+    assert.notEqual(later.decision?.type === 'hold' ? later.decision.reason : undefined, 'already_listening',
+      'a later ping progresses normally after text-only/TTS-failure narration');
+  } finally { stopSession(textOnly.id); }
 
   const walking = createSession('walker', {
     mode: 'walking',

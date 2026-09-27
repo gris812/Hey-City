@@ -8,7 +8,9 @@ import type {
 import { OpenAIGenerativeProvider } from './openAiGenerativeProvider';
 
 export type ProviderRoute = string | 'deterministic';
-export type AITaskRoutes = Record<AITaskKind, ProviderRoute>;
+/** Conversation classification is additive so existing router construction remains compatible. */
+export type AITaskRoutes = Record<Exclude<AITaskKind, 'conversation_intent_classification'>, ProviderRoute>
+  & Partial<Record<'conversation_intent_classification', ProviderRoute>>;
 
 export class AITaskRouter {
   private readonly providers: Map<string, GenerativeProvider>;
@@ -18,7 +20,7 @@ export class AITaskRouter {
   }
 
   routeFor(task: AITaskKind): ProviderRoute {
-    return this.routes[task];
+    return this.routes[task] ?? 'deterministic';
   }
 
   async generate(request: GenerativeTaskRequest): Promise<GenerativeTaskResult | null> {
@@ -39,5 +41,6 @@ export function createDefaultAITaskRouter(): AITaskRouter {
     evidence_compression: aiRouting.auxiliaryProvider,
     poi_normalization: aiRouting.auxiliaryProvider,
     relevance_classification: aiRouting.auxiliaryProvider,
+    conversation_intent_classification: aiRouting.auxiliaryProvider,
   });
 }

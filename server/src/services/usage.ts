@@ -18,6 +18,24 @@ export type ExperienceTelemetryOperation =
   | 'story_outcome'
   | 'callback_used';
 
+export type ConversationTelemetryOperation =
+  | 'conversation_interrupted'
+  | 'conversation_turn'
+  | 'conversation_tool'
+  | 'conversation_response'
+  | 'conversation_resume_decision';
+
+export interface ConversationTelemetryEvent {
+  sessionId: string;
+  intent?: string;
+  tool?: string;
+  success?: boolean;
+  latencyBucket?: 'under_250ms' | 'under_1s' | 'under_3s' | 'over_3s';
+  resultCountBucket?: 'zero' | 'one' | 'two_to_five' | 'six_plus';
+  resumeAction?: string;
+  locationBucket?: string;
+}
+
 export interface ExperienceDecisionEvent {
   sessionId: string;
   at: string;
@@ -96,6 +114,25 @@ export async function recordExperienceEvent(
     operation,
     metadata: sanitizeExperienceDecisionEvent(event),
   });
+}
+
+/** M3 allow-list. Never accept raw turn text, generated copy, coordinates, evidence, or provider payload. */
+export async function recordConversationEvent(
+  operation: ConversationTelemetryOperation,
+  event: ConversationTelemetryEvent,
+  userId?: string
+): Promise<void> {
+  await recordUsage({ userId, category: 'product', operation, metadata: sanitizeConversationTelemetryEvent(event) });
+}
+
+export function sanitizeConversationTelemetryEvent(event: ConversationTelemetryEvent): Record<string, unknown> {
+  const text = (value: unknown, max = 120): string | undefined => typeof value === 'string' ? value.slice(0, max) : undefined;
+  const metadata: Record<string, unknown> = { sessionId: text(event.sessionId) ?? 'unknown' };
+  for (const [key, value] of Object.entries({ intent: text(event.intent), tool: text(event.tool), resumeAction: text(event.resumeAction), locationBucket: text(event.locationBucket), latencyBucket: text(event.latencyBucket), resultCountBucket: text(event.resultCountBucket) })) {
+    if (value !== undefined) metadata[key] = value;
+  }
+  if (typeof event.success === 'boolean') metadata.success = event.success;
+  return metadata;
 }
 
 const MAX_EXPERIENCE_CANDIDATES = 20;

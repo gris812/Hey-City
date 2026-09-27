@@ -378,6 +378,53 @@ async function testCatalogUnitsAndCompass() {
   dom.window.close();
 }
 
+async function testConversationPlaybackBoundary() {
+  const dom = makeDom('<main id="app"></main>', { url: 'https://heycity.example/', runScripts: 'dangerously' });
+  const requests = [];
+  let pauseCount = 0;
+  let playCount = 0;
+  let navigation = null;
+  dom.window.HTMLMediaElement.prototype.pause = function () { pauseCount++; };
+  dom.window.HTMLMediaElement.prototype.play = async function () { playCount++; };
+  dom.window.HEY_CITY_CONFIG = { apiUrl: 'https://api.example', googleMapsBrowserKey: '' };
+  dom.window.fetch = (url, options = {}) => {
+    requests.push({ url, body: JSON.parse(options.body || '{}') });
+    if (url.endsWith('/conversation/interrupt')) return Promise.resolve(response({ ok: true }));
+    if (url.endsWith('/conversation/resume')) return Promise.resolve(response({ ok: true, resume: { action: 'resume_existing', momentId: 'm-1' } }));
+    if (url.endsWith('/conversation/turn')) return Promise.resolve(response({
+      turnId: 't-1', intent: 'nearby_search', answerText: 'Coffee nearby.',
+      resume: { action: 'resume_existing', momentId: 'm-1' },
+      mapActions: [{ type: 'highlight_places', places: [{ id: 'cafe-1', label: 'Cafe', latitude: 40.7, longitude: -74 }] }],
+      navigationAction: { type: 'navigation_handoff', destination: { id: 'cafe-1', name: 'Cafe', latitude: 40.7, longitude: -74 } },
+    }));
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  dom.window.eval(source + "\nwindow.inspectApp = expression => eval(expression);");
+  dom.window.addEventListener('heycity:navigation-handoff', event => { navigation = event.detail; });
+  dom.window.inspectApp("state.sessionId='s-1'; state.momentId='m-1'; state.audioUrl='https://audio/original.mp3'; storyAudio.src=state.audioUrl");
+  Object.defineProperty(dom.window.inspectApp('storyAudio'), 'currentTime', { configurable: true, value: 18 });
+  const pausesBeforeInterrupt = pauseCount;
+  const interrupted = await dom.window.HeyCityConversation.interruptStoryForConversation();
+  assert.equal(interrupted, true);
+  assert.equal(pauseCount, pausesBeforeInterrupt + 1, 'story pauses locally before the interrupt request resolves');
+  assert.deepEqual(requests.find(request => request.url.endsWith('/conversation/interrupt')),
+    { url: 'https://api.example/sessions/s-1/conversation/interrupt', body: { momentId: 'm-1', listenedSeconds: 18 } });
+  await dom.window.HeyCityConversation.sendConversationTurn('coffee');
+  assert.deepEqual(navigation.destination, { id: 'cafe-1', name: 'Cafe', latitude: 40.7, longitude: -74 }, 'navigation is a provider-independent handoff event');
+  assert.equal(dom.window.inspectApp('storyAudio.src').endsWith('/original.mp3'), true, 'same-moment resume keeps the original audio source');
+  assert.ok(playCount >= 1, 'same-moment directive resumes the paused story');
+  const releases = [];
+  dom.window.fetch = () => new Promise(resolve => { releases.push((body) => resolve(response(body))); });
+  const old = dom.window.HeyCityConversation.sendConversationTurn('old request');
+  const newer = dom.window.HeyCityConversation.sendConversationTurn('new request');
+  releases[1]({ turnId: 'new', intent: 'resume_story', answerText: '', resume: { action: 'stay_idle' } }); await newer;
+  releases[0]({ turnId: 'old', intent: 'nearby_search', answerText: '', resume: { action: 'abandon_previous', momentId: 'm-1' } }); await old;
+  assert.equal(dom.window.inspectApp('state.momentId'), 'm-1', 'late response cannot abandon the active story after rapid supersede');
+  dom.window.inspectApp('stopWalking(false)');
+  assert.equal(dom.window.inspectApp('state.conversationMarkers.length'), 0, 'session cleanup removes conversation highlights');
+  dom.window.close();
+}
+
 await testCatalogUnitsAndCompass();
 await testExpiredLoginRecovery();
 await testLocationRecovery();
@@ -385,6 +432,7 @@ await testDelayedMapsCallback();
 await testLoginAndNavigation();
 await testAdminDashboard();
 await testMapConfiguration();
+await testConversationPlaybackBoundary();
 console.log('web smoke tests passed');
 
 testWindows.forEach(window => window.close());

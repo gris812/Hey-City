@@ -5,13 +5,13 @@ const state = {
   token: persistedToken,
   user: storedUser ? JSON.parse(storedUser) : null,
   tab: location.pathname === '/admin' ? 'admin' : 'map',
-  sessionId: null, momentId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, candidateMarkers: [], profile: null, audioUrl: null,
+  sessionId: null, momentId: null, watchId: null, map: null, mapLoadPromise: null, marker: null, candidateMarkers: [], conversationMarkers: [], profile: null, audioUrl: null,
   contextInFlight: false, initialScanComplete: false, starting: false, locationPromise: null, runId: 0,
   followPosition: true, selectingPlace: false, selectionRevision:0, selectedPoi:null, selectedAttribution:null, selectionStatus:'', lastPoint: null, lastResult: null, lastAttribution:null, walkStatus: '', movementMode: 'walking', speedKmh: null,
   guide: localStorage.getItem('heyCityGuide') || 'dana',
   appLanguage: localStorage.getItem('heyCityLanguage') || 'ru',
   guideLanguage: localStorage.getItem('heyCityGuideLanguage') || 'ru',
-  units: localStorage.getItem('heyCityUnits') || 'km', mapOrientation: 'course', heading: null, previousFix: null, lastPosition: null, lastContextAt: 0,
+  units: localStorage.getItem('heyCityUnits') || 'km', mapOrientation: 'course', heading: null, previousFix: null, lastPosition: null, lastContextAt: 0, conversationRevision: 0,
 };
 if (state.token && state.user) {
   localStorage.setItem('heyCityToken', state.token);
@@ -52,6 +52,8 @@ let guides = {
 };
 function guideCopy(id = state.guide) { const g = guides[id] || Object.values(guides)[0]; return { ...g, ...g[state.appLanguage], image: guideImageUrl(g.image), avatar: guideImageUrl(g.avatar) }; }
 const storyAudio = new Audio();
+// Conversation audio is intentionally separate: it must not replace the suspended story source.
+const conversationAudio = new Audio();
 storyAudio.preload = 'auto';
 storyAudio.crossOrigin = 'anonymous';
 storyAudio.addEventListener('play', updateAudioControl);
@@ -368,6 +370,95 @@ function clearCandidateMarkers() {
   state.candidateMarkers = [];
 }
 
+function clearConversationMarkers() {
+  state.conversationMarkers.forEach((marker) => marker.setMap(null));
+  state.conversationMarkers = [];
+}
+
+function applyConversationMapActions(actions = []) {
+  clearConversationMarkers();
+  const places = actions.filter((action) => action?.type === 'highlight_places').flatMap((action) => action.places || []);
+  if (!state.map || !window.google?.maps?.Marker) return;
+  state.conversationMarkers = places.map((place, index) => new google.maps.Marker({
+    map: state.map,
+    position: { lat: place.latitude, lng: place.longitude },
+    title: place.label,
+    label: { text: place.label, className: 'poi-map-label' },
+    zIndex: 30 - index,
+  }));
+}
+
+async function applyConversationResume(resume) {
+  if (!resume) return;
+  if (resume.action === 'resume_existing' && resume.momentId === state.momentId && state.audioUrl) {
+    const sessionId = state.sessionId;
+    if (!sessionId) return;
+    const confirmed = await api(`/sessions/${sessionId}/conversation/resume`, {
+      method: 'POST', body: JSON.stringify({ momentId: resume.momentId }),
+    }).catch(() => null);
+    if (state.sessionId !== sessionId || confirmed?.resume?.action !== 'resume_existing' || confirmed.resume.momentId !== state.momentId) return;
+    // HTMLAudioElement retains currentTime while paused: same moment, same original audio.
+    void storyAudio.play().catch(() => { state.walkStatus = t('map.tapPlay'); updateAudioControl(); });
+    return;
+  }
+  if (resume.action === 'abandon_previous') {
+    // Never call the legacy finish endpoint here: partially heard is not completed.
+    storyAudio.pause(); storyAudio.removeAttribute('src'); storyAudio.load();
+    state.audioUrl = null; state.momentId = null;
+    renderAudioControl();
+  }
+}
+
+async function interruptStoryForConversation() {
+  const sessionId = state.sessionId;
+  const momentId = state.momentId;
+  if (!sessionId || !momentId) return false;
+  const revision = ++state.conversationRevision;
+  // Local pause happens before any request. currentTime remains the resume position.
+  storyAudio.pause();
+  const listenedSeconds = Math.max(0, Math.floor(Number(storyAudio.currentTime) || 0));
+  await api(`/sessions/${sessionId}/conversation/interrupt`, { method: 'POST', body: JSON.stringify({ momentId, listenedSeconds }) });
+  return state.sessionId === sessionId && state.conversationRevision === revision;
+}
+
+async function sendConversationTurn(text, selectedResultId) {
+  const sessionId = state.sessionId;
+  const normalizedText = String(text || '').trim();
+  if (!sessionId || !normalizedText) return null;
+  const revision = ++state.conversationRevision;
+  const result = await api(`/sessions/${sessionId}/conversation/turn`, {
+    method: 'POST', body: JSON.stringify({ text: normalizedText, clientTurnId: `m3-${Date.now()}-${revision}`, ...(selectedResultId ? { selectedResultId } : {}) }),
+  });
+  if (state.sessionId !== sessionId || state.conversationRevision !== revision) return null;
+  applyConversationMapActions(result.mapActions);
+  if (result.navigationAction?.type === 'navigation_handoff') {
+    // Product emits a typed destination; an integration selects the navigation provider.
+    window.dispatchEvent(new CustomEvent('heycity:navigation-handoff', { detail: result.navigationAction }));
+  }
+  if (result.audioUrl) {
+    conversationAudio.pause(); conversationAudio.src = result.audioUrl;
+    conversationAudio.onended = () => { void applyConversationResume(result.resume); };
+    await conversationAudio.play().catch(() => applyConversationResume(result.resume));
+  } else await applyConversationResume(result.resume);
+  return result;
+}
+
+async function resumeConversation() {
+  if (!state.sessionId || !state.momentId) return;
+  ++state.conversationRevision;
+  await applyConversationResume({ action: 'resume_existing', momentId: state.momentId });
+}
+
+async function cancelConversation() {
+  if (!state.sessionId) return;
+  const sessionId = state.sessionId;
+  ++state.conversationRevision;
+  await api(`/sessions/${sessionId}/conversation/cancel`, { method: 'POST', body: '{}' });
+}
+
+// Transport-only surface for M4. M3 deliberately exposes no typing or microphone UI.
+window.HeyCityConversation = { interruptStoryForConversation, sendConversationTurn, resumeConversation, cancelConversation };
+
 function markerCode(targetType) {
   targetType = String(targetType || '');
   if (targetType === 'museum') return 'M';
@@ -400,7 +491,7 @@ function renderCandidateMarkers(candidates) {
 function renderAudioControl() { const wrap = document.querySelector('#story-audio'); if (!wrap) return; wrap.hidden = !state.audioUrl; const button = document.querySelector('#audio-toggle'); if (button) { button.innerHTML = `${icon('play')}<span>${storyAudio.paused ? t('map.play') : t('map.pause')}</span>`; button.onclick = toggleStoryAudio; } }
 function updateAudioControl() { renderAudioControl(); renderNearbyList(); }
 function toggleStoryAudio() { if (!state.audioUrl) return; if (storyAudio.error) { storyAudio.src = state.audioUrl; storyAudio.load(); } if (storyAudio.paused) storyAudio.play().catch(() => showLocationError({message:t('map.tapPlay')})); else storyAudio.pause(); }
-function stopWalking(refresh = true) { state.selectionRevision++; state.selectionController?.abort(); state.selectingPlace=false; state.selectedPoi=null; state.selectedAttribution=null; state.selectionStatus=""; state.lastContextAt=0; state.lastResult=null; state.lastAttribution=null; state.runId++; state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.momentId = null; void syncScreenLock(); state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); storyAudio.load(); syncMediaSession(); if (refresh && state.tab === 'map') render(); }
+function stopWalking(refresh = true) { state.selectionRevision++; state.selectionController?.abort(); state.selectingPlace=false; state.selectedPoi=null; state.selectedAttribution=null; state.selectionStatus=""; state.lastContextAt=0; state.lastResult=null; state.lastAttribution=null; state.runId++; state.conversationRevision++; conversationAudio.pause(); conversationAudio.removeAttribute('src'); conversationAudio.load(); state.starting = false; if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId); state.watchId = null; if (state.sessionId) api(`/sessions/${state.sessionId}/end`, { method: 'POST', body: '{}' }).catch(() => {}); state.sessionId = null; state.momentId = null; void syncScreenLock(); state.contextInFlight = false; state.initialScanComplete = false; state.movementMode = 'walking'; state.speedKmh = null; setRadarScanning(false); clearCandidateMarkers(); clearConversationMarkers(); state.walkStatus = t('map.ready'); state.audioUrl = null; storyAudio.pause(); storyAudio.removeAttribute('src'); storyAudio.load(); syncMediaSession(); if (refresh && state.tab === 'map') render(); }
 
 function storiesView() {
   const historyItems = state.profile?.history || [];

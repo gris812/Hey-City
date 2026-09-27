@@ -29,6 +29,7 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
   const activeMoment = session.journeyState?.getActiveMoment();
   if (activeMoment?.level === 'short' && session.storyContinuation?.poiId === activeMoment.entityId) session.storyContinuation = undefined;
   // Requests which have not generated narration never receive a moment record.
+  session.conversationRuntime.storyFinished(activeMoment?.momentId);
   session.journeyState?.markSuperseded();
   session.storyRequest?.abort();
   const request = new AbortController(); session.storyRequest = request;
@@ -83,6 +84,13 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
         momentId, evidenceRefs: selectedEvidenceRefs, topicKeys,
         narrativeSignature: planned ? `${planned.policy.id}:${planned.plan.moment.relationship}:${planned.plan.moment.intent}:${planned.brief.beats.map(beat => beat.kind).join(',')}` : undefined,
       });
+      if (planned && evidence) {
+        session.conversationRuntime.activateStory({
+          momentId, subjectId: poiId, subjectName: candidate.name, level: level as 'short' | 'long',
+          plan: { moment: planned.plan.moment, narrativeAngle: planned.plan.narrativeAngle, evidenceRefs: planned.plan.evidenceRefs },
+          evidence, guideId: canonicalGuideId(params.voiceId), language: params.language,
+        });
+      }
       await recordSessionStoryStarted(session, poiId);
       check();
     }

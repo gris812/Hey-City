@@ -12,6 +12,12 @@ import {
   startSession,
 } from '../controllers/drive';
 import { generateNarration, generateVoiceSample } from '../controllers/narration';
+import {
+  conversationCancelHandler,
+  conversationInterruptHandler,
+  conversationResumeHandler,
+  conversationTurnHandler,
+} from '../controllers/conversation';
 
 export const sessionsRouter = Router();
 sessionsRouter.use(requireAuth);
@@ -38,6 +44,7 @@ sessionsRouter.put('/:sessionId/guide', async (req: AuthRequest, res, next) => {
     const guide = await getGuide(String(req.body.guideId));
     if (!guide?.active) { res.status(400).json({ error: 'Guide is unavailable' }); return; }
     session.storyRequest?.abort();
+    session.conversationRuntime.abandonForContextChange();
     session.storyContinuation = undefined;
     session.alreadyListening = false;
     session.params.voiceId = guide.id;
@@ -48,6 +55,10 @@ sessionsRouter.put('/:sessionId/guide', async (req: AuthRequest, res, next) => {
   } catch (error) { next(error); }
 });
 sessionsRouter.post('/:sessionId/context', canonicalSessionContext);
+sessionsRouter.post('/:sessionId/conversation/interrupt', conversationInterruptHandler);
+sessionsRouter.post('/:sessionId/conversation/turn', conversationTurnHandler);
+sessionsRouter.post('/:sessionId/conversation/resume', conversationResumeHandler);
+sessionsRouter.post('/:sessionId/conversation/cancel', conversationCancelHandler);
 sessionsRouter.post('/:sessionId/story/end', canonicalStoryEnd);
 sessionsRouter.post('/:sessionId/end', canonicalSessionEnd);
 
