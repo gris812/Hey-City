@@ -41,6 +41,10 @@ async function run(): Promise<void> {
   const journey = createJourneyState('conversation-lifecycle');
   const runtime = new ConversationRuntime(journey);
   const momentId = beginStory(runtime, journey);
+  assert.equal(runtime.blocksNarration(), false,
+    'retaining story context without active audio (text-only/TTS failure) cannot permanently gate automatic narration');
+  assert.equal(runtime.getActiveStoryContext()?.momentId, momentId,
+    'text-only narration still retains bounded context for a later contextual question');
   assert.equal(runtime.interrupt({ momentId, listenedSeconds: 7 }), true);
   assert.equal(runtime.getSnapshot().state, 'listening');
   assert.equal(runtime.getSnapshot().suspendedStory?.momentId, momentId);

@@ -17,6 +17,9 @@ export interface ConversationReplayResult {
 const coffee: NearbySearchResult[] = [{
   id: 'cafe-1', name: 'Grounded Cafe', category: 'cafe', latitude: 40.707, longitude: -74.011, distanceMeters: 90,
 }];
+const farCoffee: NearbySearchResult = {
+  id: 'far-cafe', name: 'Outside Radius Cafe', category: 'cafe', latitude: 40.75, longitude: -74.011,
+};
 const evidence: EvidenceBundle = {
   subjectId: 'federal-hall', subjectName: 'Federal Hall', category: 'historical_landmark', sourceVersion: 'conversation-replay',
   items: [{ id: 'federal-hall-congress', claim: 'Federal Hall hosted the first United States Congress.', sourceType: 'fixture', confidence: 1 }],
@@ -61,12 +64,15 @@ export async function runConversationReplay(): Promise<ConversationReplayResult[
   {
     const { session, momentId } = fixture();
     await service('nearby_search').interrupt(session, { momentId, listenedSeconds: 11 });
-    const result = await service('nearby_search').turn(session, { text: 'Where can I get coffee nearby?' });
+    const result = await service('nearby_search', {
+      nearbyProvider: { searchNearby: async () => [farCoffee, ...coffee] },
+    }).turn(session, { text: 'Where can I get coffee nearby?' });
     const resume = service('nearby_search').resume(session, momentId);
     const passed = result.intent === 'nearby_search' && result.mapActions?.[0]?.places[0]?.id === 'cafe-1' &&
+      result.mapActions[0].places.every(place => place.id !== 'far-cafe') &&
       result.resume.action === 'resume_existing' && resume.resume?.action === 'resume_existing' &&
       resume.resume.momentId === momentId && session.journeyState.getSnapshot().recent.outcomes.length === 0;
-    results.push({ id: 'R1', passed, assertions: ['explicit NearbySearch', 'validated map place', 'same original moment', 'no completion'] });
+    results.push({ id: 'R1', passed, assertions: ['explicit NearbySearch', 'hard radius bound', 'validated map place', 'same original moment', 'no completion'] });
   }
 
   // R2 — contextual question uses active evidence and cannot invoke a Places query.

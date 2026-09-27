@@ -1,6 +1,6 @@
 import { conversation } from '../../config';
 import type { JourneyContext } from '../../services/journeyContext';
-import type { ConversationNearbyProvider, NearbySearchResult, MapHighlightAction, NavigationHandoffAction, ActiveStoryToolContext, BoundedStoryEvidence } from './types';
+import type { ConversationNearbyProvider, NearbySearchRequest, NearbySearchResult, MapHighlightAction, NavigationHandoffAction, ActiveStoryToolContext, BoundedStoryEvidence, JourneyRecallItem } from './types';
 
 export function currentTarget(context?: ActiveStoryToolContext): { subjectId: string; subjectName: string } | null {
   return context ? { subjectId: context.subjectId, subjectName: context.subjectName } : null;
@@ -11,10 +11,31 @@ export function currentArea(journey: Pick<JourneyContext, 'area'>): Record<strin
   return Object.keys(area).length ? area : null;
 }
 
-export function journeyRecall(journey: Pick<JourneyContext, 'recent'>): Array<{ entityId: string; name: string; category?: string; outcome?: string }> {
+export function journeyRecall(journey: Pick<JourneyContext, 'recent'>): JourneyRecallItem[] {
   return journey.recent.entities.slice(-conversation.maxRecallItems).reverse().map(entity => ({
     entityId: entity.entityId, name: entity.name, category: entity.category, outcome: entity.outcome,
   }));
+}
+
+/** Strict category accepted at the model/service/provider boundary. */
+export function normalizeConversationQueryCategory(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!normalized || normalized.length > 80 || !/^[\p{L}\p{N}][\p{L}\p{N}_ -]*$/u.test(normalized)) return null;
+  return normalized;
+}
+
+/** Enforces the explicit conversation-search radius independently of provider bias/order. */
+export function boundConversationNearbyResults(
+  request: Pick<NearbySearchRequest, 'latitude' | 'longitude' | 'radiusMeters' | 'limit'>,
+  results: readonly NearbySearchResult[],
+): NearbySearchResult[] {
+  return results.flatMap((result): NearbySearchResult[] => {
+    if (!Number.isFinite(result.latitude) || !Number.isFinite(result.longitude)) return [];
+    const boundedDistance = distanceMeters(request.latitude, request.longitude, result.latitude, result.longitude);
+    return boundedDistance <= request.radiusMeters ? [{ ...result, distanceMeters: boundedDistance }] : [];
+  }).sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0) || a.id.localeCompare(b.id))
+    .slice(0, Math.max(0, request.limit));
 }
 
 export function storyEvidence(context?: ActiveStoryToolContext): BoundedStoryEvidence[] {
@@ -29,7 +50,9 @@ export async function nearbySearch(
   userId?: string,
   signal?: AbortSignal
 ): Promise<NearbySearchResult[]> {
-  return provider.searchNearby({ ...request, radiusMeters: conversation.nearbySearchRadiusMeters, limit: conversation.nearbySearchLimit }, userId, signal);
+  const boundedRequest = { ...request, radiusMeters: conversation.nearbySearchRadiusMeters, limit: conversation.nearbySearchLimit };
+  const results = await provider.searchNearby(boundedRequest, userId, signal);
+  return boundConversationNearbyResults(boundedRequest, results);
 }
 
 export function mapHighlight(results: NearbySearchResult[]): MapHighlightAction | null {
@@ -43,4 +66,11 @@ export function navigationHandoff(destinationId: string, validated: NearbySearch
   return destination ? { type: 'navigation_handoff', destination: {
     id: destination.id, name: destination.name, latitude: destination.latitude, longitude: destination.longitude,
   } } : null;
+}
+
+function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const radians = (value: number) => value * Math.PI / 180;
+  const dLat = radians(bLat - aLat), dLng = radians(bLng - aLng);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(radians(aLat)) * Math.cos(radians(bLat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(6371000 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)));
 }

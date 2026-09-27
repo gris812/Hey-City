@@ -215,7 +215,10 @@ export class ConversationRuntime {
 
   /** Conversation blocks a new automatic narration without changing Discovery selection. */
   blocksNarration(): boolean {
-    return this.state !== 'idle';
+    // Merely retaining an active story for contextual follow-ups is not a
+    // conversation lock. Normal playback ownership remains DriveSession's
+    // `alreadyListening`; this gate covers only an actual M3 interaction.
+    return this.state !== 'idle' && this.state !== 'narrating';
   }
 
   clear(): void {

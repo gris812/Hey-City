@@ -21,6 +21,13 @@ export interface NearbySearchResult {
   address?: string;
 }
 
+export interface JourneyRecallItem {
+  entityId: string;
+  name: string;
+  category?: string;
+  outcome?: string;
+}
+
 export interface ConversationNearbyProvider {
   searchNearby(request: NearbySearchRequest, userId?: string, signal?: AbortSignal): Promise<NearbySearchResult[]>;
 }

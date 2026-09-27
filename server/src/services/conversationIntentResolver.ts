@@ -1,5 +1,6 @@
 import type { AITaskRouter } from '../ai/aiTaskRouter';
 import type { ConversationIntent as SharedConversationIntent } from '@heycity/shared';
+import { normalizeConversationQueryCategory } from '../conversation/tools/conversationTools';
 
 export const CONVERSATION_INTENTS = [
   'ask_about_current_story', 'ask_about_visible_object', 'ask_about_area', 'nearby_search',
@@ -30,13 +31,19 @@ const nearbyPatterns: Array<{ pattern: RegExp; category: string }> = [
   { pattern: /\b(gas|gas station|fuel)\b|заправк|бензин/i, category: 'gas station' },
 ];
 
-export function parseConversationIntentOutput(value: unknown): ConversationIntent | null {
+export function parseConversationIntentOutput(value: unknown): Omit<ResolvedConversationIntent, 'deterministic'> | null {
   if (typeof value !== 'string') return null;
   const parsed = (() => { try { return JSON.parse(value) as unknown; } catch { return null; } })();
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const intent = (parsed as Record<string, unknown>).intent;
-  return typeof intent === 'string' && (CONVERSATION_INTENTS as readonly string[]).includes(intent)
-    ? intent as ConversationIntent : null;
+  const record = parsed as Record<string, unknown>;
+  const intent = record.intent;
+  if (typeof intent !== 'string' || !(CONVERSATION_INTENTS as readonly string[]).includes(intent)) return null;
+  const validatedIntent = intent as ConversationIntent;
+  if (validatedIntent === 'nearby_search' || validatedIntent === 'recommendation_request') {
+    const queryCategory = normalizeConversationQueryCategory(record.queryCategory);
+    return queryCategory ? { intent: validatedIntent, queryCategory } : null;
+  }
+  return { intent: validatedIntent };
 }
 
 /** Obvious commands stay offline. Ambiguous classification is constrained to a validated enum. */
@@ -62,13 +69,14 @@ export class ConversationIntentResolver {
     try {
       const response = await this.router.generate({
         task: 'conversation_intent_classification',
-        instructions: 'Classify the user turn. Return JSON only: {"intent":"one allowed enum"}. Never add tools, places, facts, or prose.',
-        input: JSON.stringify({ text: input.text.slice(0, 400), allowedIntents: CONVERSATION_INTENTS }),
-        maxOutputTokens: 40,
+        instructions: 'Classify the user turn. Return JSON only. Use {"intent":"allowed enum"}; for nearby_search or recommendation_request also include a plain bounded category as {"intent":"nearby_search","queryCategory":"pharmacy"}. Never add tools, providers, places, facts, or prose.',
+        input: JSON.stringify({ text: input.text.slice(0, 400), allowedIntents: CONVERSATION_INTENTS,
+          queryCategoryRules: 'required only for nearby/recommendation; 1-80 letters/numbers/spaces/hyphen/underscore' }),
+        maxOutputTokens: 80,
         signal: input.signal,
       });
-      const intent = response ? parseConversationIntentOutput(response.text) : null;
-      return { intent: intent ?? 'general_contextual_question', deterministic: false };
+      const resolved = response ? parseConversationIntentOutput(response.text) : null;
+      return resolved ? { ...resolved, deterministic: false } : { intent: 'general_contextual_question', deterministic: false };
     } catch {
       return { intent: 'general_contextual_question', deterministic: false };
     }

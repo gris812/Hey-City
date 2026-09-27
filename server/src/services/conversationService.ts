@@ -18,9 +18,10 @@ import {
   mapHighlight,
   navigationHandoff,
   nearbySearch,
+  normalizeConversationQueryCategory,
   storyEvidence,
 } from '../conversation/tools/conversationTools';
-import type { ConversationNearbyProvider, NearbySearchResult } from '../conversation/tools/types';
+import type { ConversationNearbyProvider, JourneyRecallItem, NearbySearchResult } from '../conversation/tools/types';
 import { encodeGeohash } from './geo';
 import { recordJourneyQuestion, type JourneyState } from './journeyContext';
 import { ConversationAnswerGenerator } from './conversationAnswerGenerator';
@@ -92,12 +93,13 @@ export class ConversationService {
     });
     assertCurrent();
     runtime.setTurnState(turn.turnId, 'understanding', { intent: resolved.intent });
+    const normalizedQueryCategory = normalizeConversationQueryCategory(resolved.queryCategory);
 
     const subjectId = activeContext?.subjectId ?? journey.current.targetId;
     recordJourneyQuestion(session.journeyState, {
       intent: resolved.intent,
       ...(subjectId ? { subjectId } : {}),
-      ...(resolved.queryCategory ? { normalizedTopic: resolved.queryCategory } : {}),
+      ...(normalizedQueryCategory ? { normalizedTopic: normalizedQueryCategory } : {}),
     });
     await recordConversationEvent('conversation_turn', {
       sessionId: session.id,
@@ -110,6 +112,7 @@ export class ConversationService {
 
     const toolResults: ConversationToolResult[] = [];
     let nearbyResults: NearbySearchResult[] | undefined;
+    let recalledJourney: JourneyRecallItem[] | undefined;
     let mapActions: MapAction[] | undefined;
     let navigationAction: NavigationAction | undefined;
     const activeToolContext = activeContext ? {
@@ -121,10 +124,10 @@ export class ConversationService {
     if (resolved.intent === 'nearby_search' || resolved.intent === 'recommendation_request') {
       runtime.setTurnState(turn.turnId, 'tool_execution', { intent: resolved.intent, tool: 'NearbySearch' });
       const movement = journey.movement;
-      if (movement && resolved.queryCategory) {
+      if (movement && normalizedQueryCategory) {
         try {
           nearbyResults = await nearbySearch(this.dependencies.nearbyProvider, {
-            queryCategory: resolved.queryCategory,
+            queryCategory: normalizedQueryCategory,
             latitude: movement.latitude,
             longitude: movement.longitude,
           }, session.userId, turn.signal);
@@ -160,8 +163,8 @@ export class ConversationService {
       toolResults.push({ tool: 'CurrentTarget', success: Boolean(target), resultCount: target ? 1 : 0 });
       toolResults.push({ tool: 'StoryEvidence', success: evidence.length > 0, resultCount: evidence.length });
       if (resolved.intent === 'general_contextual_question') {
-        const recall = journeyRecall(journey);
-        toolResults.push({ tool: 'JourneyRecall', success: recall.length > 0, resultCount: recall.length });
+        recalledJourney = journeyRecall(journey);
+        toolResults.push({ tool: 'JourneyRecall', success: recalledJourney.length > 0, resultCount: recalledJourney.length });
       }
     }
     assertCurrent();
@@ -193,6 +196,7 @@ export class ConversationService {
         area: currentArea(journey),
         evidence: storyEvidence(activeToolContext),
         nearbyResults,
+        journeyRecall: recalledJourney,
         userId: session.userId,
         signal: turn.signal,
       });

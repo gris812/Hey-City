@@ -2,7 +2,7 @@ import type { AITaskRouter } from '../ai/aiTaskRouter';
 import { conversation } from '../config';
 import { guidePolicy } from './guidePolicy';
 import type { ConversationIntent } from './conversationIntentResolver';
-import type { NearbySearchResult, BoundedStoryEvidence } from '../conversation/tools/types';
+import type { NearbySearchResult, BoundedStoryEvidence, JourneyRecallItem } from '../conversation/tools/types';
 
 export interface ConversationAnswerInput {
   intent: ConversationIntent;
@@ -12,6 +12,7 @@ export interface ConversationAnswerInput {
   area?: Record<string, string> | null;
   evidence?: BoundedStoryEvidence[];
   nearbyResults?: NearbySearchResult[];
+  journeyRecall?: JourneyRecallItem[];
   userId?: string;
   signal?: AbortSignal;
 }
@@ -49,6 +50,9 @@ export class ConversationAnswerGenerator {
       area: input.area ?? undefined,
       evidence: (input.evidence ?? []).slice(0, conversation.maxEvidenceItems),
       nearbyResults: (input.nearbyResults ?? []).slice(0, conversation.nearbySearchLimit).map(({ id, name, category, distanceMeters, address }) => ({ id, name, category, distanceMeters, address })),
+      journeyRecall: (input.journeyRecall ?? []).slice(0, conversation.maxRecallItems).map(({ entityId, name, category, outcome }) => ({
+        entityId, name, category, outcome,
+      })),
     };
     const response = await this.router.generate({
       task: 'complex_follow_up',

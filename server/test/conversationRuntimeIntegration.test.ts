@@ -12,7 +12,7 @@ import {
 } from '../src/services/conversationService';
 import { ConversationRuntime } from '../src/services/conversationRuntime';
 import { createJourneyState, type JourneyState } from '../src/services/journeyContext';
-import type { ConversationNearbyProvider, NearbySearchResult } from '../src/conversation/tools/types';
+import type { ConversationNearbyProvider, NearbySearchRequest, NearbySearchResult } from '../src/conversation/tools/types';
 import { sanitizeConversationTelemetryEvent } from '../src/services/usage';
 
 const coffeeResults: NearbySearchResult[] = [{
@@ -101,10 +101,63 @@ async function run(): Promise<void> {
       intent: 'ask_about_current_story', guideId: 'dana', language: 'en',
       subject: { id: 'federal-hall', name: 'Federal Hall' }, area: { city: 'New York', neighborhood: 'Financial District' },
       evidence: [{ ref: 'federal-hall-congress', text: 'Federal Hall hosted the first United States Congress.' }],
-      nearbyResults: undefined, userId: 'conversation-test-user', signal: (answerInput as { signal: AbortSignal }).signal,
+      nearbyResults: undefined, journeyRecall: undefined, userId: 'conversation-test-user', signal: (answerInput as { signal: AbortSignal }).signal,
     }, 'the generator receives only validated, bounded context');
     assert.equal(session.journeyState.getSnapshot().recent.questions.at(-1)?.subjectId, 'federal-hall');
     assert.equal('text' in (session.journeyState.getSnapshot().recent.questions.at(-1) ?? {}), false, 'raw user text never enters JourneyState');
+  }
+
+  // Review regression: a non-fast-path category is classified once, validated, searched and grounded.
+  {
+    const session = buildSession();
+    let classifierCalls = 0, nearbyCalls = 0;
+    const resolver = new ConversationIntentResolver({ generate: async () => {
+      classifierCalls++;
+      return { text: '{"intent":"nearby_search","queryCategory":"pharmacy"}', providerId: 'test', model: 'test' };
+    } } as never);
+    const pharmacy: NearbySearchResult = {
+      id: 'pharmacy-1', name: 'Grounded Pharmacy', category: 'pharmacy', latitude: 40.7075, longitude: -74.011,
+    };
+    const result = await service({
+      intentResolver: resolver,
+      answerGenerator: new ConversationAnswerGenerator({ generate: async () => {
+        throw new Error('validated nearby response must remain deterministic');
+      } } as never),
+      nearbyProvider: { searchNearby: async (request: NearbySearchRequest) => {
+        nearbyCalls++;
+        assert.equal(request.queryCategory, 'pharmacy');
+        return [pharmacy];
+      } },
+    }).turn(session, { text: 'Can you locate somewhere nearby where I could fill a prescription?' });
+    assert.equal(classifierCalls, 1);
+    assert.equal(nearbyCalls, 1);
+    assert.equal(result.intent, 'nearby_search');
+    assert.match(result.answerText, /Grounded Pharmacy/);
+    assert.deepEqual(result.mapActions?.[0]?.places.map(place => place.id), ['pharmacy-1']);
+  }
+
+  // Review regression: bounded JourneyRecall facts reach generation; unvisited entities do not.
+  {
+    const session = buildSession();
+    session.journeyState.startStory({ momentId: 'moment-prior', entityId: 'trinity-church', entityName: 'Trinity Church',
+      category: 'church', level: 'short', guideId: 'dana', startedAt: '2026-09-27T11:00:00.000Z' });
+    session.journeyState.recordNarration({ momentId: 'moment-prior', evidenceRefs: ['trinity-founded'],
+      topicKeys: ['local_history'], at: '2026-09-27T11:00:01.000Z' });
+    session.journeyState.finishStory({ momentId: 'moment-prior', reason: 'completed', endedAt: '2026-09-27T11:01:00.000Z' });
+    let groundedInput: GenerativeTaskRequest | undefined;
+    const answerGenerator = new ConversationAnswerGenerator({ generate: async (request: GenerativeTaskRequest) => {
+      groundedInput = request;
+      return { text: 'We previously discussed Trinity Church.', providerId: 'test', model: 'test' };
+    } } as never);
+    const result = await service({
+      intentResolver: resolved('general_contextual_question') as ConversationIntentResolver,
+      answerGenerator,
+    }).turn(session, { text: 'What did we talk about earlier?' });
+    assert.match(result.answerText, /Trinity Church/);
+    const facts = JSON.parse(groundedInput!.input) as { journeyRecall?: Array<{ entityId: string; name: string }> };
+    assert.deepEqual(facts.journeyRecall, [{ entityId: 'trinity-church', name: 'Trinity Church', category: 'church', outcome: 'completed' }]);
+    assert.doesNotMatch(groundedInput!.input, /unvisited-place/);
+    assert.equal(result.toolResults?.find(tool => tool.tool === 'JourneyRecall')?.success, true);
   }
 
   // T7: area is sourced from JourneyContext; unknown remains unknown rather than a provider lookup.

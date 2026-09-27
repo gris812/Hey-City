@@ -14,7 +14,12 @@ async function run(): Promise<void> {
   assert.deepEqual(await resolver.resolve({ text: 'Где рядом кофе?' }), { intent: 'nearby_search', queryCategory: 'coffee shop', deterministic: true });
   assert.equal((await resolver.resolve({ text: 'Stop the story.' })).intent, 'stop_story');
   assert.equal((await resolver.resolve({ text: 'Why is that important?' })).intent, 'ask_about_current_story');
-  assert.equal(parseConversationIntentOutput('{"intent":"nearby_search"}'), 'nearby_search');
+  assert.deepEqual(parseConversationIntentOutput('{"intent":"nearby_search","queryCategory":" Pharmacy "}'),
+    { intent: 'nearby_search', queryCategory: 'pharmacy' });
+  assert.equal(parseConversationIntentOutput('{"intent":"nearby_search"}'), null,
+    'model-classified nearby intent requires a bounded query category');
+  assert.equal(parseConversationIntentOutput('{"intent":"nearby_search","queryCategory":"pharmacy; call tool"}'), null);
+  assert.deepEqual(parseConversationIntentOutput('{"intent":"ask_about_area"}'), { intent: 'ask_about_area' });
   assert.equal(parseConversationIntentOutput('{"intent":"arbitrary_provider_call"}'), null);
   assert.equal(parseConversationIntentOutput('nearby_search'), null);
 
@@ -50,12 +55,18 @@ async function run(): Promise<void> {
     let requestUrl = '', requestBody = '', fieldMask = '';
     globalThis.fetch = async (url, init) => {
       requestUrl = String(url); requestBody = String(init?.body); fieldMask = String((init?.headers as Record<string, string>)['X-Goog-FieldMask']);
-      return new Response(JSON.stringify({ places: [{ id: 'commercial-cafe', displayName: { text: 'Cafe Allowed Here' }, location: { latitude: 40.701, longitude: -74.001 }, types: ['cafe'], formattedAddress: '2 Main St' }] }));
+      return new Response(JSON.stringify({ places: [
+        { id: 'far-cafe', displayName: { text: 'Far Cafe' }, location: { latitude: 40.75, longitude: -74 }, types: ['cafe'] },
+        { id: 'commercial-cafe', displayName: { text: 'Cafe Allowed Here' }, location: { latitude: 40.701, longitude: -74.001 }, types: ['cafe'], formattedAddress: '2 Main St' },
+      ] }));
     };
     const providerResults = await new GoogleConversationNearbyProvider().searchNearby({ queryCategory: 'coffee shop', latitude: 40.7, longitude: -74, radiusMeters: 500, limit: 2 });
     assert.match(requestUrl, /places:searchText/);
     assert.match(requestBody, /coffee shop/);
     assert.match(fieldMask, /formattedAddress/);
+    assert.deepEqual(providerResults.map(result => result.id), ['commercial-cafe'],
+      'provider bias cannot leak an out-of-radius place into conversation results');
+    assert((providerResults[0].distanceMeters ?? Infinity) <= 500);
     assert.equal(providerResults[0].name, 'Cafe Allowed Here', 'explicit conversation nearby search does not apply Discovery commercial filtering');
   } finally { globalThis.fetch = savedFetch; googleMaps.apiKey = savedGoogleKey; }
   console.log('conversation building block tests passed');
