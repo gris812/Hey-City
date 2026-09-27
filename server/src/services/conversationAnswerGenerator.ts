@@ -24,7 +24,13 @@ function deterministicAnswer(input: ConversationAnswerInput): string | null {
   if (input.intent === 'nearby_search' && input.nearbyResults) {
     if (!input.nearbyResults.length) return ru ? 'Рядом подходящих мест пока не нашла.' : 'I could not find a suitable nearby place.';
     const names = input.nearbyResults.slice(0, 3).map(place => place.name).join(', ');
-    return ru ? `Рядом есть: ${names}. Отмечаю их на карте.` : `Nearby options: ${names}. I’ve highlighted them on the map.`;
+    const arthur = input.guideId === 'arthur' || input.guideId === 'artur';
+    if (ru) return arthur
+      ? `Ближайшие варианты: ${names}. Я отметил их на карте.`
+      : `Нашла рядом: ${names}. Отмечаю их на карте.`;
+    return arthur
+      ? `The nearest options are ${names}. I have marked them on the map.`
+      : `I found these nearby: ${names}. I’ve highlighted them on the map.`;
   }
   return null;
 }
@@ -59,4 +65,3 @@ export class ConversationAnswerGenerator {
       (ru ? 'Уточните, пожалуйста, что именно вас интересует.' : 'Please tell me what you would like to know.');
   }
 }
-

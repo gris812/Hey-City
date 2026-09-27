@@ -21,7 +21,8 @@ export function conversationResumeDirective(input: {
       intent === 'ask_about_area' || intent === 'nearby_search' ||
       intent === 'recommendation_request' || intent === 'go_deeper' ||
       intent === 'repeat' || intent === 'general_contextual_question' ||
-      intent === 'ask_about_visible_object') {
+      intent === 'ask_about_visible_object' ||
+      (intent === 'navigation_request' && !navigationAccepted)) {
     return { action: 'resume_existing', momentId: suspendedMomentId };
   }
 

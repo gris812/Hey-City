@@ -29,6 +29,7 @@ import { type ConversationRuntime } from './conversationRuntime';
 import { GoogleConversationNearbyProvider } from './googleConversationNearbyProvider';
 import { generateConversationSpeech } from './narration';
 import { recordConversationEvent } from './usage';
+import { conversationResumeDirective } from '../policies/conversationResumePolicy';
 
 export interface ConversationSessionContext {
   id: string;
@@ -209,7 +210,11 @@ export class ConversationService {
       }
     }
 
-    const resume = runtime.decideResume(resolved.intent, Boolean(navigationAction));
+    const plannedResume = conversationResumeDirective({
+      intent: resolved.intent,
+      suspendedMomentId: runtime.getSnapshot().suspendedStory?.momentId,
+      navigationAccepted: Boolean(navigationAction),
+    });
     const latency = Date.now() - startedAt;
     await recordConversationEvent('conversation_response', {
       sessionId: session.id,
@@ -221,8 +226,12 @@ export class ConversationService {
       sessionId: session.id,
       intent: resolved.intent,
       success: true,
-      resumeAction: resume.action,
+      resumeAction: plannedResume.action,
     }, session.userId);
+    assertCurrent();
+    // Apply the deterministic decision only after all awaited work/telemetry.
+    // No stale turn can mutate JourneyState or publish actions after this point.
+    const resume = runtime.decideResume(resolved.intent, Boolean(navigationAction));
 
     return {
       turnId: turn.turnId,
