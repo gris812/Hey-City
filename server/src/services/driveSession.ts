@@ -31,6 +31,7 @@ import {
   createMovementContext,
   evaluateAheadDiscovery,
 } from './aheadDiscovery';
+import { ConversationRuntime } from './conversationRuntime';
 
 export interface DriveSessionParams {
   mode?: DiscoveryMode;
@@ -58,6 +59,8 @@ export interface DriveSession {
   storyRequest?: AbortController;
   storyContinuation?: StoryContinuationState;
   journeyState: JourneyState;
+  /** Exactly one M3 runtime is owned by this DriveSession. */
+  conversationRuntime: ConversationRuntime;
   lastExperienceDecision?: string;
   lastExperienceAtMs?: number;
   lastDecisionCandidates?: ExperienceDecisionEvent['candidates'];
@@ -77,6 +80,13 @@ const sessions = new Map<string, DriveSession>();
 
 export function createSession(userId: string, params: DriveSessionParams): DriveSession {
   const id = `drive_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const journeyState = createJourneyState(id, {
+    entities: journeyMemory.recentEntities, topics: journeyMemory.recentTopics,
+    outcomes: journeyMemory.recentOutcomes, questions: journeyMemory.recentQuestions,
+    callbacks: journeyMemory.callbacks, evidenceRefs: journeyMemory.usedEvidenceRefs,
+    callbackMinCompletedGap: journeyMemory.callbackMinCompletedGap,
+    narrativeSignatures: journeyMemory.narrativeSignatures, areaTtlMs: journeyMemory.areaTtlMs,
+  });
   const session: DriveSession = {
     id,
     userId,
@@ -89,13 +99,8 @@ export function createSession(userId: string, params: DriveSessionParams): Drive
     lastCandidates: [],
     alreadyListening: false,
     pendingModeSamples: 0,
-    journeyState: createJourneyState(id, {
-      entities: journeyMemory.recentEntities, topics: journeyMemory.recentTopics,
-      outcomes: journeyMemory.recentOutcomes, questions: journeyMemory.recentQuestions,
-      callbacks: journeyMemory.callbacks, evidenceRefs: journeyMemory.usedEvidenceRefs,
-      callbackMinCompletedGap: journeyMemory.callbackMinCompletedGap,
-      narrativeSignatures: journeyMemory.narrativeSignatures, areaTtlMs: journeyMemory.areaTtlMs,
-    }),
+    journeyState,
+    conversationRuntime: new ConversationRuntime(journeyState),
   };
   sessions.set(id, session);
   return session;
@@ -136,8 +141,10 @@ export function getSession(sessionId: string): DriveSession | null {
 }
 
 export function stopSession(sessionId: string): boolean {
-  sessions.get(sessionId)?.storyRequest?.abort();
-  sessions.get(sessionId)?.journeyState.markSuperseded();
+  const session = sessions.get(sessionId);
+  session?.storyRequest?.abort();
+  session?.conversationRuntime.clear();
+  session?.journeyState.markSuperseded();
   clearAheadDiscoverySession(sessionId);
   return sessions.delete(sessionId);
 }
@@ -190,6 +197,7 @@ export async function finishActiveStory(
         momentRelationship:'callback'}), session.userId);
   }
   if (reason !== 'ended') session.storyContinuation = undefined;
+  session.conversationRuntime.storyFinished(momentId);
 
   return {
     ok: true,
@@ -255,7 +263,7 @@ export async function pingSession(
     session.areaAnchor = undefined;
   }
   if (discoveryOnly) {
-    const suggested = !session.alreadyListening && !session.storyRequest &&
+    const suggested = !session.alreadyListening && !session.conversationRuntime.blocksNarration() && !session.storyRequest &&
       !session.muted && !isCircuitOpen(session.userId) &&
       (!session.lastStoryStartedAt || now-session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds*1000)
       ? aheadDiscovery.topCandidates.find(c => !session.spokenProviderIds?.has(c.providerId) &&
@@ -317,7 +325,8 @@ export async function pingSession(
   const storyCandidates: StoryCandidate[] = [];
   const evidenceByPoi = new Map<string, EvidenceBundle>();
   // Retrieve facts only for a bounded shortlist when a new story can start.
-  if (!session.alreadyListening && (!session.lastStoryStartedAt || now - session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds * 1000)) {
+  if (!session.alreadyListening && !session.conversationRuntime.blocksNarration() &&
+      (!session.lastStoryStartedAt || now - session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds * 1000)) {
     const offset = session.knowledgeOffset ?? 0;
     const pendingKnowledge = [...live.slice(offset), ...live.slice(0, offset)];
     let attempts = 0;
@@ -360,7 +369,7 @@ export async function pingSession(
     mode: activeMode,
     speedKmh,
     gpsAgeSeconds: 0,
-    alreadyListening: session.alreadyListening,
+    alreadyListening: session.alreadyListening || session.conversationRuntime.blocksNarration(),
     budgetGuardrail: false,
     lastStoryStartedAtMs: session.lastStoryStartedAt,
     nowMs: now,
@@ -431,6 +440,11 @@ export async function pingSession(
     category:selectedEvidence.category,level:'auto',guideId:policy.id,callbackId:brief.journey?.callback?.id,startedAt:at});
   session.journeyState.recordNarration({momentId,evidenceRefs:brief.selectedEvidenceRefs,topicKeys,
     narrativeSignature:`${policy.id}:${brief.moment.relationship}:${brief.moment.intent}:${brief.beats.map(beat=>beat.kind).join(',')}`,at});
+  session.conversationRuntime.activateStory({
+    momentId, subjectId: decision.poiId, subjectName: place.name, level: 'auto',
+    plan: { moment: narrativePlan.moment, narrativeAngle: narrativePlan.narrativeAngle, evidenceRefs: narrativePlan.evidenceRefs },
+    evidence: selectedEvidence, guideId: policy.id, language: session.params.language,
+  });
 
   session.nextPoi = {
     place,

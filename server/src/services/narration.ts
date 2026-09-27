@@ -40,6 +40,19 @@ export async function generateIdentification(text: string, voiceId: string, lang
   return { transcriptText: text, audioUrl: await synthesizeSpeech(text, voiceId, lang, userId, 'story_tts', media.progressiveSpeech) };
 }
 
+/** M3 uses the existing non-realtime TTS path, with separately attributable cost telemetry. */
+export async function generateConversationSpeech(
+  text: string,
+  voiceId: string,
+  lang: string,
+  userId?: string
+): Promise<{ transcriptText: string; audioUrl: string }> {
+  return {
+    transcriptText: text,
+    audioUrl: await synthesizeSpeech(text, voiceId, lang, userId, 'conversation_tts', media.progressiveSpeech),
+  };
+}
+
 export async function generateVoiceSample(
   text: string,
   voiceId: string,
@@ -127,7 +140,7 @@ export function pendingSpeechAudio(filename: string): ProgressiveAudio | undefin
   return pendingSpeech.get(filename)?.audio;
 }
 async function synthesizeSpeech(text: string, voiceId: string, lang: string, userId?: string,
-  usageOperation: 'voice_sample' | 'story_tts' = 'story_tts', progressive = false): Promise<string> {
+  usageOperation: 'voice_sample' | 'story_tts' | 'conversation_tts' = 'story_tts', progressive = false): Promise<string> {
   const guide = await getGuide(voiceId);
   const hash = createHash('sha256').update(`${openai.ttsModel}:${voiceId}:${guideVersion(guide)}:${lang}:${text}`).digest('hex').slice(0,24);
   const filename = `${hash}.mp3`;
@@ -162,7 +175,7 @@ async function synthesizeSpeechOnce(
   voiceId: string,
   lang: string,
   userId: string | undefined,
-  usageOperation: 'voice_sample' | 'story_tts',
+  usageOperation: 'voice_sample' | 'story_tts' | 'conversation_tts',
   guide: Awaited<ReturnType<typeof getGuide>>,
   hash: string,
   audio: ProgressiveAudio

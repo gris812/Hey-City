@@ -35,6 +35,17 @@ export function nearbyCacheKey(geohash: string, headingBucket: number, speedBuck
   return getKey('nearby', [geohash, headingBucket, speedBucket, theme]);
 }
 
+/** Separate key namespace: explicit conversation requests must never share Discovery cache semantics. */
+export function conversationNearbyCacheKey(
+  geohash: string,
+  queryCategory: string,
+  radiusMeters: number,
+  limit: number
+): string {
+  const radiusBucket = Math.ceil(radiusMeters / 100) * 100;
+  return getKey('conversation-nearby', [geohash, queryCategory.toLowerCase().trim(), radiusBucket, limit]);
+}
+
 export function aheadDiscoveryCacheKey(
   geohash: string,
   radiusMeters: number,

@@ -3,7 +3,8 @@ export type AITaskKind =
   | 'complex_follow_up'
   | 'evidence_compression'
   | 'poi_normalization'
-  | 'relevance_classification';
+  | 'relevance_classification'
+  | 'conversation_intent_classification';
 
 export interface GenerativeTaskRequest {
   task: AITaskKind;

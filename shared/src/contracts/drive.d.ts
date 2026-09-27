@@ -207,3 +207,97 @@ export interface StoryFinishResult {
   activeStoryWasPlaying: boolean;
   reason: StoryFinishReason;
 }
+
+/** M3 text conversation is session-scoped; it is not a separate chatbot mode. */
+export type ConversationIntent =
+  | 'ask_about_current_story'
+  | 'ask_about_visible_object'
+  | 'ask_about_area'
+  | 'nearby_search'
+  | 'recommendation_request'
+  | 'navigation_request'
+  | 'go_deeper'
+  | 'repeat'
+  | 'stop_story'
+  | 'resume_story'
+  | 'change_topic'
+  | 'general_contextual_question';
+
+export type ConversationToolName =
+  | 'NearbySearch'
+  | 'PlaceDetails'
+  | 'CurrentTarget'
+  | 'CurrentArea'
+  | 'JourneyRecall'
+  | 'StoryEvidence'
+  | 'MapHighlight'
+  | 'NavigationHandoff';
+
+export interface ConversationToolResult {
+  tool: ConversationToolName;
+  success: boolean;
+  resultCount?: number;
+}
+
+export interface ConversationNearbyResult {
+  id: string;
+  name: string;
+  category?: string;
+  latitude: number;
+  longitude: number;
+  distanceMeters?: number;
+  address?: string;
+}
+
+export type ResumeDirective =
+  | { action: 'resume_existing'; momentId: string }
+  | { action: 'abandon_previous'; momentId?: string }
+  | { action: 'stay_idle' };
+
+export interface MapAction {
+  type: 'highlight_places';
+  places: Array<{ id: string; label: string; latitude: number; longitude: number }>;
+}
+
+export interface NavigationAction {
+  type: 'navigation_handoff';
+  destination: { id?: string; name: string; latitude: number; longitude: number };
+}
+
+export interface ConversationTurnResult {
+  turnId: string;
+  intent: ConversationIntent;
+  answerText: string;
+  audioUrl?: string;
+  toolResults?: ConversationToolResult[];
+  mapActions?: MapAction[];
+  navigationAction?: NavigationAction;
+  resume: ResumeDirective;
+}
+
+export interface ConversationInterruptRequest {
+  momentId: string;
+  listenedSeconds?: number;
+}
+
+export interface ConversationInterruptResult {
+  ok: boolean;
+  stale?: boolean;
+  momentId?: string;
+  state: 'listening' | 'idle';
+}
+
+export interface ConversationTurnRequest {
+  text: string;
+  clientTurnId?: string;
+  selectedResultId?: string;
+}
+
+export interface ConversationResumeRequest { momentId: string }
+export interface ConversationCancelRequest { turnId?: string }
+
+export interface ConversationControlResult {
+  ok: boolean;
+  stale?: boolean;
+  resume?: ResumeDirective;
+}

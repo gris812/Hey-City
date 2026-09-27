@@ -13,6 +13,7 @@ const SUPPORTED_TASKS = new Set<AITaskKind>([
   'evidence_compression',
   'poi_normalization',
   'relevance_classification',
+  'conversation_intent_classification',
 ]);
 
 export class OpenAIGenerativeProvider implements GenerativeProvider {

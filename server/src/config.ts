@@ -219,6 +219,16 @@ export const cacheTtl = {
   ttsAudioDays: num('CACHE_TTS_AUDIO_DAYS', 30),
 };
 
+/** Limits for an explicit, user-initiated conversation search. This is not Discovery. */
+export const conversation = {
+  nearbySearchRadiusMeters: num('CONVERSATION_NEARBY_SEARCH_RADIUS_M', 1200),
+  nearbySearchLimit: num('CONVERSATION_NEARBY_SEARCH_LIMIT', 5),
+  nearbySearchCacheTtlSeconds: num('CONVERSATION_NEARBY_SEARCH_CACHE_TTL_SECONDS', 120),
+  maxAnswerCharacters: num('CONVERSATION_MAX_ANSWER_CHARACTERS', 700),
+  maxEvidenceItems: num('CONVERSATION_MAX_EVIDENCE_ITEMS', 6),
+  maxRecallItems: num('CONVERSATION_MAX_RECALL_ITEMS', 5),
+};
+
 export const googleMaps = {
   apiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   placesUsdPerThousand: float('GOOGLE_PLACES_USD_PER_THOUSAND', 32),
