@@ -9,6 +9,7 @@ import {
   type RealtimeClientEvent,
   type RealtimeVoiceTransport,
 } from '../src/features/live/realtimeVoice';
+import { OpenAIRealtimeCodec } from '../src/features/live/openAIRealtimeCodec';
 
 class FakeTransport implements RealtimeVoiceTransport {
   readonly kind = 'native' as const;
@@ -61,6 +62,24 @@ async function settle() {
 }
 
 async function run() {
+  let now = 1_000;
+  const codec = new OpenAIRealtimeCodec(() => now);
+  codec.configure({ providerId: 'openai_realtime', generation: 4 });
+  codec.decode(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
+  codec.decode(JSON.stringify({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'voice-latency', transcript: 'coffee' }));
+  now = 1_275;
+  codec.decode(JSON.stringify({ type: 'response.audio.delta', delta: 'audio' }));
+  now = 1_500;
+  codec.decode(JSON.stringify({ type: 'response.output_audio.delta', delta: 'later-audio' }));
+  const completedEvent = codec.decode(JSON.stringify({
+    type: 'response.done',
+    response: { usage: { input_token_details: { audio_tokens: 12 }, output_token_details: { audio_tokens: 8 } } },
+  }));
+  assert.equal(completedEvent?.type, 'response_completed');
+  if (completedEvent?.type === 'response_completed') {
+    assert.equal(completedEvent.usage?.firstAudioLatencyMs, 275, 'first audio latency uses the first provider audio delta');
+  }
+
   const log: string[] = [];
   const transport = new FakeTransport(log);
   let interruptCount = 0;

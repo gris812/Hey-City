@@ -8,6 +8,10 @@ export class OpenAIRealtimeCodec implements NativeRealtimeEventCodec {
   private providerId = 'openai';
   private activeVoiceTurnId?: string;
   private turnStartedAt?: string;
+  private turnEndedAtMs?: number;
+  private firstAudioLatencyMs?: number;
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   configure(input: { providerId: string; generation: number }): void {
     this.providerId = input.providerId;
@@ -27,6 +31,8 @@ export class OpenAIRealtimeCodec implements NativeRealtimeEventCodec {
       const text = typeof event.transcript === 'string' ? event.transcript.trim() : '';
       if (!text) return null;
       this.activeVoiceTurnId = typeof event.item_id === 'string' ? event.item_id : `voice-${Date.now()}`;
+      this.turnEndedAtMs = this.now();
+      this.firstAudioLatencyMs = undefined;
       return {
         type: 'user_turn',
         turn: {
@@ -42,13 +48,17 @@ export class OpenAIRealtimeCodec implements NativeRealtimeEventCodec {
     if (type === 'response.created' && this.activeVoiceTurnId) {
       return { type: 'response_started', generation: this.generation, voiceTurnId: this.activeVoiceTurnId };
     }
+    if ((type === 'response.output_audio.delta' || type === 'response.audio.delta') && this.turnEndedAtMs !== undefined) {
+      this.firstAudioLatencyMs ??= Math.max(0, this.now() - this.turnEndedAtMs);
+      return null;
+    }
     if (type === 'response.done' && this.activeVoiceTurnId) {
       const voiceTurnId = this.activeVoiceTurnId;
       return {
         type: 'response_completed',
         generation: this.generation,
         voiceTurnId,
-        usage: parseUsage(event, this.providerId, voiceTurnId),
+        usage: parseUsage(event, this.providerId, voiceTurnId, this.firstAudioLatencyMs),
       };
     }
     if (type === 'error') return { type: 'error', code: 'provider_event_error' };
@@ -86,6 +96,7 @@ function parseUsage(
   event: Record<string, unknown>,
   providerId: string,
   voiceTurnId: string,
+  firstAudioLatencyMs?: number,
 ): Omit<RealtimeVoiceUsageReport, 'generation'> | undefined {
   const response = objectValue(event.response);
   const usage = objectValue(response?.usage);
@@ -95,6 +106,7 @@ function parseUsage(
   return {
     providerId,
     voiceTurnId,
+    ...(firstAudioLatencyMs === undefined ? {} : { firstAudioLatencyMs: boundedNumber(firstAudioLatencyMs) }),
     inputTextTokens: boundedNumber(inputDetails?.text_tokens),
     outputTextTokens: boundedNumber(outputDetails?.text_tokens),
     inputAudioTokens: boundedNumber(inputDetails?.audio_tokens),

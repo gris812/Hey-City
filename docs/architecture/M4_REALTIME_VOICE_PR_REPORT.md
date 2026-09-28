@@ -60,6 +60,8 @@ minimal explicit Talk/End voice surface. `react-native-webrtc` requires an Expo
 development/native build; Expo Go is intentionally not treated as a supported
 M4 transport. Native build instructions and microphone permissions are in
 `mobile/REALTIME_VOICE.md`, `mobile/eas.json` and `mobile/app.config.js`.
+The adapter reports first-audio latency from the first provider audio delta,
+alongside bounded provider usage counters.
 
 Gemini's constrained WebSocket bootstrap and command codec are implemented on
 the server/provider boundary. Its native bidirectional PCM transport remains a
@@ -79,6 +81,11 @@ Go workaround.
 | T22 M1/M2/M3/Discovery regressions | PASS locally | full server suite |
 | R1–R5 | PASS | deterministic/provider-mocked replay |
 | R6 deterministic comparison | PASS | identical B1–B6 definitions, 12 observations, explicitly labeled mocked |
+
+`expo-doctor` passes 17/18 checks. The remaining diagnostic is recorded, not
+suppressed: React Native Directory currently marks `react-native-webrtc` as
+untested on the New Architecture. M4 therefore requires the documented
+development/native build validation before release.
 
 Commands:
 
@@ -125,4 +132,3 @@ the side-by-side live report is attached and a configured route is approved.
 No intended Discovery behavior change. No JourneyState ownership change. No
 M3 product-semantics change. No always-on listening, wake word, transcript UI,
 provider-owned memory or separate chatbot mode was added.
-
