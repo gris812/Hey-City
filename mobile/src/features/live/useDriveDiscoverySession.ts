@@ -31,6 +31,15 @@ import {
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
 import { clearRuntimeInterval } from './runtimeControllerContracts';
 import { ConversationPlayback, isCurrentConversationTurn } from './conversationPlayback';
+import {
+  bargeInRealtimeVoice,
+  closeRealtimeVoice,
+  connectRealtimeVoice,
+  reportRealtimeVoiceUsage,
+  requestRealtimeVoiceFallback,
+  submitRealtimeVoiceTurn,
+} from '../../api/realtimeVoice';
+import type { RealtimeVoiceClientSession, RealtimeVoiceClientState } from './realtimeVoice';
 
 export type DriveMotion = { speedKmh: number; heading: number | null };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
@@ -67,6 +76,7 @@ export function useDriveDiscoverySession(input: {
   const [conversationResult, setConversationResult] = useState<ConversationTurnResult | null>(null);
   const [conversationMapActions, setConversationMapActions] = useState<MapAction[]>([]);
   const [navigationHandoff, setNavigationHandoff] = useState<NavigationAction | null>(null);
+  const [realtimeVoiceState, setRealtimeVoiceState] = useState<RealtimeVoiceClientState>('closed');
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
@@ -76,6 +86,7 @@ export function useDriveDiscoverySession(input: {
   const conversationPlaybackRef = useRef(new ConversationPlayback());
   const conversationTurnRevisionRef = useRef(0);
   const pendingResumeRef = useRef<ResumeDirective | null>(null);
+  const realtimeVoiceRef = useRef<RealtimeVoiceClientSession | null>(null);
   const guestId = identity.status === 'guest' ? identity.guestId : undefined;
 
   const startSession = useCallback(async () => {
@@ -127,6 +138,9 @@ export function useDriveDiscoverySession(input: {
 
   const stopSession = useCallback(async () => {
     if (!sessionId) return;
+    const voice = realtimeVoiceRef.current;
+    realtimeVoiceRef.current = null;
+    if (voice) await voice.dispose().catch(() => {});
     try {
       await stopDriveSession(sessionId, guestId);
     } catch (_) {}
@@ -252,6 +266,8 @@ export function useDriveDiscoverySession(input: {
 
   useEffect(() => () => {
     clearDrivePingInterval(pingIntervalRef);
+    void realtimeVoiceRef.current?.dispose().catch(() => {});
+    realtimeVoiceRef.current = null;
     void clearConversationPlayback();
   }, [clearConversationPlayback]);
 
@@ -384,6 +400,76 @@ export function useDriveDiscoverySession(input: {
     setNavigationHandoff(null);
   }, [guestId, sessionId]);
 
+  const activateRealtimeVoice = useCallback(async (): Promise<boolean> => {
+    if (!sessionId || identity.status !== 'authenticated') {
+      setSessionError('Sign in to use realtime voice.');
+      return false;
+    }
+    if (!realtimeVoiceRef.current) {
+      try {
+        // react-native-webrtc is intentionally loaded only on explicit activation.
+        // Expo Go lacks this module; the caught error points users to a dev/native build.
+        const [{ RealtimeVoiceClientSession }, { NativeWebRtcVoiceTransport }, { OpenAIRealtimeCodec }] = await Promise.all([
+          import('./realtimeVoice'),
+          import('./nativeWebRtcVoiceTransport'),
+          import('./openAIRealtimeCodec'),
+        ]);
+        const transport = new NativeWebRtcVoiceTransport(new OpenAIRealtimeCodec());
+        realtimeVoiceRef.current = new RealtimeVoiceClientSession({
+          sessionId,
+          transport,
+          interruptInitialStory: beginConversation,
+          connect: request => connectRealtimeVoice(sessionId, request),
+          submitTurn: realtimeTurn => submitRealtimeVoiceTurn(sessionId, realtimeTurn),
+          bargeIn: () => bargeInRealtimeVoice(sessionId),
+          closeRemote: () => closeRealtimeVoice(sessionId),
+          reportUsage: report => reportRealtimeVoiceUsage(sessionId, report),
+          requestFallback: input => requestRealtimeVoiceFallback(sessionId, input),
+          onGroundedResult: result => {
+            setConversationResult(result);
+            setConversationMapActions(result.mapActions ?? []);
+            setNavigationHandoff(result.navigationAction ?? null);
+          },
+          onAnswerComplete: result => applyResumeDirective(result.resume),
+          playFallbackAudio: async audioUrl => {
+            await new Promise<void>(async resolve => {
+              try {
+                const { sound } = await Audio.Sound.createAsync({ uri: audioUrl }, { shouldPlay: true }, status => {
+                  if (status.isLoaded && didFinish(status)) resolve();
+                });
+                const previous = conversationSoundRef.current;
+                conversationSoundRef.current = sound;
+                if (previous) await previous.unloadAsync().catch(() => {});
+              } catch {
+                resolve();
+              }
+            });
+          },
+          onStateChange: setRealtimeVoiceState,
+          onClosed: resumeConversation,
+          inactivityTimeoutMs: 45_000,
+        });
+      } catch {
+        setRealtimeVoiceState('error');
+        setSessionError('Realtime voice requires a development/native build; Expo Go is not supported.');
+        return false;
+      }
+    }
+    return realtimeVoiceRef.current.activate();
+  }, [applyResumeDirective, beginConversation, identity.status, resumeConversation, sessionId]);
+
+  const closeRealtimeVoiceSession = useCallback(async () => {
+    const voice = realtimeVoiceRef.current;
+    realtimeVoiceRef.current = null;
+    if (voice) await voice.dispose().catch(() => {});
+    setRealtimeVoiceState('closed');
+  }, []);
+
+  useEffect(() => {
+    if (!realtimeVoiceRef.current) return;
+    void closeRealtimeVoiceSession();
+  }, [closeRealtimeVoiceSession, guideId, guideLanguage]);
+
   const forceAheadRefresh = async () => {
     if (!sessionId) return;
     setAheadRefreshLoading(true);
@@ -464,5 +550,12 @@ export function useDriveDiscoverySession(input: {
     conversationResult,
     conversationMapActions,
     navigationHandoff,
+    realtimeVoiceState,
+    activateRealtimeVoice,
+    closeRealtimeVoiceSession,
   };
+}
+
+function didFinish(status: { didJustFinish?: boolean }): boolean {
+  return status.didJustFinish === true;
 }

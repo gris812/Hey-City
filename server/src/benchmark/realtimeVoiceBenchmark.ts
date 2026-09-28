@@ -121,6 +121,15 @@ export interface RealtimeBenchmarkReport {
   comparisonWarnings: readonly string[];
 }
 
+/** Exact-text contract check for providers that expose output transcription. */
+export function evaluateFactualPreservation(
+  approvedText: string,
+  renderedTranscript?: string,
+): RealtimeBenchmarkObservation['factualPreservation'] {
+  if (renderedTranscript === undefined) return 'not_inspectable';
+  return normalizeSpokenText(approvedText) === normalizeSpokenText(renderedTranscript) ? 'preserved' : 'drift';
+}
+
 export async function runRealtimeBenchmark(
   drivers: readonly RealtimeBenchmarkDriver[],
   environment: RealtimeBenchmarkEnvironment,
@@ -207,3 +216,6 @@ function round(value: number, decimals: number): number {
   return Math.round(value * scale) / scale;
 }
 
+function normalizeSpokenText(value: string): string {
+  return value.normalize('NFKC').toLocaleLowerCase('en-US').replace(/[\p{P}\p{S}\s]+/gu, ' ').trim();
+}

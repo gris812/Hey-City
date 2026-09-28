@@ -43,6 +43,9 @@ export type ExploreHomeViewProps = {
   onOpenGuide: () => void;
   onChooseGuidedWalk: () => void;
   onSelectPlace: (place: ExploreNearbyPlace) => void;
+  voiceState?: string;
+  voiceLabel?: string;
+  onToggleVoice?: () => void;
   statusMessage?: string;
   onRetry?: () => void;
   children?: React.ReactNode;
@@ -61,6 +64,9 @@ export function ExploreHomeView({
   onOpenGuide,
   onChooseGuidedWalk,
   onSelectPlace,
+  voiceState,
+  voiceLabel,
+  onToggleVoice,
   statusMessage,
   onRetry,
   children,
@@ -165,6 +171,18 @@ export function ExploreHomeView({
       )}
 
       {children}
+
+      {onToggleVoice && (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={voiceLabel ?? 'Talk to guide'}
+          style={[styles.voiceButton, voiceState && voiceState !== 'closed' && styles.voiceButtonActive]}
+          onPress={onToggleVoice}
+        >
+          <Text style={styles.voiceGlyph}>{voiceState === 'connecting' ? '…' : '●'}</Text>
+          <Text style={styles.voiceLabel} numberOfLines={1}>{voiceLabel ?? 'Talk'}</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.bottomSheet}>
         <View style={styles.sheetHandle} />
@@ -463,6 +481,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   retryText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  voiceButton: {
+    position: 'absolute',
+    right: spacing.md,
+    bottom: 300,
+    zIndex: 32,
+    minWidth: 92,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.floating,
+  },
+  voiceButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  voiceGlyph: { color: colors.danger, fontSize: 12 },
+  voiceLabel: { ...typography.caption, color: colors.foreground, fontWeight: '700' },
   bottomSheet: {
     position: 'absolute',
     left: spacing.sm,

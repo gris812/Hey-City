@@ -183,6 +183,9 @@ export function LiveScreen() {
     pausePlayback,
     resumePlayback,
     forceAheadRefresh,
+    realtimeVoiceState,
+    activateRealtimeVoice,
+    closeRealtimeVoiceSession,
   } = drive;
   const {
     tourState,
@@ -655,6 +658,17 @@ export function LiveScreen() {
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
           onSelectPlace={(place) => setSelectedExplorePlaceId(place.id)}
+          voiceState={realtimeVoiceState}
+          voiceLabel={preferences.appLanguage === 'ru'
+            ? (realtimeVoiceState === 'closed' ? 'Говорить' : 'Закончить')
+            : (realtimeVoiceState === 'closed' ? 'Talk' : 'End voice')}
+          onToggleVoice={backendWalkingStoryVisible ? () => {
+            if (realtimeVoiceState === 'closed' || realtimeVoiceState === 'error' || realtimeVoiceState === 'permission_error') {
+              void activateRealtimeVoice();
+            } else {
+              void closeRealtimeVoiceSession();
+            }
+          } : undefined}
           statusMessage={sessionError ? t('walking.serviceUnavailable') : undefined}
           onRetry={sessionError ? () => void startSession() : undefined}
         >

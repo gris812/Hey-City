@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   REALTIME_BENCHMARK_SCRIPTS,
+  evaluateFactualPreservation,
   runRealtimeBenchmark,
   type RealtimeBenchmarkDriver,
   type RealtimeBenchmarkEnvironment,
@@ -51,6 +52,9 @@ async function run(): Promise<void> {
   assert.deepEqual(REALTIME_BENCHMARK_SCRIPTS.map(script => script.id), ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']);
   assert.deepEqual(REALTIME_BENCHMARK_SCRIPTS.find(script => script.id === 'B3')?.utterances,
     ['Where can I get coffee nearby?', 'No, I meant parking.']);
+  assert.equal(evaluateFactualPreservation('Federal Hall hosted Congress.', 'Federal Hall hosted Congress!'), 'preserved');
+  assert.equal(evaluateFactualPreservation('Federal Hall hosted Congress.', 'Federal Hall was built in 1900.'), 'drift');
+  assert.equal(evaluateFactualPreservation('Federal Hall hosted Congress.'), 'not_inspectable');
 
   const report = await runRealtimeBenchmark([
     driver('openai_realtime', 'openai-fixture', 0),
@@ -83,4 +87,3 @@ async function run(): Promise<void> {
 }
 
 void run().catch(error => { console.error(error); process.exitCode = 1; });
-

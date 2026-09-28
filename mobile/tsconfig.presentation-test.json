@@ -26,6 +26,7 @@
     "src/dev/locationSimulation/SimulatedLocationSource.ts",
     "src/api/drive.ts",
     "src/api/conversation.ts",
+    "src/api/realtimeVoice.ts",
     "src/presentation/**/*.ts",
     "test/**/*.ts",
     "../shared/src/**/*.ts"
