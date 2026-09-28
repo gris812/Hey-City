@@ -14,12 +14,21 @@ import { OpenAIRealtimeCodec } from '../src/features/live/openAIRealtimeCodec';
 class FakeTransport implements RealtimeVoiceTransport {
   readonly kind = 'native' as const;
   handler?: (event: RealtimeClientEvent) => void;
+  lastHandler?: (event: RealtimeClientEvent) => void;
   constructor(readonly log: string[]) {}
   failCommands = false;
+  failConnect = false;
+  permissionFailure = false;
   configureSession(input: { providerId: string; generation: number }) { this.log.push(`configure:${input.providerId}:${input.generation}`); }
   async createClientOffer() { this.log.push('offer'); return 'client-sdp'; }
-  async connect(_connection: RealtimeClientConnection) { this.log.push('connect'); }
-  async startCapture() { this.log.push('capture:start'); }
+  async connect(_connection: RealtimeClientConnection) {
+    this.log.push('connect');
+    if (this.failConnect) throw new Error('provider connect failed');
+  }
+  async startCapture() {
+    this.log.push('capture:start');
+    if (this.permissionFailure) throw new Error('microphone permission not allowed');
+  }
   async stopCapture() { this.log.push('capture:stop'); }
   async interruptOutput() { this.log.push('output:interrupt'); }
   async applyCommands(commands: import('@heycity/shared').RealtimeClientCommand[]) {
@@ -27,7 +36,11 @@ class FakeTransport implements RealtimeVoiceTransport {
     if (this.failCommands) throw new Error('provider output failed');
   }
   async close() { this.log.push('transport:close'); }
-  onEvent(handler: (event: RealtimeClientEvent) => void) { this.handler = handler; return () => { this.handler = undefined; }; }
+  onEvent(handler: (event: RealtimeClientEvent) => void) {
+    this.handler = handler;
+    this.lastHandler = handler;
+    return () => { this.handler = undefined; };
+  }
   emit(event: RealtimeClientEvent) { this.handler?.(event); }
 }
 
@@ -79,6 +92,10 @@ async function run() {
   if (completedEvent?.type === 'response_completed') {
     assert.equal(completedEvent.usage?.firstAudioLatencyMs, 275, 'first audio latency uses the first provider audio delta');
   }
+
+  await testFailClosedActivationRecovery();
+  await testBootstrapFailureRecovery();
+  await testPermissionFailureRecovery();
 
   const log: string[] = [];
   const transport = new FakeTransport(log);
@@ -187,6 +204,126 @@ async function run() {
   assert.equal(fallbackCompletions, 1);
   assert.equal(fallbackLog.filter(item => item === 'commands:1').length, 1, 'M3 turn is not repeated');
   await fallbackSession.close();
+}
+
+async function testFailClosedActivationRecovery() {
+  const log: string[] = [];
+  const states: string[] = [];
+  const transport = new FakeTransport(log);
+  transport.failConnect = true;
+  let interrupts = 0;
+  let bootstraps = 0;
+  let completions = 0;
+  let resumes = 0;
+  let suspendedMoment: string | undefined = 'moment-1';
+  const session = new RealtimeVoiceClientSession({
+    sessionId: 'drive-fail-closed', transport,
+    interruptInitialStory: async () => {
+      interrupts += 1;
+      assert.equal(suspendedMoment, 'moment-1', 'retry interrupts the same original moment after recovery');
+      return true;
+    },
+    connect: async () => {
+      bootstraps += 1;
+      return { sessionId: 'drive-fail-closed', providerId: 'deterministic', generation: bootstraps, state: 'ready', connection };
+    },
+    submitTurn: async () => ({ accepted: false, generation: 0, state: 'closed' }),
+    bargeIn: async () => ({ generation: 0, state: 'closed' }),
+    closeRemote: async () => { log.push('server:close'); },
+    onGroundedResult: () => {},
+    onAnswerComplete: () => { completions += 1; },
+    onStateChange: state => { states.push(state); },
+    onClosed: async () => {
+      resumes += 1;
+      assert.equal(suspendedMoment, 'moment-1', 'failure recovery resumes the original moment');
+    },
+  });
+
+  assert.equal(await session.activate(), false);
+  const staleHandler = transport.lastHandler;
+  assert.deepEqual(states.slice(-2), ['error', 'closed'], 'diagnostic error is transient and fail-closed wins');
+  assert.equal(session.getState(), 'closed');
+  assert.equal(resumes, 1);
+  assert.equal(interrupts, 1);
+  assert.equal(bootstraps, 1);
+  assert.equal(completions, 0);
+  assert.ok(log.includes('capture:stop'));
+  assert.ok(log.includes('transport:close'));
+  assert.ok(log.includes('server:close'));
+
+  staleHandler?.({ type: 'response_completed', generation: 1, voiceTurnId: 'stale' });
+  staleHandler?.({ type: 'state', state: 'speaking' });
+  await settle();
+  assert.equal(session.getState(), 'closed', 'late callbacks from the failed generation stay invalidated');
+  assert.equal(resumes, 1, 'late callbacks cannot resume the story twice');
+  assert.equal(completions, 0, 'failed activation cannot create a phantom completion');
+
+  transport.failConnect = false;
+  assert.equal(await session.activate(), true, 'next Talk performs a clean activation');
+  assert.equal(bootstraps, 2, 'retry invokes a new provider bootstrap');
+  assert.equal(interrupts, 2, 'each attempt registers exactly one interruption, after prior resume');
+  await session.close();
+  assert.equal(resumes, 2, 'closing the successful retry resumes the same suspended moment once');
+}
+
+async function testPermissionFailureRecovery() {
+  const log: string[] = [];
+  const states: string[] = [];
+  const transport = new FakeTransport(log);
+  transport.permissionFailure = true;
+  let interrupts = 0;
+  let resumes = 0;
+  const session = new RealtimeVoiceClientSession({
+    sessionId: 'drive-permission-failure', transport,
+    interruptInitialStory: async () => { interrupts += 1; return true; },
+    connect: async () => ({ sessionId: 'drive-permission-failure', providerId: 'deterministic', generation: 1, state: 'ready', connection }),
+    submitTurn: async () => ({ accepted: false, generation: 0, state: 'closed' }),
+    bargeIn: async () => ({ generation: 0, state: 'closed' }),
+    closeRemote: async () => {},
+    onGroundedResult: () => {},
+    onAnswerComplete: () => {},
+    onClosed: async () => { resumes += 1; },
+    onStateChange: state => { states.push(state); },
+  });
+
+  assert.equal(await session.activate(), false);
+  assert.deepEqual(states.slice(-2), ['permission_error', 'closed']);
+  assert.equal(session.getState(), 'closed');
+  assert.equal(interrupts, 1);
+  assert.equal(resumes, 1);
+  assert.ok(log.includes('capture:stop'));
+  assert.ok(log.includes('transport:close'));
+}
+
+async function testBootstrapFailureRecovery() {
+  const log: string[] = [];
+  const transport = new FakeTransport(log);
+  let bootstraps = 0;
+  let interrupts = 0;
+  let resumes = 0;
+  const session = new RealtimeVoiceClientSession({
+    sessionId: 'drive-bootstrap-failure', transport,
+    interruptInitialStory: async () => { interrupts += 1; return true; },
+    connect: async () => {
+      bootstraps += 1;
+      if (bootstraps === 1) throw new Error('provider bootstrap failed');
+      return { sessionId: 'drive-bootstrap-failure', providerId: 'deterministic', generation: 2, state: 'ready', connection };
+    },
+    submitTurn: async () => ({ accepted: false, generation: 0, state: 'closed' }),
+    bargeIn: async () => ({ generation: 0, state: 'closed' }),
+    closeRemote: async () => {},
+    onGroundedResult: () => {},
+    onAnswerComplete: () => {},
+    onClosed: async () => { resumes += 1; },
+  });
+
+  assert.equal(await session.activate(), false);
+  assert.equal(session.getState(), 'closed');
+  assert.equal(resumes, 1);
+  assert.equal(await session.activate(), true);
+  assert.equal(bootstraps, 2, 'a bootstrap failure cannot turn error into a pseudo-active session');
+  assert.equal(interrupts, 2, 'the resumed story is interrupted once for the clean retry');
+  await session.close();
 }
 
 void run();

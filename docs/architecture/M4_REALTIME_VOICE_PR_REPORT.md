@@ -53,6 +53,21 @@ References:
   audio, transcripts, answers, precise GPS, secrets and provider payloads are
   excluded.
 
+### Architecture/Product review follow-up: activation failure recovery
+
+Realtime activation now fails closed. A bootstrap, transport-connect or
+microphone-permission failure invalidates the failed generation and event
+subscription before cleanup, closes local and server session resources,
+briefly exposes the diagnostic state, and ends in recoverable `closed`. If M3
+already suspended a story, the existing `onClosed` playback path resumes that
+same original moment. A later Talk creates a clean bootstrap and exactly one
+new interruption; stale failed-generation events cannot change state, resume
+twice or create a Journey completion.
+
+Focused mobile regressions cover bootstrap failure, transport-connect failure,
+microphone permission denial, resource cleanup, same-moment resume, clean
+retry, interruption/completion cardinality and stale callbacks.
+
 ## Client path
 
 Mobile has a provider-neutral lifecycle and an OpenAI WebRTC adapter with a

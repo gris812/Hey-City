@@ -97,8 +97,7 @@ export class RealtimeVoiceClientSession {
       if (!this.storyInterrupted) {
         const interrupted = await this.deps.interruptInitialStory();
         if (!interrupted) {
-          this.setState('error');
-          return false;
+          throw new Error('story_interruption_failed');
         }
         this.storyInterrupted = true;
       }
@@ -125,11 +124,25 @@ export class RealtimeVoiceClientSession {
       this.resetInactivityTimer();
       return true;
     } catch (error) {
-      await this.deps.transport.close().catch(() => {});
       this.setState(isPermissionError(error) ? 'permission_error' : 'error');
-      // The suspended story remains owned by ConversationPlayback and resumable.
+      await this.failClosedActivation();
       return false;
     }
+  }
+
+  /**
+   * A failed activation is a completed, closed attempt. Invalidate callbacks
+   * before asynchronous cleanup, then resume the exact suspended M3 moment.
+   */
+  private async failClosedActivation(): Promise<void> {
+    const shouldResumeStory = this.storyInterrupted;
+    this.storyInterrupted = false;
+    this.providerId = undefined;
+    this.invalidate();
+    this.setState('closed');
+    await this.deps.transport.stopCapture().catch(() => {});
+    await Promise.allSettled([this.deps.transport.close(), this.deps.closeRemote()]);
+    if (shouldResumeStory) await this.deps.onClosed?.();
   }
 
   private async handleEvent(event: RealtimeClientEvent): Promise<void> {
@@ -235,13 +248,16 @@ export class RealtimeVoiceClientSession {
 
   async close(): Promise<void> {
     if (this.state === 'closed' && !this.activation) return;
+    const shouldResumeStory = this.storyInterrupted;
+    this.storyInterrupted = false;
+    this.providerId = undefined;
     this.invalidate();
     // Invalidate synchronously so late provider events cannot publish while
     // native/network cleanup is still awaiting completion.
     this.setState('closed');
     await this.deps.transport.stopCapture().catch(() => {});
     await Promise.allSettled([this.deps.transport.close(), this.deps.closeRemote()]);
-    await this.deps.onClosed?.();
+    if (shouldResumeStory) await this.deps.onClosed?.();
   }
 
   async dispose(): Promise<void> {
