@@ -10,11 +10,14 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "replay:drive": "ts-node src/scripts/replayDriveRoute.ts",
     "typecheck": "tsc --noEmit",
-    "test": "ts-node test/authSecurity.test.ts && ts-node test/productionHttp.test.ts && ts-node test/discoveryProfileWeights.test.ts && ts-node test/discoveryPolicyRefactor.test.ts && ts-node test/aheadDiscoveryGeometry.test.ts && ts-node test/aheadDiscoveryFiltering.test.ts && ts-node test/aheadDiscoveryScoring.test.ts && ts-node test/aheadDiscoveryRefresh.test.ts && ts-node test/googleAheadDiscoveryProvider.test.ts && ts-node test/driveDecision.test.ts && ts-node test/movementMode.test.ts && ts-node test/driveReplay.test.ts && ts-node test/driveRouteReplay.test.ts && ts-node test/aiTaskRouter.test.ts && ts-node test/driveSessionLocal.test.ts && ts-node test/httpAliases.test.ts && ts-node test/adminCatalog.test.ts && ts-node test/progressiveSpeech.test.ts && npm run test:m2 && npm run test:m3",
+    "test": "ts-node test/authSecurity.test.ts && ts-node test/productionHttp.test.ts && ts-node test/discoveryProfileWeights.test.ts && ts-node test/discoveryPolicyRefactor.test.ts && ts-node test/aheadDiscoveryGeometry.test.ts && ts-node test/aheadDiscoveryFiltering.test.ts && ts-node test/aheadDiscoveryScoring.test.ts && ts-node test/aheadDiscoveryRefresh.test.ts && ts-node test/googleAheadDiscoveryProvider.test.ts && ts-node test/driveDecision.test.ts && ts-node test/movementMode.test.ts && ts-node test/driveReplay.test.ts && ts-node test/driveRouteReplay.test.ts && ts-node test/aiTaskRouter.test.ts && ts-node test/driveSessionLocal.test.ts && ts-node test/httpAliases.test.ts && ts-node test/adminCatalog.test.ts && ts-node test/progressiveSpeech.test.ts && npm run test:m2 && npm run test:m3 && npm run test:m4",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "test:m2": "ts-node test/callbackTopicPolicy.test.ts && ts-node test/journeyContext.test.ts && ts-node test/journeyPlanning.test.ts && ts-node test/journeyReplay.test.ts && ts-node test/m2PersistenceTelemetry.test.ts && ts-node test/selectedStoryJourneyLifecycle.test.ts",
-    "test:m3": "ts-node test/conversationBuildingBlocks.test.ts && ts-node test/conversationRuntimeLifecycle.test.ts && ts-node test/conversationRuntimeIntegration.test.ts && ts-node test/conversationReplay.test.ts"
+    "test:m3": "ts-node test/conversationBuildingBlocks.test.ts && ts-node test/conversationRuntimeLifecycle.test.ts && ts-node test/conversationRuntimeIntegration.test.ts && ts-node test/conversationReplay.test.ts",
+    "test:m4": "ts-node test/voiceProviders.test.ts && ts-node test/realtimeVoiceSession.test.ts && ts-node test/realtimeVoiceRoutes.test.ts && ts-node test/realtimeVoiceBenchmark.test.ts && ts-node test/realtimeVoiceReplay.test.ts",
+    "replay:m4": "ts-node src/scripts/replayRealtimeVoice.ts",
+    "benchmark:m4:live": "ts-node src/scripts/benchmarkRealtimeVoiceLive.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

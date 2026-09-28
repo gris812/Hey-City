@@ -48,6 +48,11 @@ export interface ConversationServiceDependencies {
   synthesize: typeof generateConversationSpeech;
 }
 
+export interface ConversationTurnOptions {
+  /** Realtime voice renders the already-grounded answer through its active provider session. */
+  renderAudio?: boolean;
+}
+
 export class ConversationTurnSupersededError extends Error {
   readonly status = 409;
   constructor() { super('Conversation turn superseded'); }
@@ -70,7 +75,11 @@ export class ConversationService {
     };
   }
 
-  async turn(session: ConversationSessionContext, input: ConversationTurnRequest): Promise<ConversationTurnResult> {
+  async turn(
+    session: ConversationSessionContext,
+    input: ConversationTurnRequest,
+    options: ConversationTurnOptions = {},
+  ): Promise<ConversationTurnResult> {
     const text = typeof input.text === 'string' ? input.text.trim().slice(0, 1000) : '';
     if (!text) throw new Error('Conversation text is required');
     const startedAt = Date.now();
@@ -204,7 +213,7 @@ export class ConversationService {
     assertCurrent();
 
     let audioUrl: string | undefined;
-    if (answerText) {
+    if (answerText && options.renderAudio !== false) {
       try {
         const audio = await this.dependencies.synthesize(answerText, session.params.voiceId, session.params.language, session.userId);
         assertCurrent();

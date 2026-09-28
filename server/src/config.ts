@@ -67,6 +67,7 @@ export function assertProductionConfig(): void {
   if (!auth.resendApiKey) missing.push('RESEND_API_KEY');
   if (!googleMaps.apiKey) missing.push('GOOGLE_MAPS_API_KEY');
   if (!openai.apiKey) missing.push('OPENAI_API_KEY');
+  if (realtimeVoice.provider === 'gemini' && !realtimeVoice.geminiApiKey) missing.push('GEMINI_API_KEY');
   if (!auth.adminEmail) missing.push('ADMIN_EMAIL');
   if (!auth.adminCode) missing.push('ADMIN_AUTH_CODE');
   if (auth.otpPepper.length < 32) missing.push('OTP_PEPPER');
@@ -260,6 +261,41 @@ export const openai = {
   textOutputUsdPerMillion: float('OPENAI_TEXT_OUTPUT_USD_PER_MILLION', configuredOpenAITextPricing.outputUsdPerMillion),
   ttsInputUsdPerMillion: float('OPENAI_TTS_INPUT_USD_PER_MILLION', 0.6),
   ttsOutputUsdPerMillion: float('OPENAI_TTS_OUTPUT_USD_PER_MILLION', 12),
+};
+
+/**
+ * M4 realtime voice is opt-in. Development/test use the deterministic adapter until a
+ * provider is explicitly selected; production configuration must name a live provider.
+ */
+export const realtimeVoice = {
+  provider: process.env.REALTIME_VOICE_PROVIDER || (process.env.NODE_ENV === 'production' ? '' : 'deterministic'),
+  openAIModel: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime',
+  geminiModel: process.env.GEMINI_LIVE_MODEL || 'gemini-live-2.5-flash-preview',
+  geminiApiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || '',
+  inactivityTimeoutMs: num('REALTIME_INACTIVITY_TIMEOUT_MS', 45_000),
+  maxSessionDurationMs: num('REALTIME_MAX_SESSION_DURATION_MS', 10 * 60_000),
+  connectionTimeoutMs: num('REALTIME_CONNECTION_TIMEOUT_MS', 12_000),
+  clientCredentialTtlMs: num('REALTIME_CLIENT_CREDENTIAL_TTL_MS', 55_000),
+  reconnectBackoffMs: num('REALTIME_RECONNECT_BACKOFF_MS', 1_000),
+  maxConcurrentSessions: num('REALTIME_MAX_CONCURRENT_SESSIONS', 20),
+  maxInputAudioBytes: num('REALTIME_MAX_INPUT_AUDIO_BYTES', 24 * 1024 * 1024),
+  maxOutputAudioBytes: num('REALTIME_MAX_OUTPUT_AUDIO_BYTES', 24 * 1024 * 1024),
+};
+
+/** Provider prices are operational config, not conversation business logic. */
+export const realtimePricing = {
+  openai: {
+    inputTextUsdPerMillion: float('OPENAI_REALTIME_INPUT_TEXT_USD_PER_MILLION', 0),
+    outputTextUsdPerMillion: float('OPENAI_REALTIME_OUTPUT_TEXT_USD_PER_MILLION', 0),
+    inputAudioUsdPerMillion: float('OPENAI_REALTIME_INPUT_AUDIO_USD_PER_MILLION', 0),
+    outputAudioUsdPerMillion: float('OPENAI_REALTIME_OUTPUT_AUDIO_USD_PER_MILLION', 0),
+  },
+  gemini: {
+    inputTextUsdPerMillion: float('GEMINI_LIVE_INPUT_TEXT_USD_PER_MILLION', 0),
+    outputTextUsdPerMillion: float('GEMINI_LIVE_OUTPUT_TEXT_USD_PER_MILLION', 0),
+    inputAudioUsdPerMillion: float('GEMINI_LIVE_INPUT_AUDIO_USD_PER_MILLION', 0),
+    outputAudioUsdPerMillion: float('GEMINI_LIVE_OUTPUT_AUDIO_USD_PER_MILLION', 0),
+  },
 };
 
 export const aiRouting = {

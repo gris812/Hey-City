@@ -301,3 +301,107 @@ export interface ConversationControlResult {
   stale?: boolean;
   resume?: ResumeDirective;
 }
+
+/** M4 realtime voice is an optional transport over the existing M3 conversation path. */
+export type RealtimeTransportKind = 'webrtc' | 'websocket' | 'native';
+
+export type RealtimeVoiceState =
+  | 'closed'
+  | 'connecting'
+  | 'ready'
+  | 'listening'
+  | 'processing'
+  | 'speaking'
+  | 'idle_window';
+
+/**
+ * Short-lived connection material for one realtime session. Permanent provider
+ * credentials are never part of this contract. Provider adapters interpret the
+ * fields that apply to their transport.
+ */
+export interface RealtimeClientConnection {
+  providerId: string;
+  providerSessionId: string;
+  model: string;
+  transport: RealtimeTransportKind;
+  expiresAt: string;
+  connection:
+    | { kind: 'webrtc_answer'; answerSdp: string }
+    | { kind: 'websocket_ephemeral'; url: string; token: string }
+    | { kind: 'deterministic' };
+}
+
+export interface RealtimeVoiceConnectRequest {
+  transport: RealtimeTransportKind;
+  clientSdp?: string;
+}
+
+export interface RealtimeVoiceConnectResult {
+  sessionId: string;
+  providerId: string;
+  generation: number;
+  state: RealtimeVoiceState;
+  connection: RealtimeClientConnection;
+}
+
+/** Partial turns remain transport-local; only final turns may enter M3. */
+export interface RealtimeUserTurn {
+  voiceTurnId: string;
+  text: string;
+  isFinal: boolean;
+  startedAt: string;
+  endedAt?: string;
+  providerId: string;
+  providerConfidence?: number;
+}
+
+/** Provider-neutral server authority; transport adapters translate to vendor events. */
+export type RealtimeClientCommand =
+  | {
+      type: 'speak_grounded_answer';
+      voiceTurnId: string;
+      text: string;
+      renderingInstructions: string;
+    }
+  | { type: 'cancel_response' }
+  | { type: 'close'; reason: string };
+
+export type RealtimeVoiceTurnResult =
+  | { accepted: false; generation: number; state: RealtimeVoiceState }
+  | {
+      accepted: true;
+      generation: number;
+      state: RealtimeVoiceState;
+      result: ConversationTurnResult;
+      commands: RealtimeClientCommand[];
+      /** Existing SpeechProvider fallback; it does not create a second M3 turn. */
+      fallbackAudioUrl?: string;
+    };
+
+export interface RealtimeVoiceControlResult {
+  ok: boolean;
+  generation: number;
+  state: RealtimeVoiceState;
+  commands?: RealtimeClientCommand[];
+}
+
+export interface RealtimeVoiceFallbackResult {
+  generation: number;
+  state: RealtimeVoiceState;
+  audioUrl: string;
+}
+
+/** Aggregate counters only; raw audio, transcript, answers, events and GPS are forbidden. */
+export interface RealtimeVoiceUsageReport {
+  providerId: string;
+  generation: number;
+  voiceTurnId?: string;
+  firstAudioLatencyMs?: number;
+  inputTextTokens?: number;
+  outputTextTokens?: number;
+  inputAudioTokens?: number;
+  outputAudioTokens?: number;
+  inputAudioBytes?: number;
+  outputAudioBytes?: number;
+  estimatedCostUsd?: number;
+}
