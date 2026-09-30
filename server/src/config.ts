@@ -280,6 +280,9 @@ export const realtimeVoice = {
   maxConcurrentSessions: num('REALTIME_MAX_CONCURRENT_SESSIONS', 20),
   maxInputAudioBytes: num('REALTIME_MAX_INPUT_AUDIO_BYTES', 24 * 1024 * 1024),
   maxOutputAudioBytes: num('REALTIME_MAX_OUTPUT_AUDIO_BYTES', 24 * 1024 * 1024),
+  /** Explicitly non-production gate for the native B1-B6 provider comparison. */
+  nativeBenchmarkProviderOverrideEnabled:
+    process.env.NODE_ENV !== 'production' && process.env.M4_NATIVE_BENCHMARK_PROVIDER_OVERRIDE_ENABLED === 'true',
 };
 
 /** Provider prices are operational config, not conversation business logic. */

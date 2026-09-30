@@ -31,6 +31,9 @@ async function run(): Promise<void> {
     };
     assert.equal((await post(`/sessions/${foreign.id}/realtime-voice/connect`, { transport: 'native' })).status, 404,
       'high-cost session bootstrap requires DriveSession ownership');
+    assert.equal((await post(`/sessions/${owned.id}/realtime-voice/connect`, {
+      transport: 'native', benchmarkProvider: 'gemini',
+    })).status, 403, 'provider override is fail-closed unless the explicit non-production benchmark gate is enabled');
     const connected = await post(`/sessions/${owned.id}/realtime-voice/connect`, { transport: 'native' });
     assert.equal(connected.status, 200);
     assert.equal(connected.body.providerId, 'deterministic');

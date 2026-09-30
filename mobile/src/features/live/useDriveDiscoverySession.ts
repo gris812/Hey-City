@@ -40,6 +40,11 @@ import {
   submitRealtimeVoiceTurn,
 } from '../../api/realtimeVoice';
 import type { RealtimeVoiceClientSession, RealtimeVoiceClientState } from './realtimeVoice';
+import type { NativeBenchmarkProvider } from './realtimeVoiceTransportFactory';
+import type {
+  M4BenchmarkScenario,
+  M4NativeBenchmarkRecorder,
+} from './realtimeVoiceBenchmark';
 
 export type DriveMotion = { speedKmh: number; heading: number | null };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
@@ -77,16 +82,22 @@ export function useDriveDiscoverySession(input: {
   const [conversationMapActions, setConversationMapActions] = useState<MapAction[]>([]);
   const [navigationHandoff, setNavigationHandoff] = useState<NavigationAction | null>(null);
   const [realtimeVoiceState, setRealtimeVoiceState] = useState<RealtimeVoiceClientState>('closed');
+  const [realtimeBenchmarkProvider, setRealtimeBenchmarkProvider] = useState<NativeBenchmarkProvider | null>(null);
+  const [realtimeBenchmarkScenario, setRealtimeBenchmarkScenario] = useState<M4BenchmarkScenario>('B1');
+  const [realtimeBenchmarkExportStatus, setRealtimeBenchmarkExportStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
   const storySoundRef = useRef<Audio.Sound | null>(null);
   const conversationSoundRef = useRef<Audio.Sound | null>(null);
+  const benchmarkNoiseSoundRef = useRef<Audio.Sound | null>(null);
   const conversationPlaybackRef = useRef(new ConversationPlayback());
   const conversationTurnRevisionRef = useRef(0);
   const pendingResumeRef = useRef<ResumeDirective | null>(null);
   const realtimeVoiceRef = useRef<RealtimeVoiceClientSession | null>(null);
+  const realtimeBenchmarkRecorderRef = useRef<M4NativeBenchmarkRecorder | null>(null);
+  const realtimeBenchmarkRepetitionRef = useRef<Record<string, number>>({});
   const guestId = identity.status === 'guest' ? identity.guestId : undefined;
 
   const startSession = useCallback(async () => {
@@ -268,6 +279,8 @@ export function useDriveDiscoverySession(input: {
     clearDrivePingInterval(pingIntervalRef);
     void realtimeVoiceRef.current?.dispose().catch(() => {});
     realtimeVoiceRef.current = null;
+    void benchmarkNoiseSoundRef.current?.unloadAsync().catch(() => {});
+    benchmarkNoiseSoundRef.current = null;
     void clearConversationPlayback();
   }, [clearConversationPlayback]);
 
@@ -409,15 +422,42 @@ export function useDriveDiscoverySession(input: {
       try {
         // react-native-webrtc is intentionally loaded only on explicit activation.
         // Expo Go lacks this module; the caught error points users to a dev/native build.
-        const [{ RealtimeVoiceClientSession }, { NativeWebRtcVoiceTransport }, { OpenAIRealtimeCodec }] = await Promise.all([
+        if (config.m4NativeBenchmarkEnabled && !realtimeBenchmarkProvider) {
+          setSessionError('Select OpenAI or Gemini in the M4 benchmark control before Talk.');
+          return false;
+        }
+        const [{ RealtimeVoiceClientSession }, { createNativeRealtimeVoiceTransport }] = await Promise.all([
           import('./realtimeVoice'),
-          import('./nativeWebRtcVoiceTransport'),
-          import('./openAIRealtimeCodec'),
+          import('./realtimeVoiceTransportFactory'),
         ]);
-        const transport = new NativeWebRtcVoiceTransport(new OpenAIRealtimeCodec());
+        const benchmarkProvider = config.m4NativeBenchmarkEnabled
+          ? realtimeBenchmarkProvider ?? undefined
+          : undefined;
+        const transport = createNativeRealtimeVoiceTransport(benchmarkProvider);
+        if (benchmarkProvider) {
+          const [benchmark, nativeBenchmark] = await Promise.all([
+            import('./realtimeVoiceBenchmark'),
+            import('./realtimeVoiceBenchmarkNative'),
+          ]);
+          realtimeBenchmarkRecorderRef.current ??= new benchmark.M4NativeBenchmarkRecorder(
+            await nativeBenchmark.createNativeBenchmarkEnvironment(),
+          );
+          const repetitionKey = `${benchmarkProvider}:${realtimeBenchmarkScenario}:${guideId}:${guideLanguage}`;
+          const repetition = (realtimeBenchmarkRepetitionRef.current[repetitionKey] ?? 0) + 1;
+          realtimeBenchmarkRepetitionRef.current[repetitionKey] = repetition;
+          realtimeBenchmarkRecorderRef.current.beginTrial({
+            scenario: realtimeBenchmarkScenario,
+            repetition,
+            provider: benchmarkProvider,
+            guide: guideId,
+            language: guideLanguage,
+          });
+          setRealtimeBenchmarkExportStatus(`${benchmarkProvider} ${realtimeBenchmarkScenario} run ${repetition} recording`);
+        }
         realtimeVoiceRef.current = new RealtimeVoiceClientSession({
           sessionId,
           transport,
+          ...(benchmarkProvider ? { benchmarkProvider } : {}),
           interruptInitialStory: beginConversation,
           connect: request => connectRealtimeVoice(sessionId, request),
           submitTurn: realtimeTurn => submitRealtimeVoiceTurn(sessionId, realtimeTurn),
@@ -447,6 +487,9 @@ export function useDriveDiscoverySession(input: {
           },
           onStateChange: setRealtimeVoiceState,
           onClosed: resumeConversation,
+          ...(benchmarkProvider ? {
+            onBenchmarkEvent: event => realtimeBenchmarkRecorderRef.current?.record(event),
+          } : {}),
           inactivityTimeoutMs: 45_000,
         });
       } catch {
@@ -455,14 +498,66 @@ export function useDriveDiscoverySession(input: {
         return false;
       }
     }
-    return realtimeVoiceRef.current.activate();
-  }, [applyResumeDirective, beginConversation, identity.status, resumeConversation, sessionId]);
+    const activated = await realtimeVoiceRef.current.activate();
+    if (!activated && config.m4NativeBenchmarkEnabled) {
+      realtimeBenchmarkRecorderRef.current?.finishTrial({ notes: 'activation_failed_fail_closed' });
+      setRealtimeBenchmarkExportStatus('Activation failed; closed attempt recorded');
+    }
+    return activated;
+  }, [applyResumeDirective, beginConversation, guideId, guideLanguage, identity.status, realtimeBenchmarkProvider, realtimeBenchmarkScenario, resumeConversation, sessionId]);
 
   const closeRealtimeVoiceSession = useCallback(async () => {
     const voice = realtimeVoiceRef.current;
+    if (voice) await voice.close().catch(() => {});
+    setRealtimeVoiceState('closed');
+    if (config.m4NativeBenchmarkEnabled) {
+      const trial = realtimeBenchmarkRecorderRef.current?.finishTrial();
+      if (trial) setRealtimeBenchmarkExportStatus(`${trial.provider} ${trial.scenario} run ${trial.repetition} saved in memory`);
+    }
+  }, []);
+
+  const selectRealtimeBenchmarkProvider = useCallback(async (provider: NativeBenchmarkProvider) => {
+    const voice = realtimeVoiceRef.current;
     realtimeVoiceRef.current = null;
     if (voice) await voice.dispose().catch(() => {});
+    const benchmarkNoise = benchmarkNoiseSoundRef.current;
+    benchmarkNoiseSoundRef.current = null;
+    if (benchmarkNoise) await benchmarkNoise.unloadAsync().catch(() => {});
+    realtimeBenchmarkRecorderRef.current?.finishTrial({ notes: 'provider_changed' });
     setRealtimeVoiceState('closed');
+    setRealtimeBenchmarkProvider(provider);
+  }, []);
+
+  const exportRealtimeBenchmark = useCallback(async (): Promise<boolean> => {
+    const recorder = realtimeBenchmarkRecorderRef.current;
+    if (!recorder) {
+      setRealtimeBenchmarkExportStatus('No benchmark run to export');
+      return false;
+    }
+    recorder.finishTrial();
+    const nativeBenchmark = await import('./realtimeVoiceBenchmarkNative');
+    const saved = await nativeBenchmark.saveNativeBenchmarkArtifact(recorder.artifact);
+    const shared = await nativeBenchmark.shareNativeBenchmarkArtifact(saved.jsonUri);
+    setRealtimeBenchmarkExportStatus(shared ? 'Benchmark JSON exported' : `Saved: ${saved.jsonUri}`);
+    return true;
+  }, []);
+
+  const playRealtimeBenchmarkNoise = useCallback(async (): Promise<void> => {
+    const previous = benchmarkNoiseSoundRef.current;
+    benchmarkNoiseSoundRef.current = null;
+    if (previous) await previous.unloadAsync().catch(() => {});
+    const { sound } = await Audio.Sound.createAsync(
+      require('../../../assets/m4-road-noise-v1.wav'),
+      { shouldPlay: true, volume: 0.35 },
+      status => {
+        if (status.isLoaded && didFinish(status)) {
+          void sound.unloadAsync().catch(() => {});
+          if (benchmarkNoiseSoundRef.current === sound) benchmarkNoiseSoundRef.current = null;
+        }
+      },
+    );
+    benchmarkNoiseSoundRef.current = sound;
+    setRealtimeBenchmarkExportStatus('B4 controlled road-noise fixture playing at app volume 0.35');
   }, []);
 
   useEffect(() => {
@@ -553,6 +648,14 @@ export function useDriveDiscoverySession(input: {
     realtimeVoiceState,
     activateRealtimeVoice,
     closeRealtimeVoiceSession,
+    realtimeBenchmarkEnabled: config.m4NativeBenchmarkEnabled,
+    realtimeBenchmarkProvider,
+    selectRealtimeBenchmarkProvider,
+    realtimeBenchmarkScenario,
+    setRealtimeBenchmarkScenario,
+    realtimeBenchmarkExportStatus,
+    exportRealtimeBenchmark,
+    playRealtimeBenchmarkNoise,
   };
 }
 

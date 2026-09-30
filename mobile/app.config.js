@@ -8,6 +8,9 @@ module.exports = {
     version: '1.0.0',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
+    extra: {
+      buildGitSha: process.env.EAS_BUILD_GIT_COMMIT_HASH || process.env.EXPO_PUBLIC_GIT_SHA || 'local_unstamped_build',
+    },
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.sunshine.aiguide',
@@ -33,7 +36,9 @@ module.exports = {
       'expo-asset',
       'expo-location',
       'expo-secure-store',
-      '@config-plugins/react-native-webrtc'
+      '@config-plugins/react-native-webrtc',
+      '@siteed/audio-studio',
+      'react-native-audio-api'
     ]
   },
 };

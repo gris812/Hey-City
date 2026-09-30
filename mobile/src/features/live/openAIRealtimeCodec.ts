@@ -10,6 +10,8 @@ export class OpenAIRealtimeCodec implements NativeRealtimeEventCodec {
   private turnStartedAt?: string;
   private turnEndedAtMs?: number;
   private firstAudioLatencyMs?: number;
+  private firstAudioEmitted = false;
+  private outputTranscript = '';
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -27,12 +29,15 @@ export class OpenAIRealtimeCodec implements NativeRealtimeEventCodec {
       this.turnStartedAt = new Date().toISOString();
       return { type: 'speech_started' };
     }
+    if (type === 'input_audio_buffer.speech_stopped') return { type: 'speech_ended' };
     if (type === 'conversation.item.input_audio_transcription.completed') {
       const text = typeof event.transcript === 'string' ? event.transcript.trim() : '';
       if (!text) return null;
       this.activeVoiceTurnId = typeof event.item_id === 'string' ? event.item_id : `voice-${Date.now()}`;
       this.turnEndedAtMs = this.now();
       this.firstAudioLatencyMs = undefined;
+      this.firstAudioEmitted = false;
+      this.outputTranscript = '';
       return {
         type: 'user_turn',
         turn: {
@@ -50,7 +55,30 @@ export class OpenAIRealtimeCodec implements NativeRealtimeEventCodec {
     }
     if ((type === 'response.output_audio.delta' || type === 'response.audio.delta') && this.turnEndedAtMs !== undefined) {
       this.firstAudioLatencyMs ??= Math.max(0, this.now() - this.turnEndedAtMs);
+      if (!this.firstAudioEmitted && this.activeVoiceTurnId) {
+        this.firstAudioEmitted = true;
+        return {
+          type: 'response_audio_started', generation: this.generation,
+          voiceTurnId: this.activeVoiceTurnId,
+        };
+      }
       return null;
+    }
+    if ((type === 'response.output_audio_transcript.delta' || type === 'response.audio_transcript.delta') && this.activeVoiceTurnId) {
+      const delta = typeof event.delta === 'string' ? event.delta : '';
+      this.outputTranscript += delta;
+      return delta ? {
+        type: 'output_transcript', generation: this.generation,
+        voiceTurnId: this.activeVoiceTurnId, text: this.outputTranscript, isFinal: false,
+      } : null;
+    }
+    if ((type === 'response.output_audio_transcript.done' || type === 'response.audio_transcript.done') && this.activeVoiceTurnId) {
+      const transcript = typeof event.transcript === 'string' ? event.transcript : this.outputTranscript;
+      this.outputTranscript = transcript;
+      return {
+        type: 'output_transcript', generation: this.generation,
+        voiceTurnId: this.activeVoiceTurnId, text: transcript, isFinal: true,
+      };
     }
     if (type === 'response.done' && this.activeVoiceTurnId) {
       const voiceTurnId = this.activeVoiceTurnId;

@@ -14,6 +14,7 @@ import {
   RealtimeVoiceTurnSupersededError,
 } from '../services/realtimeVoiceSession';
 import { getRealtimeProviderRouter } from '../voice/realtimeProviderRouter';
+import { realtimeVoice } from '../config';
 
 function ownedSession(req: AuthRequest, res: Response): DriveSession | null {
   if (!req.user) {
@@ -50,8 +51,20 @@ export async function realtimeVoiceConnectHandler(req: AuthRequest, res: Respons
     res.status(400).json({ error: 'clientSdp is too large' });
     return;
   }
+  const benchmarkProvider = req.body?.benchmarkProvider;
+  if (benchmarkProvider !== undefined) {
+    if (!realtimeVoice.nativeBenchmarkProviderOverrideEnabled ||
+        (benchmarkProvider !== 'openai' && benchmarkProvider !== 'gemini')) {
+      res.status(403).json({ error: 'Native benchmark provider override is disabled' });
+      return;
+    }
+  }
   try {
-    const result = await voiceSession(session).connect({ transport, clientSdp });
+    const result = await voiceSession(session).connect({
+      transport,
+      clientSdp,
+      ...(benchmarkProvider ? { providerId: benchmarkProvider as 'openai' | 'gemini' } : {}),
+    });
     res.json(result);
   } catch {
     res.status(503).json({ error: 'Realtime voice is temporarily unavailable' });

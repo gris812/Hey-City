@@ -104,6 +104,7 @@ export class RealtimeVoiceSession {
   async connect(input: {
     transport: RealtimeSessionConfig['clientTransport'];
     clientSdp?: string;
+    providerId?: 'openai' | 'gemini';
   }): Promise<RealtimeVoiceConnectionResult> {
     if (this.connecting) return this.connecting;
     this.connecting = this.connectInternal(input).finally(() => { this.connecting = undefined; });
@@ -245,6 +246,7 @@ export class RealtimeVoiceSession {
   private async connectInternal(input: {
     transport: RealtimeSessionConfig['clientTransport'];
     clientSdp?: string;
+    providerId?: 'openai' | 'gemini';
   }): Promise<RealtimeVoiceConnectionResult> {
     const connectionGeneration = ++this.generation;
     if (this.providerSession && this.state !== 'closed') {
@@ -254,7 +256,7 @@ export class RealtimeVoiceSession {
     this.state = 'connecting';
     this.transport = input.transport;
     this.acquireConcurrencySlot();
-    const provider = this.dependencies.providerRouter.resolve();
+    const provider = this.dependencies.providerRouter.resolve(input.providerId);
     const startedAt = Date.now();
     let providerSession: RealtimeProviderSession | undefined;
     try {

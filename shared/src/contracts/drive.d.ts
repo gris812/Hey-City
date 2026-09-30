@@ -334,6 +334,8 @@ export interface RealtimeClientConnection {
 export interface RealtimeVoiceConnectRequest {
   transport: RealtimeTransportKind;
   clientSdp?: string;
+  /** Development-only field benchmark override; rejected unless explicitly enabled server-side. */
+  benchmarkProvider?: 'openai' | 'gemini';
 }
 
 export interface RealtimeVoiceConnectResult {

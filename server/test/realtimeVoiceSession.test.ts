@@ -86,6 +86,28 @@ function deferred<T>() {
 }
 
 async function run(): Promise<void> {
+  // Native benchmark provider selection is resolved at the existing router boundary.
+  {
+    const { session } = fixture();
+    const openaiFixture = new DeterministicRealtimeConversationProvider();
+    const geminiFixture = new DeterministicRealtimeConversationProvider();
+    let openaiCreates = 0;
+    let geminiCreates = 0;
+    const { instance } = service(() => 'ask_about_current_story');
+    const voice = new RealtimeVoiceSession(session, {
+      providerRouter: new RealtimeProviderRouter([
+        { id: 'openai', createSession: async config => { openaiCreates += 1; return openaiFixture.createSession(config); } },
+        { id: 'gemini', createSession: async config => { geminiCreates += 1; return geminiFixture.createSession(config); } },
+      ], 'openai'),
+      bridge: new RealtimeConversationBridge(instance, fallbackSpeech),
+    });
+    await voice.connect({ transport: 'native', providerId: 'gemini' });
+    assert.equal(geminiCreates, 1);
+    assert.equal(openaiCreates, 0);
+    await voice.close('client_closed');
+    stopSession(session.id);
+  }
+
   // T1/T2: DriveSession creation is free; concurrent activation owns one provider session.
   {
     const { session } = fixture();
