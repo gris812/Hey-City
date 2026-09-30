@@ -20,6 +20,7 @@
     "test:web": "node web/test.mjs",
     "replay:drive": "npm run replay:drive --workspace server",
     "replay:m4": "npm run replay:m4 --workspace server",
+    "benchmark:m4:native:summary": "node evaluation/m4-live/summarize-benchmark.mjs",
     "doctor": "npm run doctor --workspace mobile",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:mobile\"",
     "dev:server": "cd server && npm run dev",
