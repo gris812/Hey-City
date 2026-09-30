@@ -417,8 +417,8 @@ async function interruptStoryForConversation() {
   // Local pause happens before any request. currentTime remains the resume position.
   storyAudio.pause();
   const listenedSeconds = Math.max(0, Math.floor(Number(storyAudio.currentTime) || 0));
-  await api(`/sessions/${sessionId}/conversation/interrupt`, { method: 'POST', body: JSON.stringify({ momentId, listenedSeconds }) });
-  return state.sessionId === sessionId && state.conversationRevision === revision;
+  const interrupted = await api(`/sessions/${sessionId}/conversation/interrupt`, { method: 'POST', body: JSON.stringify({ momentId, listenedSeconds }) });
+  return interrupted?.ok === true && state.sessionId === sessionId && state.conversationRevision === revision;
 }
 
 async function sendConversationTurn(text, selectedResultId) {

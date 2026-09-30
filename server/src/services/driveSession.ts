@@ -32,6 +32,7 @@ import {
   evaluateAheadDiscovery,
 } from './aheadDiscovery';
 import { ConversationRuntime } from './conversationRuntime';
+import type { RealtimeVoiceSession } from './realtimeVoiceSession';
 
 export interface DriveSessionParams {
   mode?: DiscoveryMode;
@@ -61,6 +62,8 @@ export interface DriveSession {
   journeyState: JourneyState;
   /** Exactly one M3 runtime is owned by this DriveSession. */
   conversationRuntime: ConversationRuntime;
+  /** Lazily created on explicit voice activation; normal narration has zero realtime cost. */
+  realtimeVoiceSession?: RealtimeVoiceSession;
   lastExperienceDecision?: string;
   lastExperienceAtMs?: number;
   lastDecisionCandidates?: ExperienceDecisionEvent['candidates'];
@@ -143,6 +146,9 @@ export function getSession(sessionId: string): DriveSession | null {
 export function stopSession(sessionId: string): boolean {
   const session = sessions.get(sessionId);
   session?.storyRequest?.abort();
+  // Invalidate synchronously inside close before releasing DriveSession. The
+  // provider cleanup remains best-effort so this legacy synchronous API stays compatible.
+  if (session?.realtimeVoiceSession) void session.realtimeVoiceSession.close('drive_session_ended');
   session?.conversationRuntime.clear();
   session?.journeyState.markSuperseded();
   clearAheadDiscoverySession(sessionId);

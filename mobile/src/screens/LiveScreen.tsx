@@ -122,6 +122,8 @@ const interestOptions = [
   'Context',
 ];
 
+const M4_BENCHMARK_SCENARIOS = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'] as const;
+
 type SharePreviewState = 'ready' | 'invalid_link' | 'unsupported_location';
 
 export function LiveScreen() {
@@ -183,6 +185,17 @@ export function LiveScreen() {
     pausePlayback,
     resumePlayback,
     forceAheadRefresh,
+    realtimeVoiceState,
+    activateRealtimeVoice,
+    closeRealtimeVoiceSession,
+    realtimeBenchmarkEnabled,
+    realtimeBenchmarkProvider,
+    selectRealtimeBenchmarkProvider,
+    realtimeBenchmarkScenario,
+    setRealtimeBenchmarkScenario,
+    realtimeBenchmarkExportStatus,
+    exportRealtimeBenchmark,
+    playRealtimeBenchmarkNoise,
   } = drive;
   const {
     tourState,
@@ -655,9 +668,64 @@ export function LiveScreen() {
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
           onSelectPlace={(place) => setSelectedExplorePlaceId(place.id)}
+          voiceState={realtimeVoiceState}
+          voiceLabel={preferences.appLanguage === 'ru'
+            ? (realtimeVoiceState === 'closed' ? 'Говорить' : 'Закончить')
+            : (realtimeVoiceState === 'closed' ? 'Talk' : 'End voice')}
+          onToggleVoice={backendWalkingStoryVisible ? () => {
+            if (realtimeVoiceState === 'closed' || realtimeVoiceState === 'error' || realtimeVoiceState === 'permission_error') {
+              void activateRealtimeVoice();
+            } else {
+              void closeRealtimeVoiceSession();
+            }
+          } : undefined}
           statusMessage={sessionError ? t('walking.serviceUnavailable') : undefined}
           onRetry={sessionError ? () => void startSession() : undefined}
         >
+          {realtimeBenchmarkEnabled && (
+            <View style={styles.aheadDebugPanel}>
+              <Text style={styles.aheadDebugTitle}>M4 live/native benchmark</Text>
+              <Text style={styles.aheadDebugMuted}>Development build only · controlled test speech · no raw audio retained</Text>
+              <View style={styles.row}>
+                {(['openai', 'gemini'] as const).map(provider => (
+                  <TouchableOpacity
+                    key={provider}
+                    style={[styles.smallDebugButton, realtimeBenchmarkProvider === provider && styles.benchmarkButtonSelected]}
+                    onPress={() => void selectRealtimeBenchmarkProvider(provider)}
+                  >
+                    <Text style={styles.smallDebugButtonText}>{provider}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.row}>
+                {M4_BENCHMARK_SCENARIOS.map(scenario => (
+                  <TouchableOpacity
+                    key={scenario}
+                    style={[styles.smallDebugButton, realtimeBenchmarkScenario === scenario && styles.benchmarkButtonSelected]}
+                    onPress={() => setRealtimeBenchmarkScenario(scenario)}
+                  >
+                    <Text style={styles.smallDebugButtonText}>{scenario}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.aheadDebugText}>
+                  {realtimeBenchmarkProvider ?? 'Select provider'} · {realtimeBenchmarkScenario}
+                </Text>
+                <TouchableOpacity style={styles.smallDebugButton} onPress={() => void exportRealtimeBenchmark()}>
+                  <Text style={styles.smallDebugButtonText}>Export JSON</Text>
+                </TouchableOpacity>
+              </View>
+              {realtimeBenchmarkScenario === 'B4' && (
+                <TouchableOpacity style={styles.smallDebugButton} onPress={() => void playRealtimeBenchmarkNoise()}>
+                  <Text style={styles.smallDebugButtonText}>Play fixed B4 road noise · 0.35</Text>
+                </TouchableOpacity>
+              )}
+              {realtimeBenchmarkExportStatus && (
+                <Text style={styles.aheadDebugText}>{realtimeBenchmarkExportStatus}</Text>
+              )}
+            </View>
+          )}
           {backendWalkingStoryVisible && presentation.activeTarget ? (
             <NarrativeOverlay
               title={presentation.activeTarget.name}
@@ -1642,6 +1710,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryOrange,
   },
   smallDebugButtonDisabled: { opacity: 0.56 },
+  benchmarkButtonSelected: { borderWidth: 3, borderColor: colors.foreground },
   smallDebugButtonText: { ...typography.caption, color: colors.surface, fontWeight: '700' },
   previewButton: {
     minHeight: 44,
