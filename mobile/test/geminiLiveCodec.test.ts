@@ -36,13 +36,14 @@ function run(): void {
     serverContent: { outputTranscription: { text: 'Grounded answer.' } },
   }));
   assert.equal(transcript.some(item => item.type === 'client_event' && item.event.type === 'output_transcript'), true);
-  const completed = codec.decode(JSON.stringify({
+  const usageOnly = codec.decode(JSON.stringify({
     usageMetadata: {
       promptTokensDetails: [{ modality: 'AUDIO', tokenCount: 12 }],
       responseTokensDetails: [{ modality: 'AUDIO', tokenCount: 9 }],
     },
-    serverContent: { turnComplete: true },
   }));
+  assert.deepEqual(usageOnly, [], 'usage-only messages are retained without creating lifecycle events');
+  const completed = codec.decode(JSON.stringify({ serverContent: { turnComplete: true } }));
   const done = completed.find(item => item.type === 'client_event' && item.event.type === 'response_completed');
   assert.equal(done?.type === 'client_event' && done.event.type === 'response_completed'
     ? done.event.usage?.inputAudioTokens : undefined, 12);

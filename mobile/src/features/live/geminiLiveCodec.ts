@@ -20,6 +20,7 @@ export class GeminiLiveCodec {
   private responseStarted = false;
   private inputAudioBytes = 0;
   private outputAudioBytes = 0;
+  private latestUsageMetadata?: JsonRecord;
 
   configure(input: { providerId: string; generation: number }): void {
     this.providerId = input.providerId;
@@ -68,6 +69,8 @@ export class GeminiLiveCodec {
       return [{ type: 'client_event', event: { type: 'error', code: 'gemini_invalid_json' } }];
     }
     const items: GeminiLiveDecodedItem[] = [];
+    const usageMetadata = record(message.usageMetadata);
+    if (usageMetadata) this.latestUsageMetadata = usageMetadata;
     if (message.setupComplete) items.push({ type: 'setup_complete' });
     const content = record(message.serverContent);
     if (content) {
@@ -138,6 +141,7 @@ export class GeminiLiveCodec {
           this.outputTranscript = '';
           this.inputAudioBytes = 0;
           this.outputAudioBytes = 0;
+          this.latestUsageMetadata = undefined;
         } else if (this.inputTranscript.trim()) {
           const voiceTurnId = `gemini_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           items.push({
@@ -163,7 +167,7 @@ export class GeminiLiveCodec {
   }
 
   private usage(message: JsonRecord, voiceTurnId: string): Omit<RealtimeVoiceUsageReport, 'generation'> {
-    const metadata = record(message.usageMetadata);
+    const metadata = record(message.usageMetadata) ?? this.latestUsageMetadata;
     const inputDetails = tokenDetails(metadata?.promptTokensDetails);
     const outputDetails = tokenDetails(metadata?.responseTokensDetails);
     return {
