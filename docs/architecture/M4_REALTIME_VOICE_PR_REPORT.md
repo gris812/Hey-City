@@ -70,18 +70,41 @@ retry, interruption/completion cardinality and stale callbacks.
 
 ## Client path
 
-Mobile has a provider-neutral lifecycle and an OpenAI WebRTC adapter with a
-minimal explicit Talk/End voice surface. `react-native-webrtc` requires an Expo
-development/native build; Expo Go is intentionally not treated as a supported
-M4 transport. Native build instructions and microphone permissions are in
-`mobile/REALTIME_VOICE.md`, `mobile/eas.json` and `mobile/app.config.js`.
-The adapter reports first-audio latency from the first provider audio delta,
-alongside bounded provider usage counters.
+Mobile has one provider-neutral lifecycle and two native wire adapters:
 
-Gemini's constrained WebSocket bootstrap and command codec are implemented on
-the server/provider boundary. Its native bidirectional PCM transport remains a
-live-benchmark integration-complexity item; it is not replaced by a fake Expo
-Go workaround.
+- OpenAI uses WebRTC media plus its data-channel codec;
+- Gemini uses the same `RealtimeVoiceTransport` boundary with constrained
+  ephemeral WebSocket auth, 16 kHz PCM16 microphone capture, local VAD, 24 kHz
+  PCM playout and a Gemini-only codec.
+
+Provider choice exists only in the development B1–B6 control and is carried
+through an explicitly gated non-production connect field. It is rejected by
+default and in production. No OpenAI/Gemini conditional was added to M3,
+Discovery or product UI lifecycle code. Expo Go remains unsupported; native
+build instructions and microphone permissions are in `mobile/REALTIME_VOICE.md`,
+`mobile/eas.json` and `mobile/app.config.js`.
+
+Both adapters report normalized speech/final-turn/M3/first-audio/completion,
+barge-in, close and reconnect timestamps. Approved M3 text and provider output
+transcription are written only to the controlled benchmark artifact, never to
+normal telemetry.
+
+## Native benchmark driver and artifacts
+
+The development build contains one control for selecting provider, B1–B6 and
+repetitions without rebuilding or editing data. Every trial records
+`live_native`, provider/model, device/OS, build SHA, network, guide, language,
+timestamp, usage and the canonical latency events. The artifact schema,
+generated summary template, repeated-run cost summarizer and field runbook are
+under `evaluation/m4-live/`.
+
+B4 uses the deterministic synthetic fixture `m4-road-noise-v1.wav` (SHA-256
+`6d7e534c3976e9a2b9cec8977bcd088e361e19ce580cebd78fe2f8a36a32ba2a`) at
+fixed app volume 0.35. It contains no recorded/copyrighted speech. B5 has a
+separate 1–5 RU/EN Dana/Artur form; subjective scores are not mixed with
+latency. The summarizer calculates cost/run, cost/active voice minute and a
+30-minute projection from measured usage and measured duty cycle. Missing
+usage or a missing dated pricing snapshot is reported as unavailable, not zero.
 
 ## Deterministic acceptance
 
@@ -97,10 +120,12 @@ Go workaround.
 | R1–R5 | PASS | deterministic/provider-mocked replay |
 | R6 deterministic comparison | PASS | identical B1–B6 definitions, 12 observations, explicitly labeled mocked |
 
-`expo-doctor` passes 17/18 checks. The remaining diagnostic is recorded, not
-suppressed: React Native Directory currently marks `react-native-webrtc` as
-untested on the New Architecture. M4 therefore requires the documented
-development/native build validation before release.
+`expo-doctor` passes 18/18 checks. The known React Native Directory metadata
+warning for the already-established `react-native-webrtc` dependency is
+explicitly acknowledged in Expo Doctor config; actual device validation is
+still required. A clean iOS native prebuild completed with the WebRTC,
+AudioStudio and Audio API config plugins. This Linux workspace cannot perform
+Apple signing or install to a physical iPhone.
 
 Commands:
 
@@ -118,29 +143,32 @@ npm run replay:m4
 
 ## Live B1–B6 benchmark gate
 
-Status: **BLOCKED — not executed in this workspace**.
+Status: **BLOCKED — native field data not executed yet**.
 
-The same B1–B6 harness is present and rejects a comparison unless both
-`openai_realtime` and `gemini_live` drivers return every script under one
-recorded environment. The current workspace has no `OPENAI_API_KEY`, no
-`GEMINI_API_KEY` and no native/field audio driver configuration. Therefore no
-live latency, persona, road-noise or cost numbers are claimed and no default
-provider is selected.
+Credentials are available through the existing secure runtime boundary and
+are no longer the blocker. No credential value was read into source, logs,
+artifacts or this report. The remaining external gate is Expo/Apple account
+authorization, iPhone provisioning/install and the paired B1–B6 field run.
+Therefore no live latency, persona, road-noise or cost numbers are claimed and
+no default provider is selected.
 
-Run when the secure credentials and the fixed live audio environment are
-available:
+After exporting the iPhone JSON artifact, generate the common report with a
+dated non-secret pricing snapshot:
 
 ```sh
-OPENAI_API_KEY=... \
-GEMINI_API_KEY=... \
-M4_LIVE_BENCHMARK_DRIVER=/absolute/path/to/live-driver.js \
-npm run benchmark:m4:live --workspace server
+M4_BENCHMARK_PRICING_JSON='{"source":"dated provider billing snapshot","providers":{"openai":{...},"gemini":{...}}}' \
+npm run benchmark:m4:native:summary -- /path/to/m4-run.json
 ```
 
 Production examples deliberately use
 `REALTIME_VOICE_PROVIDER=select-after-benchmark`; production config rejects
 that placeholder. Release acceptance therefore remains **FAIL/BLOCKED** until
 the side-by-side live report is attached and a configured route is approved.
+
+Security follow-up after M4: split OpenAI/Gemini/VPS/GitHub credentials, move
+runtime secrets to GitHub Secrets/server secret storage, and rotate VPS/SSH
+credentials if they were stored in one shared plaintext file. This follow-up
+does not rotate or rewrite any secret in this PR.
 
 ## Intended behavior statement
 
