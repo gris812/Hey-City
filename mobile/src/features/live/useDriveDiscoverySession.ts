@@ -346,7 +346,7 @@ export function useDriveDiscoverySession(input: {
   }, [guestId, sessionId]);
 
   /** Public transport boundary for a future voice input layer; M3 adds no input UI. */
-  const beginConversation = useCallback(async (): Promise<boolean> => {
+  const beginConversation = useCallback(async (onLocalPause?: () => void): Promise<boolean> => {
     const currentSessionId = sessionId;
     const momentId = activeMomentIdRef.current;
     if (!currentSessionId || !momentId) return false;
@@ -354,6 +354,7 @@ export function useDriveDiscoverySession(input: {
     setLocalPlaybackState('paused');
     const suspended = await conversationPlaybackRef.current.pauseForConversation();
     if (!suspended || currentSessionId !== sessionId || revision !== conversationTurnRevisionRef.current) return false;
+    onLocalPause?.();
     await interruptConversation(currentSessionId, {
       momentId,
       listenedSeconds: Math.floor(suspended.positionMillis / 1000),
@@ -496,6 +497,22 @@ export function useDriveDiscoverySession(input: {
         setRealtimeVoiceState('error');
         setSessionError('Realtime voice requires a development/native build; Expo Go is not supported.');
         return false;
+      }
+    }
+    if (config.m4NativeBenchmarkEnabled && realtimeBenchmarkProvider) {
+      const recorder = realtimeBenchmarkRecorderRef.current;
+      if (recorder && !recorder.hasActiveTrial()) {
+        const repetitionKey = `${realtimeBenchmarkProvider}:${realtimeBenchmarkScenario}:${guideId}:${guideLanguage}`;
+        const repetition = (realtimeBenchmarkRepetitionRef.current[repetitionKey] ?? 0) + 1;
+        realtimeBenchmarkRepetitionRef.current[repetitionKey] = repetition;
+        recorder.beginTrial({
+          scenario: realtimeBenchmarkScenario,
+          repetition,
+          provider: realtimeBenchmarkProvider,
+          guide: guideId,
+          language: guideLanguage,
+        });
+        setRealtimeBenchmarkExportStatus(`${realtimeBenchmarkProvider} ${realtimeBenchmarkScenario} run ${repetition} recording`);
       }
     }
     const activated = await realtimeVoiceRef.current.activate();

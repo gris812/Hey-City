@@ -76,7 +76,7 @@ export interface RealtimeVoiceClientDependencies {
   transport: RealtimeVoiceTransport;
   benchmarkProvider?: 'openai' | 'gemini';
   /** Pauses locally, then performs the single M3 interrupt registration. */
-  interruptInitialStory(): Promise<boolean>;
+  interruptInitialStory(onLocalPause?: () => void): Promise<boolean>;
   connect(input: { transport: RealtimeTransportKind; clientSdp?: string; benchmarkProvider?: 'openai' | 'gemini' }): Promise<RealtimeVoiceConnectResult>;
   submitTurn(turn: RealtimeUserTurn): Promise<RealtimeVoiceTurnResult>;
   bargeIn(): Promise<{ generation: number; state: RealtimeVoiceState; commands?: RealtimeClientCommand[] }>;
@@ -135,16 +135,15 @@ export class RealtimeVoiceClientSession {
     this.setState('connecting');
     try {
       if (!this.storyInterrupted) {
-        const interrupted = await this.deps.interruptInitialStory();
+        const interrupted = await this.deps.interruptInitialStory(() => this.observe('local_story_paused'));
         if (!interrupted) {
           throw new Error('story_interruption_failed');
         }
         this.storyInterrupted = true;
-        this.observe('local_story_paused');
       }
 
-      const clientSdp = await this.deps.transport.createClientOffer?.();
       this.observe('realtime_connect_start');
+      const clientSdp = await this.deps.transport.createClientOffer?.();
       const bootstrap = await this.deps.connect({
         transport: this.deps.transport.kind,
         ...(clientSdp ? { clientSdp } : {}),
@@ -202,7 +201,7 @@ export class RealtimeVoiceClientSession {
       this.observe('speech_start');
       if (this.state === 'speaking' || this.state === 'processing') await this.interruptForBargeIn();
       else if (this.state === 'idle_window' && !this.storyInterrupted) {
-        const interrupted = await this.deps.interruptInitialStory().catch(() => false);
+        const interrupted = await this.deps.interruptInitialStory(() => this.observe('local_story_paused')).catch(() => false);
         if (!interrupted) {
           this.setState('error');
           return;
