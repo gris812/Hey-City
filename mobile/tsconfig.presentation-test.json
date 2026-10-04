@@ -29,6 +29,7 @@
     "src/api/realtimeVoice.ts",
     "src/api/health.ts",
     "src/config.ts",
+    "src/features/guides/voiceSampleUrl.ts",
     "src/presentation/**/*.ts",
     "test/**/*.ts",
     "../shared/src/**/*.ts"
