@@ -46,11 +46,16 @@ export async function apiFetch<T>(
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const body = options.body !== undefined ? JSON.stringify(options.body) : undefined;
-  const res = await fetch(`${config.apiBase}${path}`, {
-    ...options,
-    headers,
-    body,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.apiBase}${path}`, {
+      ...options,
+      headers,
+      body,
+    });
+  } catch {
+    throw new Error('Hey City API is unreachable. Check your connection and development API configuration.');
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
