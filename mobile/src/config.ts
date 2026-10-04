@@ -1,5 +1,6 @@
 const RAW_API_BASE = process.env.EXPO_PUBLIC_API_URL?.trim();
 const API_BASE = (RAW_API_BASE || 'http://localhost:4000').replace(/\/$/, '');
+const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 
 export const config = {
   apiBase: API_BASE,
@@ -7,7 +8,7 @@ export const config = {
   pingIntervalSec: 10,
   /** Development-build field control only; never exposed as a production preference. */
   m4NativeBenchmarkEnabled:
-    __DEV__ && process.env.EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED === 'true',
+    IS_DEV && process.env.EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED === 'true',
 };
 
 export function apiConfigurationProblem(): string | null {
