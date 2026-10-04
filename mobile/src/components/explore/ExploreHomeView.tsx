@@ -75,6 +75,9 @@ export function ExploreHomeView({
   const visibleNearbyPlaces = nearbyPlaces
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
+  const controlTop = Math.max(0, topInset) + spacing.md;
+  const searchTop = controlTop + 60;
+  const statusTop = searchTop + 66;
 
   return (
     <View style={[styles.stage, { height }]}>
@@ -102,7 +105,7 @@ export function ExploreHomeView({
         ))}
       </MapView>
 
-      <View style={[styles.topBar, { top: topInset + spacing.sm }]}>
+      <View style={[styles.topBar, { top: controlTop }]}>
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={t('walking.openMenu')}
@@ -136,7 +139,7 @@ export function ExploreHomeView({
       <TouchableOpacity
         accessibilityRole="button"
         accessibilityLabel={t('walking.searchPlaceholder')}
-        style={[styles.searchBar, { top: topInset + 70 }]}
+        style={[styles.searchBar, { top: searchTop }]}
         onPress={onChooseGuidedWalk}
         activeOpacity={0.92}
       >
@@ -153,7 +156,7 @@ export function ExploreHomeView({
       </TouchableOpacity>
 
       {statusMessage && (
-        <View style={[styles.statusBanner, { top: topInset + 136 }]}>
+        <View style={[styles.statusBanner, { top: statusTop }]}>
           <View style={styles.statusWarningIcon}>
             <Text style={styles.statusWarningGlyph}>!</Text>
           </View>
