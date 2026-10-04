@@ -79,6 +79,7 @@ export function useDriveDiscoverySession(input: {
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
   const [lastMotion, setLastMotion] = useState<DriveMotion | null>(null);
+  const [deviceLocation, setDeviceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [aheadRefreshLoading, setAheadRefreshLoading] = useState(false);
   const [aheadRefreshStatus, setAheadRefreshStatus] = useState<string | null>(null);
   const [conversationResult, setConversationResult] = useState<ConversationTurnResult | null>(null);
@@ -126,10 +127,14 @@ export function useDriveDiscoverySession(input: {
       setLocationSettingsRequired(false);
 
       try {
-        await Promise.race([
+        const initialLocation = await Promise.race([
           Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('location_timeout')), 10_000)),
         ]);
+        setDeviceLocation({
+          latitude: initialLocation.coords.latitude,
+          longitude: initialLocation.coords.longitude,
+        });
       } catch {
         setSessionError('Hey City could not get your current location. Check Location Services and try again.');
         return;
@@ -279,6 +284,7 @@ export function useDriveDiscoverySession(input: {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
+        setDeviceLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
         const rawHeading = loc.coords.heading;
         const heading =
           typeof rawHeading === 'number' && rawHeading >= 0
@@ -705,6 +711,7 @@ export function useDriveDiscoverySession(input: {
     setMuted,
     lastResult,
     lastMotion,
+    deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,
     presentation,
