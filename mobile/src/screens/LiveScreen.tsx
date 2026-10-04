@@ -81,10 +81,8 @@ const guideImages = {
   arthur: require('../../assets/Guides/Artur.png'),
 } as const;
 
-const guideSelectionImages = {
-  dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArturSelection.png'),
-} as const;
+// Use the same canonical portrait assets across avatar, selection and profile surfaces.
+const guideSelectionImages = guideImages;
 
 const targetImageSources = {
   'trinity-church-demo': require('../../assets/Places/trinity-church-demo.png'),
@@ -188,6 +186,9 @@ export function LiveScreen() {
     realtimeVoiceState,
     activateRealtimeVoice,
     closeRealtimeVoiceSession,
+    locationSettingsRequired,
+    openLocationSettings,
+    apiCompatibilityStatus,
     realtimeBenchmarkEnabled,
     realtimeBenchmarkProvider,
     selectRealtimeBenchmarkProvider,
@@ -679,13 +680,14 @@ export function LiveScreen() {
               void closeRealtimeVoiceSession();
             }
           } : undefined}
-          statusMessage={sessionError ? t('walking.serviceUnavailable') : undefined}
-          onRetry={sessionError ? () => void startSession() : undefined}
+          statusMessage={sessionError ?? undefined}
+          onRetry={sessionError ? (locationSettingsRequired ? () => void openLocationSettings() : () => void startSession()) : undefined}
         >
           {realtimeBenchmarkEnabled && (
             <View style={styles.aheadDebugPanel}>
               <Text style={styles.aheadDebugTitle}>M4 live/native benchmark</Text>
               <Text style={styles.aheadDebugMuted}>Development build only · controlled test speech · no raw audio retained</Text>
+              <Text style={styles.aheadDebugMuted}>Backend compatibility: {apiCompatibilityStatus}</Text>
               <View style={styles.row}>
                 {(['openai', 'gemini'] as const).map(provider => (
                   <TouchableOpacity
