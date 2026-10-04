@@ -1,6 +1,6 @@
 import { selectStory, selectedStoryAvailability, StorySelectionError } from '../services/selectedStory';
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAuthOrGuest } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { getGuide } from '../services/guides';
 import { getSession } from '../services/driveSession';
@@ -85,9 +85,9 @@ discoveryRouter.use(requireAuth);
 discoveryRouter.post('/active-poi', getPoiCandidates);
 
 export const storiesRouter = Router();
+storiesRouter.post('/voice-sample', requireAuthOrGuest, generateVoiceSample);
 storiesRouter.use(requireAuth);
 storiesRouter.post('/generate', generateNarration);
-storiesRouter.post('/voice-sample', generateVoiceSample);
 
 export const poisRouter = Router();
 poisRouter.use(requireAuth);
