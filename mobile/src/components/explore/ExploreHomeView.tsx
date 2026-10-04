@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -77,12 +77,18 @@ export function ExploreHomeView({
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
   const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
+  const mapRef = useRef<MapView | null>(null);
+
+  useEffect(() => {
+    mapRef.current?.animateToRegion(region, 450);
+  }, [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
 
   return (
     <View style={[styles.stage, { height }]}>
       <MapView
+        ref={mapRef}
         style={StyleSheet.absoluteFillObject}
-        region={region}
+        initialRegion={region}
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass={false}
