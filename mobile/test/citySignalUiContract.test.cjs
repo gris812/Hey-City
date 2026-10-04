@@ -14,6 +14,9 @@ const tourPreferences = readFileSync(join(root, 'src/components/explore/TourPref
 const history = readFileSync(join(root, 'src/screens/HistoryScreen.tsx'), 'utf8');
 const settings = readFileSync(join(root, 'src/screens/SettingsScreen.tsx'), 'utf8');
 const guideProfile = readFileSync(join(root, 'src/components/explore/GuideProfileModal.tsx'), 'utf8');
+const voicePreviewHook = readFileSync(join(root, 'src/features/guides/useGuideVoicePreview.ts'), 'utf8');
+const voiceSampleApi = readFileSync(join(root, 'src/api/voiceSample.ts'), 'utf8');
+const guideAssets = readFileSync(join(root, 'src/presentation/guideAssets.ts'), 'utf8');
 const routing = readFileSync(join(root, 'src/context/appIdentity.ts'), 'utf8');
 const liveSurface = [live, exploreHome, guidedNavigation, transcript, tourPreferences].join('\n');
 
@@ -75,7 +78,15 @@ assert.match(guideProfile, /PanResponder\.create/, 'Full guide profile supports 
 assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a real voice sample control');
 assert.match(guideProfile, /voicePreviewState === 'loading'/, 'Guide voice preview exposes loading state');
 assert.match(guideProfile, /voicePreviewState === 'error'/, 'Guide voice preview exposes error/retry state');
-assert.match(live, /const guideSelectionImages = guideImages/, 'Guide profile and selection surfaces share the canonical portrait asset pair');
+assert.match(voiceSampleApi, /\/stories\/voice-sample/, 'Voice preview calls the canonical sample endpoint');
+assert.match(voicePreviewHook, /method: 'HEAD'/, 'Voice preview verifies media reachability before native playback');
+assert.match(voicePreviewHook, /Audio\.setAudioModeAsync/, 'Voice preview configures the native audio session');
+assert.match(voicePreviewHook, /playsInSilentModeIOS: true/, 'Voice preview plays through the iOS silent switch');
+assert.match(voicePreviewHook, /Audio\.Sound\.createAsync/, 'Voice preview uses native audio playback');
+assert.match(live, /const guideSelectionImages = canonicalGuideImages/, 'Guide profile and selection surfaces share the canonical portrait asset pair');
+assert.match(guideAssets, /Dana\.png/, 'Canonical guide asset map uses the accepted Dana portrait asset');
+assert.match(guideAssets, /Artur\.png/, 'Canonical guide asset map uses the accepted Arthur portrait asset');
+assert.doesNotMatch(guideAssets, /Selection\.png/, 'Canonical guide asset map cannot mix legacy selection-art framing');
 assert.match(guideProfile, /borderRadius: radius\.sm/, 'Full guide profile avoids pill-shaped primary controls');
 assert.doesNotMatch(guideProfile, /backgroundColor: 'rgba\(0,0,0/, 'Full guide profile does not cover the portrait with a dark overlay');
 
