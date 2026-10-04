@@ -61,6 +61,13 @@ export async function apiFetch<T>(
     const err = await res.json().catch(() => ({ error: res.statusText }));
     const backendMessage = (err as { error?: string }).error;
 
+    // OTP verification uses HTTP 401 for an invalid/expired one-time code.
+    // That is not an existing app-session failure and must not be rewritten as
+    // "session expired" or clear a valid stored session.
+    if (path.startsWith('/auth/') && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429)) {
+      throw new Error(backendMessage || GENERIC_REQUEST_ERROR_MESSAGE);
+    }
+
     if (isAuthenticationFailure(res.status, backendMessage)) {
       await clearToken();
       await authInvalidationHandler?.();
