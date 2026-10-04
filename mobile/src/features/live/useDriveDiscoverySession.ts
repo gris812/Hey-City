@@ -735,6 +735,7 @@ export function useDriveDiscoverySession(input: {
     locationSettingsRequired,
     openLocationSettings,
     apiCompatibilityStatus,
+    apiBase: config.apiBase,
     realtimeBenchmarkEnabled: config.m4NativeBenchmarkEnabled,
     realtimeBenchmarkProvider,
     selectRealtimeBenchmarkProvider,
