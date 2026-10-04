@@ -1210,6 +1210,10 @@ export function LiveScreen() {
         backToGuidesLabel={t('guide.backToGuides')}
         voiceSampleLabel={t('guide.voiceSample')}
         voicePlaceholderLabel={t('guide.voicePlaceholder')}
+        voiceLoadingLabel={t('guide.voiceLoading')}
+        voicePlayingLabel={t('guide.voicePlaying')}
+        voiceErrorLabel={t('guide.voiceError')}
+        voiceRetryLabel={t('guide.voiceRetry')}
         swipeLabel={t('guide.swipeHint')}
         voicePreviewState={voicePreview.state}
         voicePreviewError={voicePreview.error}
