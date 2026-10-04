@@ -70,7 +70,10 @@ export function GuideProfileModal({
   const [sampleOpen, setSampleOpen] = useState(false);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      onStopVoiceSample();
+      return;
+    }
     setActiveGuideId(initialGuideId);
     setSampleOpen(false);
     onStopVoiceSample();
@@ -111,7 +114,10 @@ export function GuideProfileModal({
               accessibilityRole="button"
               accessibilityLabel={backLabel}
               style={styles.backButton}
-              onPress={onBack}
+              onPress={() => {
+                onStopVoiceSample();
+                onBack();
+              }}
             >
               <Text style={styles.backGlyph}>‹</Text>
             </TouchableOpacity>
@@ -177,10 +183,16 @@ export function GuideProfileModal({
           )}
 
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.chooseButton} onPress={() => onChoose(activeGuideId)}>
+            <TouchableOpacity style={styles.chooseButton} onPress={() => {
+              onStopVoiceSample();
+              onChoose(activeGuideId);
+            }}>
               <Text style={styles.chooseText}>{profile.chooseLabel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.guidesButton} onPress={onBackToGuides}>
+            <TouchableOpacity style={styles.guidesButton} onPress={() => {
+              onStopVoiceSample();
+              onBackToGuides();
+            }}>
               <Text style={styles.guidesText}>{backToGuidesLabel}</Text>
             </TouchableOpacity>
           </View>
