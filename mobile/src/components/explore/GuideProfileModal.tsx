@@ -93,7 +93,6 @@ export function GuideProfileModal({
           <View style={styles.imageFrame}>
             <Image source={profile.image} style={styles.image} resizeMode="cover" />
           </View>
-          </View>
           <View style={[styles.topBar, { top: Math.max(0, topInset) + spacing.sm }]}>
             <TouchableOpacity
               accessibilityRole="button"
