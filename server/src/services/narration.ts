@@ -83,6 +83,7 @@ export async function generateVoiceSample(
   lang: string,
   userId?: string
 ): Promise<{ audioUrl: string; transcriptText: string }> {
+  if (!openai.apiKey) throw new Error('VOICE_SAMPLE_TTS_NOT_CONFIGURED');
   const storyHash = createHash('sha256').update(`${lang}:${text}`).digest('hex').slice(0, 16);
   const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${voiceId}:${guideVersion(await getGuide(voiceId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
