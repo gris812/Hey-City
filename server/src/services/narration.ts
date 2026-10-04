@@ -3,7 +3,7 @@
  */
 import type { NarrativePlan } from '@heycity/shared';
 import { cacheGet, cacheSet, ttsAudioCacheKey, placeDetailsCacheKey } from './cache';
-import { cacheTtl, discoveryConfig, media, openai, server } from '../config';
+import { cacheTtl, discoveryConfig, media, openai } from '../config';
 import { createHash } from 'crypto';
 import { access, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -83,7 +83,7 @@ export async function generateVoiceSample(
   lang: string,
   userId?: string
 ): Promise<{ audioUrl: string; transcriptText: string }> {
-  if (!openai.apiKey && server.nodeEnv !== 'test') throw new Error('VOICE_SAMPLE_TTS_NOT_CONFIGURED');
+  if (!openai.apiKey && process.env.NODE_ENV !== 'test') throw new Error('VOICE_SAMPLE_TTS_NOT_CONFIGURED');
   const storyHash = createHash('sha256').update(`${lang}:${text}`).digest('hex').slice(0, 16);
   const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${voiceId}:${guideVersion(await getGuide(voiceId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
