@@ -3,6 +3,7 @@ import { config } from '../config';
 import {
   AUTH_SESSION_EXPIRED_MESSAGE,
   isAuthenticationFailure,
+  shouldInvalidateStoredSession,
   toUserSafeRequestMessage,
 } from './authErrors';
 
@@ -68,7 +69,7 @@ export async function apiFetch<T>(
       throw new Error(backendMessage || GENERIC_REQUEST_ERROR_MESSAGE);
     }
 
-    if (isAuthenticationFailure(res.status, backendMessage)) {
+    if (shouldInvalidateStoredSession(path, res.status, backendMessage)) {
       await clearToken();
       await authInvalidationHandler?.();
       throw new AuthSessionExpiredError();
