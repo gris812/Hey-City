@@ -173,6 +173,7 @@ export function LiveScreen() {
     setMuted,
     lastResult,
     lastMotion,
+    deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,
     presentation,
@@ -223,7 +224,7 @@ export function LiveScreen() {
   const liveMovement = lastResult?.aheadDiscovery?.movement;
   const passiveMapUserCoordinate = liveMovement
     ? { latitude: liveMovement.latitude, longitude: liveMovement.longitude }
-    : exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
+    : deviceLocation ?? exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
   const guidedMapHeight = Math.max(520, windowHeight - tabBarHeight);
   const tourRegion: Region = useMemo(
     () => ({
