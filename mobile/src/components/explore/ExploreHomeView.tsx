@@ -83,7 +83,7 @@ export function ExploreHomeView({
     <View style={[styles.stage, { height }]}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        initialRegion={region}
+        region={region}
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass={false}
