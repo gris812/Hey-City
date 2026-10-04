@@ -3,7 +3,7 @@ require('dotenv').config({ path: '.env' });
 
 module.exports = {
   expo: {
-    name: 'Sunshine AI Guide',
+    name: 'Hey City',
     slug: 'hey-city',
     version: '1.0.0',
     orientation: 'portrait',
