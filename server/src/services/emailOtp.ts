@@ -26,7 +26,9 @@ export function isEmailAllowed(email: string): boolean {
 }
 
 export async function sendOtpEmail(email: string): Promise<void> {
-  if (!isEmailAllowed(email)) throw new Error('EMAIL_NOT_ALLOWED');
+  // Production field access remains allowlisted. Local/native development must
+  // be able to exercise the canonical get-or-create OTP flow with a fresh email.
+  if (server.nodeEnv === 'production' && !isEmailAllowed(email)) throw new Error('EMAIL_NOT_ALLOWED');
   if (isAdminEmail(email)) return;
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const codeHash = hashCode(email, code);
