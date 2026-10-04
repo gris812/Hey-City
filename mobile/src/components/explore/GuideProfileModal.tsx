@@ -34,6 +34,10 @@ export type GuideProfileModalProps = {
   backToGuidesLabel: string;
   voiceSampleLabel: string;
   voicePlaceholderLabel: string;
+  voiceLoadingLabel: string;
+  voicePlayingLabel: string;
+  voiceErrorLabel: string;
+  voiceRetryLabel: string;
   swipeLabel: string;
   voicePreviewState: 'idle' | 'loading' | 'playing' | 'error';
   voicePreviewError?: string | null;
@@ -56,6 +60,10 @@ export function GuideProfileModal({
   backToGuidesLabel,
   voiceSampleLabel,
   voicePlaceholderLabel,
+  voiceLoadingLabel,
+  voicePlayingLabel,
+  voiceErrorLabel,
+  voiceRetryLabel,
   swipeLabel,
   voicePreviewState,
   voicePreviewError,
@@ -168,11 +176,11 @@ export function GuideProfileModal({
               <Text style={styles.voiceTitle}>{voiceSampleLabel}</Text>
               <Text style={styles.voiceMeta}>
                 {voicePreviewState === 'loading'
-                  ? 'Loading voice sample…'
+                  ? voiceLoadingLabel
                   : voicePreviewState === 'playing'
-                    ? 'Playing · tap to stop'
+                    ? voicePlayingLabel
                     : voicePreviewState === 'error'
-                      ? 'Voice sample unavailable'
+                      ? voiceErrorLabel
                       : voicePlaceholderLabel}
               </Text>
             </View>
@@ -182,9 +190,9 @@ export function GuideProfileModal({
           )}
           {voicePreviewState === 'error' && (
             <View style={styles.voiceErrorBox}>
-              <Text style={styles.voiceErrorText}>{voicePreviewError || 'Voice sample could not be played.'}</Text>
+              <Text style={styles.voiceErrorText}>{voicePreviewError || voiceErrorLabel}</Text>
               <TouchableOpacity accessibilityRole="button" style={styles.voiceRetryButton} onPress={onRetryVoiceSample}>
-                <Text style={styles.voiceRetryText}>Retry</Text>
+                <Text style={styles.voiceRetryText}>{voiceRetryLabel}</Text>
               </TouchableOpacity>
             </View>
           )}
