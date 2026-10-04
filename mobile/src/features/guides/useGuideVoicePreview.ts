@@ -49,6 +49,16 @@ export function useGuideVoicePreview(params: {
       if (generation !== generationRef.current) return;
 
       const audioUrl = resolveVoiceSampleUrl(sample.audioUrl, config.apiBase);
+      let mediaProbe: Response;
+      try {
+        mediaProbe = await fetch(audioUrl, { method: 'HEAD' });
+      } catch {
+        throw new Error('Voice sample audio is not reachable from this device.');
+      }
+      if (!mediaProbe.ok) {
+        throw new Error(`Voice sample audio is unavailable (HTTP ${mediaProbe.status}).`);
+      }
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -58,24 +68,27 @@ export function useGuideVoicePreview(params: {
       });
       if (generation !== generationRef.current) return;
 
-      const { sound } = await Audio.Sound.createAsync(
+      let createdSound: Audio.Sound | null = null;
+      const created = await Audio.Sound.createAsync(
         { uri: audioUrl },
         { shouldPlay: true },
         (status: AVPlaybackStatus) => {
           if (generation !== generationRef.current || !status.isLoaded) return;
           if (status.didJustFinish) {
+            const finished = createdSound;
             soundRef.current = null;
             activeGuideRef.current = null;
             setState('idle');
-            void sound.unloadAsync().catch(() => {});
+            if (finished) void finished.unloadAsync().catch(() => {});
           }
         },
       );
+      createdSound = created.sound;
       if (generation !== generationRef.current) {
-        await sound.unloadAsync().catch(() => {});
+        await created.sound.unloadAsync().catch(() => {});
         return;
       }
-      soundRef.current = sound;
+      soundRef.current = created.sound;
       setState('playing');
     } catch (cause) {
       if (generation !== generationRef.current) return;
