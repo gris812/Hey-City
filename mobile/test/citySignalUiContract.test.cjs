@@ -34,6 +34,10 @@ assert.match(exploreHome, /onSelectPlace/, 'Walking POI cards and markers open a
 assert.match(discoveryPlace, /MapView/, 'Place surface contains an accurate map preview');
 assert.match(live, /destination_place_id/, 'Place surface can open a real Google Maps route');
 assert.match(live, /backendWalkingStoryVisible/, 'Walking Mode renders backend story playback state');
+assert.match(live, /benchmarkPanelOpen/, 'M4 benchmark controls use a dedicated development sheet instead of an inline map panel');
+assert.match(live, /benchmarkBackdrop/, 'M4 benchmark sheet has a focused modal surface');
+assert.match(live, /API: \{apiBase\}/, 'M4 benchmark sheet exposes the actual API target');
+assert.match(live, /Backend: \{apiCompatibilityStatus\}/, 'M4 benchmark sheet exposes backend compatibility');
 assert.match(live, /lastResult\?\.transcriptText/, 'Walking story and transcript use backend narrative text');
 assert.match(narrativeOverlay, /onSkip/, 'Walking story player exposes a real skip action');
 assert.match(exploreHome, /statusBanner/, 'Walking Mode renders a consumer-facing degraded state');
@@ -68,7 +72,10 @@ assert.match(settings, /flexGrow: 1/, 'Settings content owns a full-height scrol
 assert.match(settings, /Welcome v2 · Settings scroll v2/, 'Settings exposes the current UI build marker');
 assert.match(settings, /setGuideProfileOpen\(guide\.id\)/, 'Settings guide images open the full profile');
 assert.match(guideProfile, /PanResponder\.create/, 'Full guide profile supports horizontal swipe');
-assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a voice sample placeholder');
+assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a real voice sample control');
+assert.match(guideProfile, /voicePreviewState === 'loading'/, 'Guide voice preview exposes loading state');
+assert.match(guideProfile, /voicePreviewState === 'error'/, 'Guide voice preview exposes error/retry state');
+assert.match(live, /const guideSelectionImages = guideImages/, 'Guide profile and selection surfaces share the canonical portrait asset pair');
 assert.match(guideProfile, /borderRadius: radius\.sm/, 'Full guide profile avoids pill-shaped primary controls');
 assert.doesNotMatch(guideProfile, /backgroundColor: 'rgba\(0,0,0/, 'Full guide profile does not cover the portrait with a dark overlay');
 
