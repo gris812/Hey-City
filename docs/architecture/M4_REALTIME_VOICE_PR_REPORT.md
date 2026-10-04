@@ -175,3 +175,101 @@ does not rotate or rewrite any secret in this PR.
 No intended Discovery behavior change. No JourneyState ownership change. No
 M3 product-semantics change. No always-on listening, wake word, transcript UI,
 provider-owned memory or separate chatbot mode was added.
+
+
+## Native iPhone corrective pass — 2026-10-04
+
+A real iPhone development build exposed failures that deterministic M4 tests could
+not distinguish. This corrective pass is intentionally narrow and does not
+change Discovery, JourneyState ownership, M3 semantics or B1-B6.
+
+### Connection diagnosis
+
+The repository's EAS development profile did not set
+`EXPO_PUBLIC_API_URL`. Without a local Metro `.env` override, mobile therefore
+fell back to `http://localhost:4000`. On a physical iPhone that points to the
+phone itself, not the developer Mac.
+
+The currently deployed `main` backend is also not a valid M4 benchmark
+backend: its health response still identifies the legacy service and its
+canonical session router has no `realtime-voice` routes. Merging M4 merely to
+obtain a backend is not acceptable.
+
+PR #17 now exposes a non-secret compatibility marker at `/health`:
+`service=hey-city-api`, a server build SHA when `GIT_SHA` is supplied, and
+capability `m4_realtime_voice`. The development client probes this before Talk
+and shows the actual API URL plus compatibility state in the M4 field panel.
+
+The documented field path is a separate PR #17 backend on the Mac/LAN (or an
+isolated HTTPS staging deployment), never the production deployment. Provider
+keys remain server-side.
+
+### UI / safe area
+
+- Explore top controls are derived from the actual safe-area inset.
+- The map remains freely pannable; new device coordinates recenter it with an
+  animated region update rather than turning the map into a locked controlled
+  component.
+- Guide profile imagery starts below the safe area and uses a bounded frame.
+- Login uses safe-area insets and small-screen-safe layout.
+
+### Authentication
+
+The native login surface now says **Hey City** and describes the canonical
+email-OTP behavior accurately: the same flow signs in an existing user or
+creates a new user through the existing `getOrCreateUser` backend path.
+Resend-code and change-email actions are available. SecureStore token
+persistence is unchanged. Network failures now report API unreachability
+instead of looking like an account lookup failure.
+
+### Location
+
+The client now distinguishes denied vs iOS-settings-blocked permission.
+A blocked permission offers the Settings recovery path and the app rechecks
+permission when it becomes active again.
+
+The client obtains an initial real device coordinate before starting discovery,
+keeps local device coordinates independently of backend pings, and uses them to
+recenter Explore. A 10-second initial-position timeout produces a location
+specific message instead of the generic service error.
+
+### Narration / realtime voice
+
+The field failure was upstream of the voice provider in the observed build:
+the client could not reliably reach a compatible PR #17 API. Realtime Talk now
+refuses to start against an unreachable or incompatible backend and reports the
+actual API target.
+
+Existing M4 provider-neutral lifecycle, fail-closed recovery, same-moment
+resume, OpenAI/Gemini adapters and benchmark driver remain unchanged.
+
+### Guide imagery
+
+Selection, onboarding and full-profile surfaces now use the same existing
+Dana/Arthur portrait asset pair instead of mixing `*Selection.png` artwork
+with portrait assets. No new guide identity was generated and the canonical
+guide identities were not reinterpreted.
+
+### Error messaging
+
+The Explore error banner now shows the classified underlying cause rather than
+always rewriting every failure as a location problem. Current categories
+include API configuration/unreachable/incompatible backend, location
+permission/settings, location timeout and native/realtime errors.
+
+### Focused regression
+
+- server HTTP regression asserts the PR #17 M4 health capability marker;
+- mobile field-readiness regression rejects the legacy/main health shape and
+  accepts the PR #17 shape;
+- safe-area layout regression covers zero, negative and large iPhone insets;
+- existing map UX regression remains authoritative and prevents controlled-map
+  pan lock.
+
+### Device verification boundary
+
+CI/simulator-level checks cannot prove microphone transport, Apple permission
+dialogs, physical GPS, provider audio or field latency. Those remain explicit
+real-device checks. Live B1-B6 and provider selection remain BLOCKED until the
+correct PR #17 backend is reachable from the iPhone and the native field
+checklist passes.
