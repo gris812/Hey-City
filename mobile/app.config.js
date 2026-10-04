@@ -10,6 +10,9 @@ module.exports = {
     userInterfaceStyle: 'automatic',
     extra: {
       buildGitSha: process.env.EAS_BUILD_GIT_COMMIT_HASH || process.env.EXPO_PUBLIC_GIT_SHA || 'local_unstamped_build',
+      eas: {
+        projectId: '554718b7-7f37-4cbb-89d0-cec6fe193fb5',
+      },
     },
     ios: {
       supportsTablet: true,
