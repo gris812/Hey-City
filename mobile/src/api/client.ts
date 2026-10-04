@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import { config } from '../config';
 import {
   AUTH_SESSION_EXPIRED_MESSAGE,
+  GENERIC_REQUEST_ERROR_MESSAGE,
   shouldInvalidateStoredSession,
   toUserSafeRequestMessage,
 } from './authErrors';
