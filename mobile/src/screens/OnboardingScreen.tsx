@@ -20,13 +20,11 @@ import {
   type SupportedLocale,
 } from '../localization';
 import { useAppTranslation } from '../localization';
+import { canonicalGuideImages } from '../presentation/guideAssets';
 
 const guideOptions: GuidePreference[] = ['dana', 'arthur'];
 
-const guideImages = {
-  dana: require('../../assets/Guides/Dana.png'),
-  arthur: require('../../assets/Guides/Artur.png'),
-} as const;
+const guideImages = canonicalGuideImages;
 
 export function OnboardingScreen() {
   const navigation = useNavigation();
