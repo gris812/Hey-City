@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Audio, type AVPlaybackStatus } from 'expo-av';
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
-import { requestGuideVoiceSample, resolveVoiceSampleUrl } from '../../api/voiceSample';
+import { requestGuideVoiceSample } from '../../api/voiceSample';
+import { resolveVoiceSampleUrl } from './voiceSampleUrl';
+import { config } from '../../config';
 
 export type GuideVoicePreviewState = 'idle' | 'loading' | 'playing' | 'error';
 
@@ -46,7 +48,7 @@ export function useGuideVoicePreview(params: {
       );
       if (generation !== generationRef.current) return;
 
-      const audioUrl = resolveVoiceSampleUrl(sample.audioUrl);
+      const audioUrl = resolveVoiceSampleUrl(sample.audioUrl, config.apiBase);
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
