@@ -26,6 +26,7 @@ import {
 import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
+import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
@@ -33,8 +34,8 @@ const guideOptions: Array<{ id: GuidePreference }> = [
 ];
 
 const guideImages = {
-  dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArturSelection.png'),
+  dana: require('../../assets/Guides/Dana.png'),
+  arthur: require('../../assets/Guides/Artur.png'),
 } as const;
 
 export const UI_BUILD_LABEL = 'Welcome v2 · Settings scroll v2';
@@ -47,6 +48,10 @@ export function SettingsScreen() {
   const [historyEnabled, setHistoryEnabled] = useState(guestProfileDefaults.historyEnabled);
   const [loading, setLoading] = useState(false);
   const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
+  const voicePreview = useGuideVoicePreview({
+    language: preferences.guideLanguage,
+    guestId: identity.status === 'guest' ? identity.guestId : undefined,
+  });
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) return;
@@ -244,6 +249,11 @@ export function SettingsScreen() {
         voiceSampleLabel={t('guide.voiceSample')}
         voicePlaceholderLabel={t('guide.voicePlaceholder')}
         swipeLabel={t('guide.swipeHint')}
+        voicePreviewState={voicePreview.state}
+        voicePreviewError={voicePreview.error}
+        onVoiceSample={(guideId) => void voicePreview.play(guideId)}
+        onRetryVoiceSample={() => void voicePreview.retry()}
+        onStopVoiceSample={() => void voicePreview.stop()}
         onChoose={(guideId) => {
           void selectGuide(guideId);
           setGuideProfileOpen(null);
