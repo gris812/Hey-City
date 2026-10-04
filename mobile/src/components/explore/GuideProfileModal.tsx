@@ -103,7 +103,14 @@ export function GuideProfileModal({
   const profile = profiles[activeGuideId];
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onBack}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={() => {
+        onStopVoiceSample();
+        onBack();
+      }}
+    >
       <View style={styles.screen} {...panResponder.panHandlers}>
         <View style={[styles.imageStage, { paddingTop: Math.max(0, topInset) }]}>
           <View style={styles.imageFrame}>
