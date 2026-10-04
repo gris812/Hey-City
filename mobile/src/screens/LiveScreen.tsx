@@ -190,6 +190,7 @@ export function LiveScreen() {
     locationSettingsRequired,
     openLocationSettings,
     apiCompatibilityStatus,
+    apiBase,
     realtimeBenchmarkEnabled,
     realtimeBenchmarkProvider,
     selectRealtimeBenchmarkProvider,
@@ -688,6 +689,7 @@ export function LiveScreen() {
             <View style={styles.aheadDebugPanel}>
               <Text style={styles.aheadDebugTitle}>M4 live/native benchmark</Text>
               <Text style={styles.aheadDebugMuted}>Development build only · controlled test speech · no raw audio retained</Text>
+              <Text style={styles.aheadDebugMuted}>API: {apiBase}</Text>
               <Text style={styles.aheadDebugMuted}>Backend compatibility: {apiCompatibilityStatus}</Text>
               <View style={styles.row}>
                 {(['openai', 'gemini'] as const).map(provider => (
