@@ -27,16 +27,14 @@ import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
+import { canonicalGuideImages } from '../presentation/guideAssets';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
   { id: 'arthur' },
 ];
 
-const guideImages = {
-  dana: require('../../assets/Guides/Dana.png'),
-  arthur: require('../../assets/Guides/Artur.png'),
-} as const;
+const guideImages = canonicalGuideImages;
 
 export const UI_BUILD_LABEL = 'Welcome v2 · Settings scroll v2';
 
@@ -154,7 +152,7 @@ export function SettingsScreen() {
                   accessibilityLabel={`${t('guide.viewFullProfile')}: ${t(`guide.${guide.id}`)}`}
                   activeOpacity={0.85}
                 >
-                  <Image source={guideImages[guide.id]} style={styles.avatarImage} />
+                  <Image source={guideImages[guide.id]} style={styles.avatarImage} resizeMode="cover" />
                   <View style={styles.avatarNameOverlay}>
                     <Text style={styles.avatarName}>{t(`guide.${guide.id}`)}</Text>
                   </View>
