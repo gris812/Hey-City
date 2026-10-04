@@ -34,7 +34,9 @@ Do not put OpenAI/Gemini keys in `mobile/.env`.
 credentials/config:
 
 ```sh
-M4_NATIVE_BENCHMARK_PROVIDER_OVERRIDE_ENABLED=true npm run dev:server
+GIT_SHA=$(git rev-parse HEAD) \
+M4_NATIVE_BENCHMARK_PROVIDER_OVERRIDE_ENABLED=true \
+npm run dev:server
 ```
 
 3. Verify from Safari on the iPhone:
