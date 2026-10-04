@@ -12,6 +12,7 @@ import MapView, { Marker, type LatLng, type Region } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
+import { exploreTopLayout } from '../../presentation/safeAreaLayout';
 
 export type ExploreHomeMarker = {
   id: string;
@@ -75,9 +76,7 @@ export function ExploreHomeView({
   const visibleNearbyPlaces = nearbyPlaces
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
-  const controlTop = Math.max(0, topInset) + spacing.md;
-  const searchTop = controlTop + 60;
-  const statusTop = searchTop + 66;
+  const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
 
   return (
     <View style={[styles.stage, { height }]}>
