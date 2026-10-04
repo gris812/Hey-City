@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
 import {
@@ -18,7 +19,9 @@ import {
 } from '../../api/conversation';
 import type { ConversationTurnResult, MapAction, NavigationAction, ResumeDirective } from '@heycity/shared';
 import { getProfile } from '../../api/me';
-import { config } from '../../config';
+import { apiConfigurationProblem, config } from '../../config';
+import { checkApiCompatibility } from '../../api/health';
+import { requestForegroundLocationPermission } from '../../location/permissions';
 import {
   guestProfileDefaults,
   shouldLoadProfile,
@@ -82,6 +85,8 @@ export function useDriveDiscoverySession(input: {
   const [conversationMapActions, setConversationMapActions] = useState<MapAction[]>([]);
   const [navigationHandoff, setNavigationHandoff] = useState<NavigationAction | null>(null);
   const [realtimeVoiceState, setRealtimeVoiceState] = useState<RealtimeVoiceClientState>('closed');
+  const [locationSettingsRequired, setLocationSettingsRequired] = useState(false);
+  const [apiCompatibilityStatus, setApiCompatibilityStatus] = useState<'unknown' | 'compatible' | 'incompatible'>('unknown');
   const [realtimeBenchmarkProvider, setRealtimeBenchmarkProvider] = useState<NativeBenchmarkProvider | null>(null);
   const [realtimeBenchmarkScenario, setRealtimeBenchmarkScenario] = useState<M4BenchmarkScenario>('B1');
   const [realtimeBenchmarkExportStatus, setRealtimeBenchmarkExportStatus] = useState<string | null>(null);
@@ -104,11 +109,39 @@ export function useDriveDiscoverySession(input: {
     setSessionError(null);
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') {
-        setSessionError('Location permission is required for Explore Mode.');
+      const configProblem = apiConfigurationProblem();
+      if (configProblem) {
+        setSessionError(configProblem);
         return;
       }
+
+      const permission = await requestForegroundLocationPermission();
+      if (permission !== 'granted') {
+        setLocationSettingsRequired(permission === 'restricted');
+        setSessionError(permission === 'restricted'
+          ? 'Location access is disabled for Hey City. Open iPhone Settings and allow location access.'
+          : 'Location permission is required for nearby stories. Please allow location access and try again.');
+        return;
+      }
+      setLocationSettingsRequired(false);
+
+      try {
+        await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('location_timeout')), 10_000)),
+        ]);
+      } catch {
+        setSessionError('Hey City could not get your current location. Check Location Services and try again.');
+        return;
+      }
+
+      const compatibility = await checkApiCompatibility();
+      setApiCompatibilityStatus(compatibility.compatible ? 'compatible' : 'incompatible');
+      if (!compatibility.reachable) {
+        setSessionError(`Hey City API is unreachable from this iPhone. API: ${config.apiBase}`);
+        return;
+      }
+
       const profile = shouldLoadProfile(identity)
         ? profileRef.current ?? (await getProfile())
         : null;
@@ -218,6 +251,25 @@ export function useDriveDiscoverySession(input: {
       setAutoplay(p.driveDiscovery.autoplay);
     });
   }, [identity]);
+
+  const openLocationSettings = useCallback(async () => {
+    await Linking.openSettings();
+  }, []);
+
+  useEffect(() => {
+    if (!locationSettingsRequired || sessionId) return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active') return;
+      void Location.getForegroundPermissionsAsync().then(permission => {
+        if (permission.status === 'granted') {
+          setLocationSettingsRequired(false);
+          setSessionError(null);
+          void startSession();
+        }
+      });
+    });
+    return () => subscription.remove();
+  }, [locationSettingsRequired, sessionId, startSession]);
 
   useEffect(() => {
     if (!sessionId || muted) return;
@@ -417,6 +469,14 @@ export function useDriveDiscoverySession(input: {
   const activateRealtimeVoice = useCallback(async (): Promise<boolean> => {
     if (!sessionId || identity.status !== 'authenticated') {
       setSessionError('Sign in to use realtime voice.');
+      return false;
+    }
+    const compatibility = await checkApiCompatibility();
+    setApiCompatibilityStatus(compatibility.compatible ? 'compatible' : 'incompatible');
+    if (!compatibility.compatible) {
+      setSessionError(compatibility.reachable
+        ? `Connected backend is not compatible with M4 realtime voice. API: ${config.apiBase}`
+        : `Hey City API is unreachable from this iPhone. API: ${config.apiBase}`);
       return false;
     }
     if (!realtimeVoiceRef.current) {
@@ -665,6 +725,9 @@ export function useDriveDiscoverySession(input: {
     realtimeVoiceState,
     activateRealtimeVoice,
     closeRealtimeVoiceSession,
+    locationSettingsRequired,
+    openLocationSettings,
+    apiCompatibilityStatus,
     realtimeBenchmarkEnabled: config.m4NativeBenchmarkEnabled,
     realtimeBenchmarkProvider,
     selectRealtimeBenchmarkProvider,
