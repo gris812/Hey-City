@@ -9,6 +9,26 @@ export type ApiCompatibility = {
   reason?: string;
 };
 
+export function classifyApiHealthPayload(payload: unknown): ApiCompatibility {
+  const record = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {};
+  const capabilities = Array.isArray(record.capabilities)
+    ? record.capabilities.filter((item): item is string => typeof item === 'string')
+    : [];
+  const service = typeof record.service === 'string' ? record.service : undefined;
+  const buildSha = typeof record.buildSha === 'string' ? record.buildSha : undefined;
+  const compatible = service === 'hey-city-api' && capabilities.includes('m4_realtime_voice');
+  return {
+    reachable: true,
+    compatible,
+    service,
+    buildSha,
+    capabilities,
+    ...(!compatible ? { reason: 'Backend does not expose the PR #17 M4 realtime capability.' } : {}),
+  };
+}
+
 export async function checkApiCompatibility(timeoutMs = 5000): Promise<ApiCompatibility> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -21,25 +41,7 @@ export async function checkApiCompatibility(timeoutMs = 5000): Promise<ApiCompat
     if (!response.ok) {
       return { reachable: true, compatible: false, capabilities: [], reason: `HTTP ${response.status}` };
     }
-    const payload = await response.json() as {
-      service?: unknown;
-      buildSha?: unknown;
-      capabilities?: unknown;
-    };
-    const capabilities = Array.isArray(payload.capabilities)
-      ? payload.capabilities.filter((item): item is string => typeof item === 'string')
-      : [];
-    const service = typeof payload.service === 'string' ? payload.service : undefined;
-    const buildSha = typeof payload.buildSha === 'string' ? payload.buildSha : undefined;
-    const compatible = service === 'hey-city-api' && capabilities.includes('m4_realtime_voice');
-    return {
-      reachable: true,
-      compatible,
-      service,
-      buildSha,
-      capabilities,
-      ...(!compatible ? { reason: 'Backend does not expose the PR #17 M4 realtime capability.' } : {}),
-    };
+    return classifyApiHealthPayload(await response.json());
   } catch (error) {
     const reason = error instanceof Error && error.name === 'AbortError'
       ? 'API health check timed out.'
