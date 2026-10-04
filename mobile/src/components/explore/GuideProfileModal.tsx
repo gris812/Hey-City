@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   type ImageSourcePropType,
   Modal,
@@ -34,6 +35,11 @@ export type GuideProfileModalProps = {
   voiceSampleLabel: string;
   voicePlaceholderLabel: string;
   swipeLabel: string;
+  voicePreviewState: 'idle' | 'loading' | 'playing' | 'error';
+  voicePreviewError?: string | null;
+  onVoiceSample: (guideId: GuidePreference) => void;
+  onRetryVoiceSample: () => void;
+  onStopVoiceSample: () => void;
   onChoose: (guideId: GuidePreference) => void;
   onBack: () => void;
   onBackToGuides: () => void;
@@ -51,6 +57,11 @@ export function GuideProfileModal({
   voiceSampleLabel,
   voicePlaceholderLabel,
   swipeLabel,
+  voicePreviewState,
+  voicePreviewError,
+  onVoiceSample,
+  onRetryVoiceSample,
+  onStopVoiceSample,
   onChoose,
   onBack,
   onBackToGuides,
@@ -62,11 +73,13 @@ export function GuideProfileModal({
     if (!visible) return;
     setActiveGuideId(initialGuideId);
     setSampleOpen(false);
-  }, [initialGuideId, visible]);
+    onStopVoiceSample();
+  }, [initialGuideId, visible, onStopVoiceSample]);
 
   const switchGuide = (direction: -1 | 1) => {
     const currentIndex = guideOrder.indexOf(activeGuideId);
     const nextIndex = (currentIndex + direction + guideOrder.length) % guideOrder.length;
+    onStopVoiceSample();
     setActiveGuideId(guideOrder[nextIndex]);
     setSampleOpen(false);
   };
@@ -125,16 +138,43 @@ export function GuideProfileModal({
 
           <TouchableOpacity
             accessibilityRole="button"
-            style={styles.voiceButton}
-            onPress={() => setSampleOpen((current) => !current)}
+            style={[styles.voiceButton, voicePreviewState === 'error' && styles.voiceButtonError]}
+            disabled={voicePreviewState === 'loading'}
+            onPress={() => {
+              setSampleOpen(true);
+              if (voicePreviewState === 'playing') onStopVoiceSample();
+              else onVoiceSample(activeGuideId);
+            }}
           >
-            <Text style={styles.voiceIcon}>▶</Text>
+            {voicePreviewState === 'loading' ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={styles.voiceIcon}>{voicePreviewState === 'playing' ? '■' : '▶'}</Text>
+            )}
             <View style={styles.voiceCopy}>
               <Text style={styles.voiceTitle}>{voiceSampleLabel}</Text>
-              <Text style={styles.voiceMeta}>{voicePlaceholderLabel}</Text>
+              <Text style={styles.voiceMeta}>
+                {voicePreviewState === 'loading'
+                  ? 'Loading voice sample…'
+                  : voicePreviewState === 'playing'
+                    ? 'Playing · tap to stop'
+                    : voicePreviewState === 'error'
+                      ? 'Voice sample unavailable'
+                      : voicePlaceholderLabel}
+              </Text>
             </View>
           </TouchableOpacity>
-          {sampleOpen && <Text style={styles.voiceTranscript}>{profile.voiceGreeting}</Text>}
+          {sampleOpen && voicePreviewState !== 'error' && (
+            <Text style={styles.voiceTranscript}>{profile.voiceGreeting}</Text>
+          )}
+          {voicePreviewState === 'error' && (
+            <View style={styles.voiceErrorBox}>
+              <Text style={styles.voiceErrorText}>{voicePreviewError || 'Voice sample could not be played.'}</Text>
+              <TouchableOpacity accessibilityRole="button" style={styles.voiceRetryButton} onPress={onRetryVoiceSample}>
+                <Text style={styles.voiceRetryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.chooseButton} onPress={() => onChoose(activeGuideId)}>
@@ -212,6 +252,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface,
   },
+  voiceButtonError: { borderColor: colors.danger },
   voiceIcon: { color: colors.primary, fontSize: 16, lineHeight: 20 },
   voiceCopy: { flex: 1 },
   voiceTitle: { ...typography.body, color: colors.foreground, fontWeight: '600' },
@@ -223,6 +264,24 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
     paddingLeft: spacing.md,
   },
+  voiceErrorBox: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+  },
+  voiceErrorText: { ...typography.caption, color: colors.danger },
+  voiceRetryButton: {
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  voiceRetryText: { ...typography.caption, color: colors.foreground, fontWeight: '700' },
   actions: { gap: spacing.sm, marginTop: spacing.sm },
   chooseButton: {
     minHeight: 52,
