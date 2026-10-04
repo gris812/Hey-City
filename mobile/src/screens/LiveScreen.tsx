@@ -57,6 +57,7 @@ import { useDriveDiscoverySession } from '../features/live/useDriveDiscoverySess
 import { useExploreNarrative } from '../features/live/useExploreNarrative';
 import { createSnapshotLocation, useGuidedTourDemo } from '../features/live/useGuidedTourDemo';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
+import { canonicalGuideImages } from '../presentation/guideAssets';
 
 const THEME_TAGS = [
   'history',
@@ -77,13 +78,10 @@ const STYLES = [
   'mini_lecture',
 ];
 
-const guideImages = {
-  dana: require('../../assets/Guides/Dana.png'),
-  arthur: require('../../assets/Guides/Artur.png'),
-} as const;
+const guideImages = canonicalGuideImages;
 
 // Use the same canonical portrait assets across avatar, selection and profile surfaces.
-const guideSelectionImages = guideImages;
+const guideSelectionImages = canonicalGuideImages;
 
 const targetImageSources = {
   'trinity-church-demo': require('../../assets/Places/trinity-church-demo.png'),
