@@ -24,8 +24,8 @@ import { useAppTranslation } from '../localization';
 const guideOptions: GuidePreference[] = ['dana', 'arthur'];
 
 const guideImages = {
-  dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArturSelection.png'),
+  dana: require('../../assets/Guides/Dana.png'),
+  arthur: require('../../assets/Guides/Artur.png'),
 } as const;
 
 export function OnboardingScreen() {
@@ -86,7 +86,7 @@ export function OnboardingScreen() {
                 ]}
                 onPress={() => void setPreferredGuide(guide)}
               >
-                <Image source={guideImages[guide]} style={styles.guideImage} />
+                <Image source={guideImages[guide]} style={styles.guideImage} resizeMode="cover" />
                 <View style={styles.guideNameOverlay}>
                   <Text style={styles.guideName}>{t(`guide.${guide}`)}</Text>
                 </View>
