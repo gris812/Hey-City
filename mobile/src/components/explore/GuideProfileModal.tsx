@@ -89,9 +89,12 @@ export function GuideProfileModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onBack}>
       <View style={styles.screen} {...panResponder.panHandlers}>
-        <View style={styles.imageStage}>
-          <Image source={profile.image} style={styles.image} resizeMode="cover" />
-          <View style={[styles.topBar, { top: topInset + spacing.sm }]}>
+        <View style={[styles.imageStage, { paddingTop: Math.max(0, topInset) }]}>
+          <View style={styles.imageFrame}>
+            <Image source={profile.image} style={styles.image} resizeMode="cover" />
+          </View>
+          </View>
+          <View style={[styles.topBar, { top: Math.max(0, topInset) + spacing.sm }]}>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={backLabel}
@@ -150,7 +153,8 @@ export function GuideProfileModal({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  imageStage: { height: '48%', backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  imageStage: { height: '46%', backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  imageFrame: { flex: 1, marginHorizontal: spacing.sm, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   image: { width: '100%', height: '100%' },
   topBar: {
     position: 'absolute',
