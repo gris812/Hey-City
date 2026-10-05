@@ -191,6 +191,8 @@ export function LiveScreen() {
     locationSettingsRequired,
     openLocationSettings,
     apiCompatibilityStatus,
+    apiBuildSha,
+    appBuildSha,
     apiBase,
     realtimeBenchmarkEnabled,
     realtimeBenchmarkProvider,
@@ -1117,7 +1119,13 @@ export function LiveScreen() {
         onRequestClose={() => setBenchmarkPanelOpen(false)}
       >
         <View style={styles.benchmarkBackdrop}>
-          <View style={[styles.benchmarkSheet, { paddingBottom: insets.bottom + spacing.md }]}>
+          <View style={[
+            styles.benchmarkSheet,
+            {
+              paddingBottom: insets.bottom + spacing.md,
+              marginTop: insets.top + spacing.md,
+            },
+          ]}>
             <View style={styles.benchmarkHeader}>
               <View style={styles.benchmarkHeaderCopy}>
                 <Text style={styles.aheadDebugTitle}>M4 live/native benchmark</Text>
@@ -1134,6 +1142,8 @@ export function LiveScreen() {
 
             <Text style={styles.benchmarkMeta} numberOfLines={2}>API: {apiBase}</Text>
             <Text style={styles.benchmarkMeta}>Backend: {apiCompatibilityStatus}</Text>
+            <Text style={styles.benchmarkMeta} numberOfLines={1}>App build: {appBuildSha}</Text>
+            <Text style={styles.benchmarkMeta} numberOfLines={1}>Backend build: {apiBuildSha}</Text>
 
             <Text style={styles.benchmarkSectionTitle}>Provider</Text>
             <View style={styles.benchmarkChoiceRow}>
