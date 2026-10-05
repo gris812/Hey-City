@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { jwt as jwtConfig } from '../config';
+import { auth as authConfig, jwt as jwtConfig } from '../config';
 import { requestContext } from '../services/requestContext';
 
 export interface JwtPayload {
@@ -11,7 +11,7 @@ export interface JwtPayload {
 
 export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
-    if (req.user?.role !== 'admin' || req.user.email.toLowerCase() !== 'slepak@stolbergco.com') {
+    if (req.user?.role !== 'admin' || req.user.email.toLowerCase() !== authConfig.adminEmail) {
       res.status(403).json({ error: 'Administrator access required' });
       return;
     }

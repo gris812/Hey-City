@@ -26,18 +26,15 @@ import {
 import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
+import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
+import { guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
   { id: 'arthur' },
 ];
 
-const guideImages = {
-  dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArturSelection.png'),
-} as const;
-
-export const UI_BUILD_LABEL = 'Welcome v2 · Settings scroll v2';
+const guideImages = guideSelectionImages;
 
 export function SettingsScreen() {
   const { identity, logout, preferences, updatePreferences } = useAuth();
@@ -47,6 +44,10 @@ export function SettingsScreen() {
   const [historyEnabled, setHistoryEnabled] = useState(guestProfileDefaults.historyEnabled);
   const [loading, setLoading] = useState(false);
   const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
+  const voicePreview = useGuideVoicePreview({
+    language: preferences.guideLanguage,
+    guestId: identity.status === 'guest' ? identity.guestId : undefined,
+  });
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) return;
@@ -75,7 +76,8 @@ export function SettingsScreen() {
 
   const fullGuideProfiles = {
     dana: {
-      image: guideImages.dana,
+      image: guideFullProfileImages.dana,
+      imageResizeMode: 'cover' as const,
       name: t('guide.dana'),
       role: t('guide.danaRole'),
       body: t('guide.danaFullCopy'),
@@ -88,7 +90,8 @@ export function SettingsScreen() {
           : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
     },
     arthur: {
-      image: guideImages.arthur,
+      image: guideFullProfileImages.arthur,
+      imageResizeMode: 'contain' as const,
       name: t('guide.arthur'),
       role: t('guide.arthurRole'),
       body: t('guide.arthurFullCopy'),
@@ -117,7 +120,6 @@ export function SettingsScreen() {
         ]}
       >
         <Text style={styles.title}>{t('settings.title')}</Text>
-        <Text style={styles.buildLabel}>{UI_BUILD_LABEL}</Text>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
@@ -149,7 +151,7 @@ export function SettingsScreen() {
                   accessibilityLabel={`${t('guide.viewFullProfile')}: ${t(`guide.${guide.id}`)}`}
                   activeOpacity={0.85}
                 >
-                  <Image source={guideImages[guide.id]} style={styles.avatarImage} />
+                  <Image source={guideImages[guide.id]} style={styles.avatarImage} resizeMode="cover" />
                   <View style={styles.avatarNameOverlay}>
                     <Text style={styles.avatarName}>{t(`guide.${guide.id}`)}</Text>
                   </View>
@@ -223,12 +225,13 @@ export function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About Hey City</Text>
-          <Text style={styles.hint}>Version 1.0.0 · {UI_BUILD_LABEL}</Text>
+          <Text style={styles.hint}>Version 1.0.0</Text>
         </View>
 
         {__DEV__ && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('settings.developerTools')}</Text>
+            <Text style={styles.buildLabel}>Native M4 corrective build</Text>
             <LocationSimulationPanel />
           </View>
         )}
@@ -243,7 +246,16 @@ export function SettingsScreen() {
         backToGuidesLabel={t('guide.backToGuides')}
         voiceSampleLabel={t('guide.voiceSample')}
         voicePlaceholderLabel={t('guide.voicePlaceholder')}
+        voiceLoadingLabel={t('guide.voiceLoading')}
+        voicePlayingLabel={t('guide.voicePlaying')}
+        voiceErrorLabel={t('guide.voiceError')}
+        voiceRetryLabel={t('guide.voiceRetry')}
         swipeLabel={t('guide.swipeHint')}
+        voicePreviewState={voicePreview.state}
+        voicePreviewError={voicePreview.error}
+        onVoiceSample={voicePreview.play}
+        onRetryVoiceSample={voicePreview.retry}
+        onStopVoiceSample={voicePreview.stop}
         onChoose={(guideId) => {
           void selectGuide(guideId);
           setGuideProfileOpen(null);

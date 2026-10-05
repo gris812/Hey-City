@@ -56,6 +56,8 @@ import {
 import { useDriveDiscoverySession } from '../features/live/useDriveDiscoverySession';
 import { useExploreNarrative } from '../features/live/useExploreNarrative';
 import { createSnapshotLocation, useGuidedTourDemo } from '../features/live/useGuidedTourDemo';
+import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
+import { guideAvatarImages, guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
 
 const THEME_TAGS = [
   'history',
@@ -76,15 +78,7 @@ const STYLES = [
   'mini_lecture',
 ];
 
-const guideImages = {
-  dana: require('../../assets/Guides/Dana.png'),
-  arthur: require('../../assets/Guides/Artur.png'),
-} as const;
-
-const guideSelectionImages = {
-  dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArturSelection.png'),
-} as const;
+const guideImages = guideAvatarImages;
 
 const targetImageSources = {
   'trinity-church-demo': require('../../assets/Places/trinity-church-demo.png'),
@@ -122,6 +116,8 @@ const interestOptions = [
   'Context',
 ];
 
+const M4_BENCHMARK_SCENARIOS = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'] as const;
+
 type SharePreviewState = 'ready' | 'invalid_link' | 'unsupported_location';
 
 export function LiveScreen() {
@@ -140,10 +136,15 @@ export function LiveScreen() {
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hidden Gems', 'Local Life']);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
   const [sharePreviewState, setSharePreviewState] = useState<SharePreviewState>('ready');
+  const [benchmarkPanelOpen, setBenchmarkPanelOpen] = useState(false);
   const drive = useDriveDiscoverySession({
     identity,
     guideId: preferences.preferredGuideId,
     guideLanguage: preferences.guideLanguage,
+  });
+  const voicePreview = useGuideVoicePreview({
+    language: preferences.guideLanguage,
+    guestId: identity.status === 'guest' ? identity.guestId : undefined,
   });
   const guided = useGuidedTourDemo({
     mode,
@@ -173,6 +174,7 @@ export function LiveScreen() {
     setMuted,
     lastResult,
     lastMotion,
+    deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,
     presentation,
@@ -183,6 +185,23 @@ export function LiveScreen() {
     pausePlayback,
     resumePlayback,
     forceAheadRefresh,
+    realtimeVoiceState,
+    activateRealtimeVoice,
+    closeRealtimeVoiceSession,
+    locationSettingsRequired,
+    openLocationSettings,
+    apiCompatibilityStatus,
+    apiBuildSha,
+    appBuildSha,
+    apiBase,
+    realtimeBenchmarkEnabled,
+    realtimeBenchmarkProvider,
+    selectRealtimeBenchmarkProvider,
+    realtimeBenchmarkScenario,
+    setRealtimeBenchmarkScenario,
+    realtimeBenchmarkExportStatus,
+    exportRealtimeBenchmark,
+    playRealtimeBenchmarkNoise,
   } = drive;
   const {
     tourState,
@@ -209,7 +228,7 @@ export function LiveScreen() {
   const liveMovement = lastResult?.aheadDiscovery?.movement;
   const passiveMapUserCoordinate = liveMovement
     ? { latitude: liveMovement.latitude, longitude: liveMovement.longitude }
-    : exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
+    : deviceLocation ?? exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
   const guidedMapHeight = Math.max(520, windowHeight - tabBarHeight);
   const tourRegion: Region = useMemo(
     () => ({
@@ -336,7 +355,8 @@ export function LiveScreen() {
     : {};
   const fullGuideProfiles = {
     dana: {
-      image: guideSelectionImages.dana,
+      image: guideFullProfileImages.dana,
+      imageResizeMode: 'cover' as const,
       name: t('guide.dana'),
       role: getLocalizedGuideProfile('dana').role,
       body: getLocalizedGuideProfile('dana').fullCopy,
@@ -349,7 +369,8 @@ export function LiveScreen() {
           : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
     },
     arthur: {
-      image: guideSelectionImages.arthur,
+      image: guideFullProfileImages.arthur,
+      imageResizeMode: 'contain' as const,
       name: t('guide.arthur'),
       role: getLocalizedGuideProfile('arthur').role,
       body: getLocalizedGuideProfile('arthur').fullCopy,
@@ -655,9 +676,30 @@ export function LiveScreen() {
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
           onSelectPlace={(place) => setSelectedExplorePlaceId(place.id)}
-          statusMessage={sessionError ? t('walking.serviceUnavailable') : undefined}
-          onRetry={sessionError ? () => void startSession() : undefined}
+          voiceState={realtimeVoiceState}
+          voiceLabel={preferences.appLanguage === 'ru'
+            ? (realtimeVoiceState === 'closed' ? 'Говорить' : 'Закончить')
+            : (realtimeVoiceState === 'closed' ? 'Talk' : 'End voice')}
+          onToggleVoice={backendWalkingStoryVisible ? () => {
+            if (realtimeVoiceState === 'closed' || realtimeVoiceState === 'error' || realtimeVoiceState === 'permission_error') {
+              void activateRealtimeVoice();
+            } else {
+              void closeRealtimeVoiceSession();
+            }
+          } : undefined}
+          statusMessage={sessionError ?? undefined}
+          onRetry={sessionError ? (locationSettingsRequired ? () => void openLocationSettings() : () => void startSession()) : undefined}
         >
+          {realtimeBenchmarkEnabled && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Open M4 benchmark controls"
+              style={[styles.benchmarkFab, { top: insets.top + 204 }]}
+              onPress={() => setBenchmarkPanelOpen(true)}
+            >
+              <Text style={styles.benchmarkFabText}>M4</Text>
+            </TouchableOpacity>
+          )}
           {backendWalkingStoryVisible && presentation.activeTarget ? (
             <NarrativeOverlay
               title={presentation.activeTarget.name}
@@ -1070,6 +1112,104 @@ export function LiveScreen() {
         />
       )}
 
+      <Modal
+        visible={realtimeBenchmarkEnabled && benchmarkPanelOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBenchmarkPanelOpen(false)}
+      >
+        <View style={styles.benchmarkBackdrop}>
+          <View style={[
+            styles.benchmarkSheet,
+            {
+              paddingBottom: insets.bottom + spacing.md,
+              marginTop: insets.top + spacing.md,
+            },
+          ]}>
+            <View style={styles.benchmarkHeader}>
+              <View style={styles.benchmarkHeaderCopy}>
+                <Text style={styles.aheadDebugTitle}>M4 live/native benchmark</Text>
+                <Text style={styles.aheadDebugMuted}>Development build only · controlled test speech · no raw audio retained</Text>
+              </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                style={styles.benchmarkCloseButton}
+                onPress={() => setBenchmarkPanelOpen(false)}
+              >
+                <Text style={styles.benchmarkCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.benchmarkMeta} numberOfLines={2}>API: {apiBase}</Text>
+            <Text style={styles.benchmarkMeta}>Backend: {apiCompatibilityStatus}</Text>
+            <Text style={styles.benchmarkMeta} numberOfLines={1}>App build: {appBuildSha}</Text>
+            <Text style={styles.benchmarkMeta} numberOfLines={1}>Backend build: {apiBuildSha}</Text>
+
+            <Text style={styles.benchmarkSectionTitle}>Provider</Text>
+            <View style={styles.benchmarkChoiceRow}>
+              {(['openai', 'gemini'] as const).map(provider => (
+                <TouchableOpacity
+                  key={provider}
+                  style={[
+                    styles.benchmarkChoiceButton,
+                    realtimeBenchmarkProvider === provider && styles.benchmarkChoiceButtonSelected,
+                  ]}
+                  onPress={() => void selectRealtimeBenchmarkProvider(provider)}
+                >
+                  <Text
+                    style={[
+                      styles.benchmarkChoiceText,
+                      realtimeBenchmarkProvider === provider && styles.benchmarkChoiceTextSelected,
+                    ]}
+                  >
+                    {provider === 'openai' ? 'OpenAI' : 'Gemini'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.benchmarkSectionTitle}>Scenario</Text>
+            <View style={styles.benchmarkScenarioRow}>
+              {M4_BENCHMARK_SCENARIOS.map(scenario => (
+                <TouchableOpacity
+                  key={scenario}
+                  style={[
+                    styles.benchmarkScenarioButton,
+                    realtimeBenchmarkScenario === scenario && styles.benchmarkScenarioButtonSelected,
+                  ]}
+                  onPress={() => setRealtimeBenchmarkScenario(scenario)}
+                >
+                  <Text style={styles.benchmarkScenarioText}>{scenario}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.benchmarkSummaryCard}>
+              <Text style={styles.benchmarkSummaryText}>
+                {realtimeBenchmarkProvider ? (realtimeBenchmarkProvider === 'openai' ? 'OpenAI' : 'Gemini') : 'Select provider'} · {realtimeBenchmarkScenario}
+              </Text>
+              <Text style={styles.aheadDebugMuted}>
+                Talk becomes available when a story is active. Run the same scenario for both providers.
+              </Text>
+            </View>
+
+            {realtimeBenchmarkScenario === 'B4' && (
+              <TouchableOpacity style={styles.benchmarkSecondaryButton} onPress={() => void playRealtimeBenchmarkNoise()}>
+                <Text style={styles.benchmarkSecondaryText}>Play fixed road-noise fixture · 0.35</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.benchmarkPrimaryButton} onPress={() => void exportRealtimeBenchmark()}>
+              <Text style={styles.benchmarkPrimaryText}>Export benchmark JSON</Text>
+            </TouchableOpacity>
+
+            {realtimeBenchmarkExportStatus && (
+              <Text style={styles.benchmarkStatusText}>{realtimeBenchmarkExportStatus}</Text>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       <GuideProfileModal
         visible={Boolean(guideProfileOpen)}
         topInset={insets.top}
@@ -1079,7 +1219,16 @@ export function LiveScreen() {
         backToGuidesLabel={t('guide.backToGuides')}
         voiceSampleLabel={t('guide.voiceSample')}
         voicePlaceholderLabel={t('guide.voicePlaceholder')}
+        voiceLoadingLabel={t('guide.voiceLoading')}
+        voicePlayingLabel={t('guide.voicePlaying')}
+        voiceErrorLabel={t('guide.voiceError')}
+        voiceRetryLabel={t('guide.voiceRetry')}
         swipeLabel={t('guide.swipeHint')}
+        voicePreviewState={voicePreview.state}
+        voicePreviewError={voicePreview.error}
+        onVoiceSample={voicePreview.play}
+        onRetryVoiceSample={voicePreview.retry}
+        onStopVoiceSample={voicePreview.stop}
         onChoose={(guideId) => {
           void selectGuide(guideId);
           setGuideProfileOpen(null);
@@ -1606,6 +1755,105 @@ const styles = StyleSheet.create({
   motionLabel: { marginTop: 8, color: colors.textMuted, fontSize: 12 },
   errorText: { marginBottom: spacing.md, color: colors.danger, fontSize: 13 },
   warnText: { marginTop: 8, color: colors.warning, fontSize: 12 },
+  benchmarkFab: {
+    position: 'absolute',
+    right: spacing.md,
+    zIndex: 45,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.foreground,
+    backgroundColor: colors.surface,
+  },
+  benchmarkFabText: { ...typography.caption, color: colors.foreground, fontWeight: '800' },
+  benchmarkBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(20,20,20,0.28)',
+  },
+  benchmarkSheet: {
+    maxHeight: '82%',
+    gap: spacing.md,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    backgroundColor: colors.background,
+  },
+  benchmarkHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  benchmarkHeaderCopy: { flex: 1, gap: spacing.xs },
+  benchmarkCloseButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  benchmarkCloseText: { color: colors.foreground, fontSize: 28, lineHeight: 30 },
+  benchmarkMeta: { ...typography.caption, color: colors.textMuted },
+  benchmarkSectionTitle: { ...typography.label, color: colors.foreground },
+  benchmarkChoiceRow: { flexDirection: 'row', gap: spacing.sm },
+  benchmarkChoiceButton: {
+    flex: 1,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  benchmarkChoiceButtonSelected: {
+    borderColor: colors.primaryOrange,
+    backgroundColor: colors.primaryOrangeLight,
+  },
+  benchmarkChoiceText: { ...typography.body, color: colors.foreground, fontWeight: '700' },
+  benchmarkChoiceTextSelected: { color: colors.primaryOrange },
+  benchmarkScenarioRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  benchmarkScenarioButton: {
+    minWidth: 48,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  benchmarkScenarioButtonSelected: { borderColor: colors.primaryOrange, borderWidth: 2 },
+  benchmarkScenarioText: { ...typography.caption, color: colors.foreground, fontWeight: '700' },
+  benchmarkSummaryCard: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  benchmarkSummaryText: { ...typography.body, color: colors.foreground, fontWeight: '700' },
+  benchmarkPrimaryButton: {
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryOrange,
+  },
+  benchmarkPrimaryText: { ...typography.body, color: colors.surface, fontWeight: '700' },
+  benchmarkSecondaryButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  benchmarkSecondaryText: { ...typography.caption, color: colors.foreground, fontWeight: '700' },
+  benchmarkStatusText: { ...typography.caption, color: colors.foreground },
   aheadDebugPanel: {
     gap: spacing.xs,
     padding: spacing.md,
@@ -1642,6 +1890,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryOrange,
   },
   smallDebugButtonDisabled: { opacity: 0.56 },
+  benchmarkButtonSelected: { borderWidth: 3, borderColor: colors.foreground },
   smallDebugButtonText: { ...typography.caption, color: colors.surface, fontWeight: '700' },
   previewButton: {
     minHeight: 44,

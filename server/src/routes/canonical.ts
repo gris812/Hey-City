@@ -1,6 +1,6 @@
 import { selectStory, selectedStoryAvailability, StorySelectionError } from '../services/selectedStory';
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAuthOrGuest } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { getGuide } from '../services/guides';
 import { getSession } from '../services/driveSession';
@@ -18,6 +18,14 @@ import {
   conversationResumeHandler,
   conversationTurnHandler,
 } from '../controllers/conversation';
+import {
+  realtimeVoiceBargeInHandler,
+  realtimeVoiceCloseHandler,
+  realtimeVoiceConnectHandler,
+  realtimeVoiceFallbackHandler,
+  realtimeVoiceTurnHandler,
+  realtimeVoiceUsageHandler,
+} from '../controllers/realtimeVoice';
 
 export const sessionsRouter = Router();
 sessionsRouter.use(requireAuth);
@@ -43,6 +51,10 @@ sessionsRouter.put('/:sessionId/guide', async (req: AuthRequest, res, next) => {
     if (!session || session.userId !== req.user?.userId) { res.status(404).json({ error: 'Session not found' }); return; }
     const guide = await getGuide(String(req.body.guideId));
     if (!guide?.active) { res.status(400).json({ error: 'Guide is unavailable' }); return; }
+    const nextLanguage = req.body.language === 'ru' || req.body.language === 'en' ? req.body.language : session.params.language;
+    if (session.realtimeVoiceSession && (guide.id !== session.params.voiceId || nextLanguage !== session.params.language)) {
+      await session.realtimeVoiceSession.close(guide.id !== session.params.voiceId ? 'guide_changed' : 'language_changed');
+    }
     session.storyRequest?.abort();
     session.conversationRuntime.abandonForContextChange();
     session.storyContinuation = undefined;
@@ -59,6 +71,12 @@ sessionsRouter.post('/:sessionId/conversation/interrupt', conversationInterruptH
 sessionsRouter.post('/:sessionId/conversation/turn', conversationTurnHandler);
 sessionsRouter.post('/:sessionId/conversation/resume', conversationResumeHandler);
 sessionsRouter.post('/:sessionId/conversation/cancel', conversationCancelHandler);
+sessionsRouter.post('/:sessionId/realtime-voice/connect', realtimeVoiceConnectHandler);
+sessionsRouter.post('/:sessionId/realtime-voice/turn', realtimeVoiceTurnHandler);
+sessionsRouter.post('/:sessionId/realtime-voice/barge-in', realtimeVoiceBargeInHandler);
+sessionsRouter.post('/:sessionId/realtime-voice/close', realtimeVoiceCloseHandler);
+sessionsRouter.post('/:sessionId/realtime-voice/fallback', realtimeVoiceFallbackHandler);
+sessionsRouter.post('/:sessionId/realtime-voice/usage', realtimeVoiceUsageHandler);
 sessionsRouter.post('/:sessionId/story/end', canonicalStoryEnd);
 sessionsRouter.post('/:sessionId/end', canonicalSessionEnd);
 
@@ -67,9 +85,9 @@ discoveryRouter.use(requireAuth);
 discoveryRouter.post('/active-poi', getPoiCandidates);
 
 export const storiesRouter = Router();
+storiesRouter.post('/voice-sample', requireAuthOrGuest, generateVoiceSample);
 storiesRouter.use(requireAuth);
 storiesRouter.post('/generate', generateNarration);
-storiesRouter.post('/voice-sample', generateVoiceSample);
 
 export const poisRouter = Router();
 poisRouter.use(requireAuth);

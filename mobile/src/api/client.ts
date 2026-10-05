@@ -2,7 +2,8 @@ import * as SecureStore from 'expo-secure-store';
 import { config } from '../config';
 import {
   AUTH_SESSION_EXPIRED_MESSAGE,
-  isAuthenticationFailure,
+  GENERIC_REQUEST_ERROR_MESSAGE,
+  shouldInvalidateStoredSession,
   toUserSafeRequestMessage,
 } from './authErrors';
 
@@ -46,17 +47,29 @@ export async function apiFetch<T>(
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const body = options.body !== undefined ? JSON.stringify(options.body) : undefined;
-  const res = await fetch(`${config.apiBase}${path}`, {
-    ...options,
-    headers,
-    body,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.apiBase}${path}`, {
+      ...options,
+      headers,
+      body,
+    });
+  } catch {
+    throw new Error('Hey City API is unreachable. Check your connection and development API configuration.');
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     const backendMessage = (err as { error?: string }).error;
 
-    if (isAuthenticationFailure(res.status, backendMessage)) {
+    // OTP verification uses HTTP 401 for an invalid/expired one-time code.
+    // That is not an existing app-session failure and must not be rewritten as
+    // "session expired" or clear a valid stored session.
+    if (path.startsWith('/auth/') && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429)) {
+      throw new Error(backendMessage || GENERIC_REQUEST_ERROR_MESSAGE);
+    }
+
+    if (shouldInvalidateStoredSession(path, res.status, backendMessage)) {
       await clearToken();
       await authInvalidationHandler?.();
       throw new AuthSessionExpiredError();

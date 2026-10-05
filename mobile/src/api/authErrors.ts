@@ -13,3 +13,13 @@ export function toUserSafeRequestMessage(status: number, message?: string): stri
   if (isAuthenticationFailure(status, message)) return AUTH_SESSION_EXPIRED_MESSAGE;
   return message || GENERIC_REQUEST_ERROR_MESSAGE;
 }
+
+
+export function shouldInvalidateStoredSession(
+  path: string,
+  status: number,
+  message?: string
+): boolean {
+  if (path.startsWith('/auth/')) return false;
+  return isAuthenticationFailure(status, message);
+}
