@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -13,9 +13,11 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
 import type { GuidePreference } from '../../localization/preferences';
+import { resolveGuideSwipe, shouldCaptureGuideSwipe } from '../../features/guides/guideProfileInteraction';
 
 export type FullGuideProfile = {
   image: ImageSourcePropType;
+  imageResizeMode?: 'cover' | 'contain';
   name: string;
   role: string;
   body: string;
@@ -49,8 +51,6 @@ export type GuideProfileModalProps = {
   onBackToGuides: () => void;
 };
 
-const guideOrder: GuidePreference[] = ['dana', 'arthur'];
-
 export function GuideProfileModal({
   visible,
   topInset,
@@ -76,33 +76,46 @@ export function GuideProfileModal({
 }: GuideProfileModalProps) {
   const [activeGuideId, setActiveGuideId] = useState<GuidePreference>(initialGuideId);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const stopRef = useRef(onStopVoiceSample);
+  const wasVisibleRef = useRef(false);
+  const initialGuideRef = useRef(initialGuideId);
+
+  stopRef.current = onStopVoiceSample;
 
   useEffect(() => {
-    if (!visible) {
-      onStopVoiceSample();
-      return;
-    }
-    setActiveGuideId(initialGuideId);
-    setSampleOpen(false);
-    onStopVoiceSample();
-  }, [initialGuideId, visible, onStopVoiceSample]);
+    const opening = visible && !wasVisibleRef.current;
+    const closing = !visible && wasVisibleRef.current;
+    const requestedGuideChanged = visible && initialGuideRef.current !== initialGuideId;
 
-  const switchGuide = (direction: -1 | 1) => {
-    const currentIndex = guideOrder.indexOf(activeGuideId);
-    const nextIndex = (currentIndex + direction + guideOrder.length) % guideOrder.length;
-    onStopVoiceSample();
-    setActiveGuideId(guideOrder[nextIndex]);
-    setSampleOpen(false);
-  };
+    if (opening || requestedGuideChanged) {
+      if (requestedGuideChanged) void stopRef.current();
+      setActiveGuideId(initialGuideId);
+      setSampleOpen(false);
+    }
+    if (closing) void stopRef.current();
+
+    wasVisibleRef.current = visible;
+    initialGuideRef.current = initialGuideId;
+  }, [initialGuideId, visible]);
+
+  useEffect(() => () => {
+    void stopRef.current();
+  }, []);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+          shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
+        onPanResponderTerminationRequest: () => false,
         onPanResponderRelease: (_, gesture) => {
-          if (gesture.dx <= -48) switchGuide(1);
-          if (gesture.dx >= 48) switchGuide(-1);
+          const nextGuide = resolveGuideSwipe(activeGuideId, gesture.dx, gesture.dy);
+          if (nextGuide === activeGuideId) return;
+          void stopRef.current();
+          setActiveGuideId(nextGuide);
+          setSampleOpen(false);
         },
       }),
     [activeGuideId]
@@ -115,14 +128,14 @@ export function GuideProfileModal({
       visible={visible}
       animationType="slide"
       onRequestClose={() => {
-        onStopVoiceSample();
+        void stopRef.current();
         onBack();
       }}
     >
       <View style={styles.screen} {...panResponder.panHandlers}>
         <View style={[styles.imageStage, { paddingTop: Math.max(0, topInset) }]}>
           <View style={styles.imageFrame}>
-            <Image source={profile.image} style={styles.image} resizeMode="cover" />
+            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'cover'} />
           </View>
           <View style={[styles.topBar, { top: Math.max(0, topInset) + spacing.sm }]}>
             <TouchableOpacity
@@ -130,7 +143,7 @@ export function GuideProfileModal({
               accessibilityLabel={backLabel}
               style={styles.backButton}
               onPress={() => {
-                onStopVoiceSample();
+                void stopRef.current();
                 onBack();
               }}
             >
@@ -150,7 +163,7 @@ export function GuideProfileModal({
               <Text style={styles.name}>{profile.name}</Text>
               <Text style={styles.role}>{profile.role}</Text>
             </View>
-            <Text style={styles.pageIndex}>{guideOrder.indexOf(activeGuideId) + 1} / {guideOrder.length}</Text>
+            <Text style={styles.pageIndex}>{activeGuideId === 'dana' ? 1 : 2} / 2</Text>
           </View>
 
           <Text style={styles.body}>{profile.body}</Text>
@@ -163,7 +176,7 @@ export function GuideProfileModal({
             disabled={voicePreviewState === 'loading'}
             onPress={() => {
               setSampleOpen(true);
-              if (voicePreviewState === 'playing') onStopVoiceSample();
+              if (voicePreviewState === 'playing') void stopRef.current();
               else onVoiceSample(activeGuideId);
             }}
           >
@@ -199,13 +212,13 @@ export function GuideProfileModal({
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.chooseButton} onPress={() => {
-              onStopVoiceSample();
+              void stopRef.current();
               onChoose(activeGuideId);
             }}>
               <Text style={styles.chooseText}>{profile.chooseLabel}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.guidesButton} onPress={() => {
-              onStopVoiceSample();
+              void stopRef.current();
               onBackToGuides();
             }}>
               <Text style={styles.guidesText}>{backToGuidesLabel}</Text>
