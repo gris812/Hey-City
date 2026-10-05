@@ -20,11 +20,11 @@ import {
   type SupportedLocale,
 } from '../localization';
 import { useAppTranslation } from '../localization';
-import { canonicalGuideImages } from '../presentation/guideAssets';
+import { guideSelectionImages } from '../presentation/guideAssets';
 
 const guideOptions: GuidePreference[] = ['dana', 'arthur'];
 
-const guideImages = canonicalGuideImages;
+const guideImages = guideSelectionImages;
 
 export function OnboardingScreen() {
   const navigation = useNavigation();
