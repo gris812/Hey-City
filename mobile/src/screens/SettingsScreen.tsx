@@ -27,16 +27,14 @@ import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
-import { canonicalGuideImages } from '../presentation/guideAssets';
+import { guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
   { id: 'arthur' },
 ];
 
-const guideImages = canonicalGuideImages;
-
-export const UI_BUILD_LABEL = 'Welcome v2 · Settings scroll v2';
+const guideImages = guideSelectionImages;
 
 export function SettingsScreen() {
   const { identity, logout, preferences, updatePreferences } = useAuth();
@@ -78,7 +76,8 @@ export function SettingsScreen() {
 
   const fullGuideProfiles = {
     dana: {
-      image: guideImages.dana,
+      image: guideFullProfileImages.dana,
+      imageResizeMode: 'cover' as const,
       name: t('guide.dana'),
       role: t('guide.danaRole'),
       body: t('guide.danaFullCopy'),
@@ -91,7 +90,8 @@ export function SettingsScreen() {
           : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
     },
     arthur: {
-      image: guideImages.arthur,
+      image: guideFullProfileImages.arthur,
+      imageResizeMode: 'contain' as const,
       name: t('guide.arthur'),
       role: t('guide.arthurRole'),
       body: t('guide.arthurFullCopy'),
@@ -120,7 +120,6 @@ export function SettingsScreen() {
         ]}
       >
         <Text style={styles.title}>{t('settings.title')}</Text>
-        <Text style={styles.buildLabel}>{UI_BUILD_LABEL}</Text>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
@@ -226,12 +225,13 @@ export function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About Hey City</Text>
-          <Text style={styles.hint}>Version 1.0.0 · {UI_BUILD_LABEL}</Text>
+          <Text style={styles.hint}>Version 1.0.0</Text>
         </View>
 
         {__DEV__ && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('settings.developerTools')}</Text>
+            <Text style={styles.buildLabel}>Native M4 corrective build</Text>
             <LocationSimulationPanel />
           </View>
         )}
@@ -253,9 +253,9 @@ export function SettingsScreen() {
         swipeLabel={t('guide.swipeHint')}
         voicePreviewState={voicePreview.state}
         voicePreviewError={voicePreview.error}
-        onVoiceSample={(guideId) => void voicePreview.play(guideId)}
-        onRetryVoiceSample={() => void voicePreview.retry()}
-        onStopVoiceSample={() => void voicePreview.stop()}
+        onVoiceSample={voicePreview.play}
+        onRetryVoiceSample={voicePreview.retry}
+        onStopVoiceSample={voicePreview.stop}
         onChoose={(guideId) => {
           void selectGuide(guideId);
           setGuideProfileOpen(null);
