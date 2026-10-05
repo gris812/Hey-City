@@ -50,7 +50,7 @@ export const production = {
 export const auth = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   fromEmail: process.env.AUTH_FROM_EMAIL || 'Hey City <login@heycity.stolbergco.com>',
-  adminEmail: 'slepak@stolbergco.com',
+  adminEmail: (process.env.ADMIN_EMAIL || 'slepak@stolbergco.com').trim().toLowerCase(),
   adminCode: process.env.ADMIN_AUTH_CODE || '',
   otpPepper: process.env.OTP_PEPPER || '',
   testerAllowlist: (process.env.TESTER_EMAIL_ALLOWLIST || '')
