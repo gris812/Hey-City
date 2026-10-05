@@ -88,6 +88,7 @@ export function useDriveDiscoverySession(input: {
   const [realtimeVoiceState, setRealtimeVoiceState] = useState<RealtimeVoiceClientState>('closed');
   const [locationSettingsRequired, setLocationSettingsRequired] = useState(false);
   const [apiCompatibilityStatus, setApiCompatibilityStatus] = useState<'unknown' | 'compatible' | 'incompatible'>('unknown');
+  const [apiBuildSha, setApiBuildSha] = useState<string>('unknown');
   const [realtimeBenchmarkProvider, setRealtimeBenchmarkProvider] = useState<NativeBenchmarkProvider | null>(null);
   const [realtimeBenchmarkScenario, setRealtimeBenchmarkScenario] = useState<M4BenchmarkScenario>('B1');
   const [realtimeBenchmarkExportStatus, setRealtimeBenchmarkExportStatus] = useState<string | null>(null);
@@ -142,6 +143,7 @@ export function useDriveDiscoverySession(input: {
 
       const compatibility = await checkApiCompatibility();
       setApiCompatibilityStatus(compatibility.compatible ? 'compatible' : 'incompatible');
+      setApiBuildSha(compatibility.buildSha || 'unknown');
       if (!compatibility.reachable) {
         setSessionError(`Hey City API is unreachable from this iPhone. API: ${config.apiBase}`);
         return;
@@ -735,6 +737,8 @@ export function useDriveDiscoverySession(input: {
     locationSettingsRequired,
     openLocationSettings,
     apiCompatibilityStatus,
+    apiBuildSha,
+    appBuildSha: config.buildSha,
     apiBase: config.apiBase,
     realtimeBenchmarkEnabled: config.m4NativeBenchmarkEnabled,
     realtimeBenchmarkProvider,
