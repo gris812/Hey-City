@@ -5,6 +5,7 @@ const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 export const config = {
   apiBase: API_BASE,
   apiBaseExplicit: Boolean(RAW_API_BASE),
+  buildSha: process.env.EXPO_PUBLIC_GIT_SHA?.trim() || 'unstamped',
   pingIntervalSec: 10,
   /** Development-build field control only; never exposed as a production preference. */
   m4NativeBenchmarkEnabled:
