@@ -32,10 +32,16 @@ export function LoginScreen() {
     if (!e) return;
     setLoading(true);
     try {
-      await sendOtp(e);
+      const result = await sendOtp(e);
       setStep('code');
       setCode('');
-      if (showConfirmation) Alert.alert('Hey City', t('auth.resendDone'));
+      if (result.delivery === 'development_console') {
+        Alert.alert('Hey City', t('auth.devConsoleCode'));
+      } else if (result.delivery === 'admin_code') {
+        Alert.alert('Hey City', t('auth.adminCode'));
+      } else if (showConfirmation) {
+        Alert.alert('Hey City', t('auth.resendDone'));
+      }
     } catch (err) {
       Alert.alert(t('common.error'), (err as Error).message);
     } finally {
