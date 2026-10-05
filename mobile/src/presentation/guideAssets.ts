@@ -2,10 +2,20 @@ import type { ImageSourcePropType } from 'react-native';
 import type { GuidePreference } from '../localization/preferences';
 
 /**
- * Canonical mobile portrait pair. All guide-selection/profile surfaces use
- * this mapping so Dana and Arthur cannot drift into different asset formats.
+ * Canonical guide assets are surface-specific. "Consistent" means consistent
+ * layout and identity, not forcing one crop onto every UI surface.
  */
-export const canonicalGuideImages: Record<GuidePreference, ImageSourcePropType> = {
+export const guideAvatarImages: Record<GuidePreference, ImageSourcePropType> = {
   dana: require('../../assets/Guides/Dana.png'),
   arthur: require('../../assets/Guides/Artur.png'),
+};
+
+export const guideSelectionImages: Record<GuidePreference, ImageSourcePropType> = {
+  dana: require('../../assets/Guides/DanaSelection.png'),
+  arthur: require('../../assets/Guides/ArturSelection.png'),
+};
+
+export const guideFullProfileImages: Record<GuidePreference, ImageSourcePropType> = {
+  dana: require('../../assets/Guides/DanaSelection.png'),
+  arthur: require('../../assets/Guides/ArturSelection.png'),
 };
