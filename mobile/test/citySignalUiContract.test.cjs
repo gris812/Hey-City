@@ -72,7 +72,8 @@ assert.match(settings, /Switch value disabled/, 'Settings does not expose inert 
 assert.match(settings, /nestedScrollEnabled/, 'Settings explicitly enables nested scrolling');
 assert.match(settings, /alwaysBounceVertical/, 'Settings exposes vertical scrolling on iOS');
 assert.match(settings, /flexGrow: 1/, 'Settings content owns a full-height scroll surface');
-assert.match(settings, /Welcome v2 · Settings scroll v2/, 'Settings exposes the current UI build marker');
+assert.doesNotMatch(settings, /Welcome v2 · Settings scroll v2/, 'Settings hides internal build markers from users');
+assert.match(settings, /Native M4 corrective build/, 'Build diagnostics remain available only in the developer panel');
 assert.match(settings, /setGuideProfileOpen\(guide\.id\)/, 'Settings guide images open the full profile');
 assert.match(guideProfile, /PanResponder\.create/, 'Full guide profile supports horizontal swipe');
 assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a real voice sample control');
@@ -83,10 +84,17 @@ assert.match(voicePreviewHook, /method: 'HEAD'/, 'Voice preview verifies media r
 assert.match(voicePreviewHook, /Audio\.setAudioModeAsync/, 'Voice preview configures the native audio session');
 assert.match(voicePreviewHook, /playsInSilentModeIOS: true/, 'Voice preview plays through the iOS silent switch');
 assert.match(voicePreviewHook, /Audio\.Sound\.createAsync/, 'Voice preview uses native audio playback');
-assert.match(live, /const guideSelectionImages = canonicalGuideImages/, 'Guide profile and selection surfaces share the canonical portrait asset pair');
-assert.match(guideAssets, /Dana\.png/, 'Canonical guide asset map uses the accepted Dana portrait asset');
-assert.match(guideAssets, /Artur\.png/, 'Canonical guide asset map uses the accepted Arthur portrait asset');
-assert.doesNotMatch(guideAssets, /Selection\.png/, 'Canonical guide asset map cannot mix legacy selection-art framing');
+assert.match(guideAssets, /guideAvatarImages/, 'Guide assets define an avatar surface mapping');
+assert.match(guideAssets, /guideSelectionImages/, 'Guide assets define a selection/settings-card mapping');
+assert.match(guideAssets, /guideFullProfileImages/, 'Guide assets define a full-profile mapping');
+assert.match(guideAssets, /Dana\.png/, 'Avatar mapping uses the canonical Dana portrait');
+assert.match(guideAssets, /Artur\.png/, 'Avatar mapping uses the canonical Arthur portrait');
+assert.match(guideAssets, /DanaSelection\.png/, 'Selection/full-profile mappings retain the approved Dana full-body asset');
+assert.match(guideAssets, /ArturSelection\.png/, 'Selection/full-profile mappings retain the approved Arthur profile asset');
+assert.match(live, /imageResizeMode: 'cover'/, 'Dana full profile keeps the approved full-body/background composition');
+assert.match(live, /imageResizeMode: 'contain'/, 'Arthur full profile avoids cropping the head/face');
+assert.doesNotMatch(live, /onStopVoiceSample=\{\(\) => void voicePreview\.stop\(\)\}/, 'Explore does not recreate stop callback on rerender');
+assert.doesNotMatch(settings, /onStopVoiceSample=\{\(\) => void voicePreview\.stop\(\)\}/, 'Settings does not recreate stop callback on rerender');
 assert.match(guideProfile, /borderRadius: radius\.sm/, 'Full guide profile avoids pill-shaped primary controls');
 assert.doesNotMatch(guideProfile, /backgroundColor: 'rgba\(0,0,0/, 'Full guide profile does not cover the portrait with a dark overlay');
 
