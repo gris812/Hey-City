@@ -34,6 +34,23 @@ async function run(): Promise<void> {
       'invalid guide is rejected before any TTS provider call',
     );
 
+    for (const voiceId of ['dana', 'arthur'] as const) {
+      for (const lang of ['en', 'ru'] as const) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-hey-city-guest-id': 'guest_test_abcdefg',
+          },
+          body: JSON.stringify({ voiceId, lang }),
+        });
+        assert.equal(response.status, 200, `${voiceId}/${lang} guest preview should succeed in deterministic test mode`);
+        const payload = await response.json() as { transcriptText: string; audioUrl: string };
+        assert.ok(payload.transcriptText.length > 8, `${voiceId}/${lang} has a localized greeting`);
+        assert.ok(payload.audioUrl.includes('/tts/'), `${voiceId}/${lang} returns a test audio URL`);
+      }
+    }
+
     console.log('voiceSampleAccess tests passed');
   } finally {
     listener.close();
