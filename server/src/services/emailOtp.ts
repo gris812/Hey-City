@@ -25,11 +25,16 @@ export function isEmailAllowed(email: string): boolean {
   return isAdminEmail(email) || auth.testerAllowlist.length === 0 || auth.testerAllowlist.includes(email);
 }
 
-export async function sendOtpEmail(email: string): Promise<void> {
+export type OtpDeliveryMode = 'email' | 'development_console' | 'admin_code';
+
+export async function sendOtpEmail(email: string): Promise<OtpDeliveryMode> {
   // Production field access remains allowlisted. Local/native development must
   // be able to exercise the canonical get-or-create OTP flow with a fresh email.
   if (server.nodeEnv === 'production' && !isEmailAllowed(email)) throw new Error('EMAIL_NOT_ALLOWED');
-  if (isAdminEmail(email)) return;
+  if (isAdminEmail(email)) {
+    if (!auth.adminCode) throw new Error('ADMIN_CODE_NOT_CONFIGURED');
+    return 'admin_code';
+  }
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const codeHash = hashCode(email, code);
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
@@ -42,7 +47,7 @@ export async function sendOtpEmail(email: string): Promise<void> {
 
   if (server.nodeEnv !== 'production' && !auth.resendApiKey) {
     console.log(`[OTP development] ${email} -> ${code}`);
-    return;
+    return 'development_console';
   }
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -55,6 +60,7 @@ export async function sendOtpEmail(email: string): Promise<void> {
   });
   if (!response.ok) throw new Error(`Resend rejected email (${response.status}): ${(await response.text()).slice(0, 200)}`);
   await recordUsage({ category: 'auth', operation: 'resend_email' });
+  return 'email';
 }
 
 export async function verifyOtp(email: string, code: string): Promise<boolean> {
