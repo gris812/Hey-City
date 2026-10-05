@@ -57,7 +57,7 @@ import { useDriveDiscoverySession } from '../features/live/useDriveDiscoverySess
 import { useExploreNarrative } from '../features/live/useExploreNarrative';
 import { createSnapshotLocation, useGuidedTourDemo } from '../features/live/useGuidedTourDemo';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
-import { canonicalGuideImages } from '../presentation/guideAssets';
+import { guideAvatarImages, guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
 
 const THEME_TAGS = [
   'history',
@@ -78,10 +78,7 @@ const STYLES = [
   'mini_lecture',
 ];
 
-const guideImages = canonicalGuideImages;
-
-// Use the same canonical portrait assets across avatar, selection and profile surfaces.
-const guideSelectionImages = canonicalGuideImages;
+const guideImages = guideAvatarImages;
 
 const targetImageSources = {
   'trinity-church-demo': require('../../assets/Places/trinity-church-demo.png'),
@@ -356,7 +353,8 @@ export function LiveScreen() {
     : {};
   const fullGuideProfiles = {
     dana: {
-      image: guideSelectionImages.dana,
+      image: guideFullProfileImages.dana,
+      imageResizeMode: 'cover' as const,
       name: t('guide.dana'),
       role: getLocalizedGuideProfile('dana').role,
       body: getLocalizedGuideProfile('dana').fullCopy,
@@ -369,7 +367,8 @@ export function LiveScreen() {
           : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
     },
     arthur: {
-      image: guideSelectionImages.arthur,
+      image: guideFullProfileImages.arthur,
+      imageResizeMode: 'contain' as const,
       name: t('guide.arthur'),
       role: getLocalizedGuideProfile('arthur').role,
       body: getLocalizedGuideProfile('arthur').fullCopy,
@@ -1217,9 +1216,9 @@ export function LiveScreen() {
         swipeLabel={t('guide.swipeHint')}
         voicePreviewState={voicePreview.state}
         voicePreviewError={voicePreview.error}
-        onVoiceSample={(guideId) => void voicePreview.play(guideId)}
-        onRetryVoiceSample={() => void voicePreview.retry()}
-        onStopVoiceSample={() => void voicePreview.stop()}
+        onVoiceSample={voicePreview.play}
+        onRetryVoiceSample={voicePreview.retry}
+        onStopVoiceSample={voicePreview.stop}
         onChoose={(guideId) => {
           void selectGuide(guideId);
           setGuideProfileOpen(null);
