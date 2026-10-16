@@ -172,6 +172,6 @@ async function run() {
       assert(!files.some(f=>f.endsWith('.tmp')),'no incomplete audio is published');
     } finally { globalThis.fetch=savedFetch; media.directory=originalDirectory; openai.apiKey=originalKey; }
     console.log('admin catalog, SQL migrations, activity, attribution, access and speech deduplication tests passed');
-  } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); await pg.close(); }
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve=>server.close(()=>resolve())); await pg.close(); }
 }
 void run().catch(error=>{console.error(error);process.exitCode=1;});
