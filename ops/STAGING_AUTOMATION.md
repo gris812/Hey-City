@@ -60,3 +60,7 @@ Acceptance requires that the staging identity cannot open a shell or use Docker/
 On staging failure, the receiver stops only staging services, retaining staging DB/media for diagnosis. Administrator rollback must use the previous reviewed staging SHA and never use `docker system prune`, `down -v`, production project, or production SSH credentials.
 
 **Not completed here:** VPS bootstrap, GitHub environment/secrets, Nginx/Certbot setup, actual deployment, native iOS build, M4 acceptance, production rollout.
+
+### SSH key read permissions (Ubuntu OpenSSH)
+
+The restricted `authorized_keys` file is deliberately owned by `root:root` and mode `0644`, *not* `0600`: sshd may open the file after switching to the target staging user's UID. Public keys are not secret; root ownership and a root-owned parent directory prevent the staging user from changing the forced command. The private key remains mode `0600` on the client. If the public-key test returns `Permission denied (publickey)`, check target key fingerprint, `namei -l /home/heycity-staging-ci/.ssh/authorized_keys`, and sshd auth logs before changing anything else. Do not grant the user Docker access, disable StrictModes, or open password login.
