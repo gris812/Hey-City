@@ -47,7 +47,9 @@ printf 'restrict,command="/usr/local/bin/heycity-staging-ssh" %s %s %s\n' \
   "$keytype" "$keydata" "${comment:-staging-ci}" \
   > /home/heycity-staging-ci/.ssh/authorized_keys
 chown root:root /home/heycity-staging-ci/.ssh/authorized_keys
-chmod 0600 /home/heycity-staging-ci/.ssh/authorized_keys
+# sshd commonly reads authorized_keys under the target user's UID.
+# Keep root ownership (not writable by staging), but allow read access.
+chmod 0644 /home/heycity-staging-ci/.ssh/authorized_keys
 install -o root -g root -m 0755 "$here/heycity-staging-ssh" /usr/local/bin/heycity-staging-ssh
 install -o root -g root -m 0700 "$here/heycity-staging-deploy" /usr/local/sbin/heycity-staging-deploy
 install -d -o root -g root -m 0700 /opt/HeyCity-staging
