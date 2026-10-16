@@ -1,0 +1,66 @@
+# Staging is intentionally a separate Docker project and network.
+# Never use --project-name heycity-production with this file.
+name: heycity-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: heycity_staging
+      POSTGRES_USER: heycity_staging
+      POSTGRES_PASSWORD: ${STAGING_POSTGRES_PASSWORD:?Set STAGING_POSTGRES_PASSWORD in .env.staging}
+    volumes:
+      - heycity-staging-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heycity_staging -d heycity_staging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 192m
+    cpus: "0.75"
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - db
+
+  api:
+    # Supply an explicitly reviewed, locally imported image tagged with its Git SHA.
+    # This service deliberately has no build step on the memory-constrained VPS.
+    image: ${STAGING_API_IMAGE:?Provide a reviewed SHA-tagged staging API image}
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: staging
+      PORT: "4000"
+      DATABASE_URL: postgresql://heycity_staging:${STAGING_POSTGRES_PASSWORD:?Required}@postgres:5432/heycity_staging
+      DATABASE_SSL: "false"
+      PUBLIC_API_URL: https://staging-api.heycity.stolbergco.com
+      MEDIA_DIRECTORY: /app/data/media
+      AUTH_DISABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - heycity-staging-media:/app/data/media
+    ports:
+      - "127.0.0.1:4110:4000"
+    mem_limit: 384m
+    cpus: "1.0"
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - db
+      - outbound
+
+networks:
+  db:
+    internal: true
+  outbound: {}
+
+volumes:
+  heycity-staging-db:
+  heycity-staging-media:
