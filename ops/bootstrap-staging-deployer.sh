@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Admin-only one-time installation: no Docker up / Nginx edits / production mutations.
-# Usage (root): bash ops/bootstrap-staging-deployer.sh STAGING_PUBLIC_KEY STAGING_ENV_FILE
+# Usage (root): bash ops/bootstrap-staging-deployer.sh STAGING_PUBLIC_KEY [STAGING_ENV_FILE]
 set -euo pipefail
 umask 077
-if [[ $(id -u) != 0 || $# != 2 ]]; then
-  echo 'Usage (root): bash ops/bootstrap-staging-deployer.sh /path/to/staging.pub /path/to/.env.staging' >&2
+if [[ $(id -u) != 0 || $# -lt 1 || $# -gt 2 ]]; then
+  echo 'Usage (root): bash ops/bootstrap-staging-deployer.sh /path/to/staging.pub [/path/to/.env.staging]' >&2
   exit 64
 fi
 pubfile="$1"
-envsource="$2"
+envsource="${2:-}"
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 compose_source="$here/../docker-compose.staging.yml"
-for f in "$pubfile" "$envsource" "$compose_source" "$here/heycity-staging-ssh" "$here/heycity-staging-deploy"; do
+for f in "$pubfile" "$compose_source" "$here/heycity-staging-ssh" "$here/heycity-staging-deploy"; do
   [[ -f "$f" && ! -L "$f" ]] || { echo 'Missing or symlinked bootstrap input' >&2; exit 78; }
 done
 [[ $(wc -l < "$pubfile") == 1 ]] || { echo 'Expected one public key line' >&2; exit 78; }
@@ -20,7 +20,11 @@ IFS=' ' read -r keytype keydata comment < "$pubfile"
   echo 'Expected plain Ed25519 staging public key' >&2; exit 78;
 }
 ssh-keygen -lf "$pubfile" >/dev/null
-[[ $(stat -c '%a' "$envsource") == 600 ]] || { echo 'Environment file must be mode 600' >&2; exit 78; }
+if [[ -n "$envsource" ]]; then
+  [[ -f "$envsource" && ! -L "$envsource" && $(stat -c '%a' "$envsource") == 600 ]] || {
+    echo 'Environment file must be a regular mode-600 file' >&2; exit 78;
+  }
+fi
 for path in /usr/local/sbin/heycity-staging-deploy /usr/local/bin/heycity-staging-ssh \
   /etc/sudoers.d/heycity-staging-ci /home/heycity-staging-ci/.ssh/authorized_keys \
   /opt/HeyCity-staging/.env.staging; do
@@ -48,7 +52,9 @@ install -o root -g root -m 0755 "$here/heycity-staging-ssh" /usr/local/bin/heyci
 install -o root -g root -m 0700 "$here/heycity-staging-deploy" /usr/local/sbin/heycity-staging-deploy
 install -d -o root -g root -m 0700 /opt/HeyCity-staging
 install -o root -g root -m 0644 "$compose_source" /opt/HeyCity-staging/docker-compose.staging.yml
-install -o root -g root -m 0600 "$envsource" /opt/HeyCity-staging/.env.staging
+if [[ -n "$envsource" ]]; then
+  install -o root -g root -m 0600 "$envsource" /opt/HeyCity-staging/.env.staging
+fi
 printf '%s\n' 'heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *' \
   > /etc/sudoers.d/heycity-staging-ci
 chmod 0440 /etc/sudoers.d/heycity-staging-ci
@@ -58,4 +64,4 @@ if ! visudo -cf /etc/sudoers.d/heycity-staging-ci >/dev/null; then
   exit 78
 fi
 echo 'staging_bootstrap=installed account=heycity-staging-ci'
-echo 'Next: configure a new staging-only HTTPS vhost through an administrator.'
+echo 'Next: supply a root-owned mode-600 /opt/HeyCity-staging/.env.staging and a staging-only HTTPS vhost before deployment.'
