@@ -17,7 +17,7 @@ export function createApp(): express.Express {
   const app = express();
 
   app.set('trust proxy', 1);
-  if (server.nodeEnv === 'production') app.use(helmet());
+  if (server.nodeEnv === 'production' || server.nodeEnv === 'staging') app.use(helmet());
   app.use(cors({ origin(origin, callback) {
     if (!origin || production.corsOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed'));
