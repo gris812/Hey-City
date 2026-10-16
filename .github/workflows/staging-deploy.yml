@@ -1,0 +1,100 @@
+name: Hey City staging deploy (manual, isolated)
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Reviewed 40-character Git commit SHA (must equal staging approval variable)'
+        required: true
+        type: string
+permissions:
+  contents: read
+  checks: read
+concurrency:
+  group: heycity-staging-deploy
+  cancel-in-progress: false
+jobs:
+  staging:
+    if: github.ref == 'refs/heads/main' && github.repository == 'gris812/Hey-City'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: staging
+    steps:
+      - name: Verify manually reviewed revision
+        id: approved
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          APPROVED_SHA: ${{ vars.STAGING_APPROVED_SHA }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected a full lowercase Git SHA' >&2; exit 1; }
+          [[ "$APPROVED_SHA" == "$REQUESTED_SHA" ]] || { echo 'Requested revision is not approved in staging environment' >&2; exit 1; }
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout approved revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.approved.outputs.sha }}
+          persist-credentials: false
+
+      - name: Confirm exact source revision and passing CI
+        shell: bash
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SHA" ]]
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' \
+            | grep -qxE '[1-9][0-9]*'
+
+      - name: Build SHA-labeled API image (without SSH secrets)
+        shell: bash
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker build --label "org.opencontainers.image.revision=$SHA" \
+            -f server/Dockerfile -t "heycity-staging-api:git-$SHA" .
+          docker image inspect "heycity-staging-api:git-$SHA" \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+            | grep -Fx "$SHA"
+          docker save -o "$RUNNER_TEMP/heycity-staging-image.tar" "heycity-staging-api:git-$SHA"
+
+      - name: Transfer image via restricted staging SSH identity
+        shell: bash
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+          DEPLOY_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_SSH_USER }}
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Missing staging host secret}"
+          : "${DEPLOY_USER:?Missing staging user secret}"
+          : "${DEPLOY_KEY:?Missing staging private key}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing verified staging known_hosts}"
+          [[ "$DEPLOY_USER" == 'heycity-staging-ci' ]] || exit 1
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]] || exit 1
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/staging-ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/staging-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/staging-ssh/known_hosts"
+          ssh -T -i "$RUNNER_TEMP/staging-ssh/key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts" \
+            -o ConnectTimeout=12 -o ConnectionAttempts=1 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $SHA" \
+            < "$RUNNER_TEMP/heycity-staging-image.tar"
+
+      - name: Public staging and unchanged production HTTPS smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 5 --retry-delay 3 --max-time 12 \
+            https://staging-api.heycity.stolbergco.com/health >/dev/null
+          curl -fsS --max-time 12 \
+            https://api.heycity.stolbergco.com/health >/dev/null
+          echo 'staging_https=ok production_https=ok'
