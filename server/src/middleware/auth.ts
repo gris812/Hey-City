@@ -44,7 +44,8 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 
   // ✅ DEV/BYPASS: фиксированный пользователь для тестирования
-  if (AUTH_DISABLED || process.env.NODE_ENV === 'development') {
+  // AUTH_DISABLED is test-only; public staging and production must never bypass identity.
+  if (process.env.NODE_ENV === 'development' || (process.env.NODE_ENV === 'test' && AUTH_DISABLED)) {
     req.user = { userId: 'gris', email: 'g.slepak@icloud.com' };
     return requestContext.run({ userId: 'gris' }, next);
   }
