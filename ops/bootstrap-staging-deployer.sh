@@ -57,8 +57,12 @@ install -o root -g root -m 0644 "$compose_source" /opt/HeyCity-staging/docker-co
 if [[ -n "$envsource" ]]; then
   install -o root -g root -m 0600 "$envsource" /opt/HeyCity-staging/.env.staging
 fi
-printf '%s\n' 'heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *' \
-  > /etc/sudoers.d/heycity-staging-ci
+cat > /etc/sudoers.d/heycity-staging-ci <<'SUDOERS'
+# This forced-command deployment streams a binary Docker archive over stdin.
+# Do not allocate a sudo pseudo-TTY: terminal line discipline corrupts archives.
+Defaults:heycity-staging-ci !use_pty
+heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *
+SUDOERS
 chmod 0440 /etc/sudoers.d/heycity-staging-ci
 if ! visudo -cf /etc/sudoers.d/heycity-staging-ci >/dev/null; then
   rm -f /etc/sudoers.d/heycity-staging-ci
