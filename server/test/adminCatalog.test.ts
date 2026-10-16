@@ -19,6 +19,9 @@ async function run() {
   await initializeDatabase(); await initializeGuides(); await initializeDatabase();
   assert.equal((await listGuides()).length, 2);
   const dana = (await getGuide('dana'))!;
+  const { toPublicGuide } = await import('../src/services/guides');
+  const withUnknownAdminField = toPublicGuide({ ...dana, internalApiToken: 'not-public' } as typeof dana);
+  assert(!('internalApiToken' in withUnknownAdminField), 'unknown DB fields cannot enter public response');
   await saveGuide({
     ...dana, id: 'third', ru: { ...dana.ru, name: 'Third' },
     personality: 'Distinct style', cardImage: '/assets/dana-v3-avatar.png',
