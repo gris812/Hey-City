@@ -64,3 +64,14 @@ On staging failure, the receiver stops only staging services, retaining staging 
 ### SSH key read permissions (Ubuntu OpenSSH)
 
 The restricted `authorized_keys` file is deliberately owned by `root:root` and mode `0644`, *not* `0600`: sshd may open the file after switching to the target staging user's UID. Public keys are not secret; root ownership and a root-owned parent directory prevent the staging user from changing the forced command. The private key remains mode `0600` on the client. If the public-key test returns `Permission denied (publickey)`, check target key fingerprint, `namei -l /home/heycity-staging-ci/.ssh/authorized_keys`, and sshd auth logs before changing anything else. Do not grant the user Docker access, disable StrictModes, or open password login.
+
+### Binary image transport and Ubuntu sudo pseudo-TTY
+
+The manual Actions deploy streams a Docker tar archive into the forced SSH command's stdin. On this VPS the default sudoers policy includes `use_pty`, which can pass input through terminal line discipline and corrupt a binary archive. For **the dedicated staging account only**, the root-owned `/etc/sudoers.d/heycity-staging-ci` must contain:
+
+```sudoers
+Defaults:heycity-staging-ci !use_pty
+heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *
+```
+
+The bootstrap template now installs these directives. If the account was already installed from an earlier revision, an administrator must update **only** this staging sudoers file and run `visudo -cf /etc/sudoers.d/heycity-staging-ci` before the first archive transfer. Root ownership and `0440` permissions must remain. No global `Defaults` change, no production sudo changes. Verify SSH is still forced-command-only and the user is not in the Docker group.
