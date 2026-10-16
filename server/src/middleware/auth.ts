@@ -44,7 +44,10 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 
   // ✅ DEV/BYPASS: фиксированный пользователь для тестирования
-  if (AUTH_DISABLED || process.env.NODE_ENV === 'development') {
+  // Keep the established local/CI test harness, but never allow identity bypass
+  // in a public staging or production deployment, regardless of AUTH_DISABLED.
+  const publicDeployment = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
+  if (!publicDeployment && (AUTH_DISABLED || process.env.NODE_ENV === 'development')) {
     req.user = { userId: 'gris', email: 'g.slepak@icloud.com' };
     return requestContext.run({ userId: 'gris' }, next);
   }

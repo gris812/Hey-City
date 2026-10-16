@@ -2,6 +2,7 @@
  * All intervals and limits from config/env. No hardcoding.
  */
 import dotenv from 'dotenv';
+import { isIP } from 'node:net';
 
 dotenv.config();
 
@@ -60,7 +61,7 @@ export const auth = {
 };
 
 export function assertProductionConfig(): void {
-  if (server.nodeEnv !== 'production') return;
+  if (server.nodeEnv !== 'production' && server.nodeEnv !== 'staging') return;
   const missing: string[] = [];
   if (!production.databaseUrl) missing.push('DATABASE_URL');
   if (jwt.secret.length < 32 || jwt.secret.startsWith('change-me')) missing.push('JWT_SECRET');
@@ -72,6 +73,16 @@ export function assertProductionConfig(): void {
   if (!auth.adminCode) missing.push('ADMIN_AUTH_CODE');
   if (auth.otpPepper.length < 32) missing.push('OTP_PEPPER');
   if (auth.testerAllowlist.length === 0) missing.push('TESTER_EMAIL_ALLOWLIST');
+  if (server.nodeEnv === 'staging') {
+    let publicMediaUrlValid = false;
+    try {
+      const url = new URL(process.env.PUBLIC_API_URL || '');
+      publicMediaUrlValid = url.protocol === 'https:' && url.hostname.includes('.') &&
+        isIP(url.hostname) === 0 && !url.username && !url.password && !url.search &&
+        !url.hash && (!url.port || url.port === '443');
+    } catch { /* Reject unset or invalid origins. */ }
+    if (!publicMediaUrlValid) missing.push('PUBLIC_API_URL (public HTTPS staging origin)');
+  }
   if (missing.length) throw new Error(`Missing or unsafe production configuration: ${missing.join(', ')}`);
 }
 

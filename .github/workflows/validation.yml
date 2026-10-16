@@ -11,6 +11,7 @@ on:
       - 'evaluation/**'
       - 'ops/**'
       - 'docker-compose.production.yml'
+      - 'docker-compose.staging.yml'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/validation.yml'
@@ -23,6 +24,7 @@ on:
       - 'evaluation/**'
       - 'ops/**'
       - 'docker-compose.production.yml'
+      - 'docker-compose.staging.yml'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/validation.yml'
@@ -66,6 +68,13 @@ jobs:
 
       - name: Build production API image
         run: docker build -f server/Dockerfile -t heycity-api-ci .
+
+      - name: Validate staging Compose isolation syntax
+        run: |
+          cp ops/staging.env.example .env.staging
+          trap 'rm -f .env.staging' EXIT
+          docker compose --project-name heycity-staging --env-file .env.staging \
+            -f docker-compose.staging.yml config --quiet
 
       - name: Build production WebApp image
         run: docker build --build-arg GOOGLE_MAPS_BROWSER_KEY=ci-placeholder -f web/Dockerfile -t heycity-web-ci .

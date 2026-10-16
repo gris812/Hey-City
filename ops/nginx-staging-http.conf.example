@@ -1,0 +1,13 @@
+# First phase: temporary HTTP-only ACME challenge for staging.
+# Install as a NEW site; never replace the existing heycity site.
+server {
+    listen 80;
+    server_name staging-api.heycity.stolbergco.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+    location / {
+        return 404;
+    }
+}
