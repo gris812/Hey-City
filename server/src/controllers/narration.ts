@@ -53,7 +53,7 @@ export async function generateVoiceSample(req: AuthRequest, res: Response): Prom
   }
   const lang = req.body?.lang === 'en' ? 'en' : 'ru';
   const requestedVoiceId = String(req.body?.voiceId || 'dana');
-  if (!['dana', 'artur', 'arthur'].includes(requestedVoiceId)) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(requestedVoiceId)) {
     res.status(400).json({ error: 'Guide is unavailable' });
     return;
   }
