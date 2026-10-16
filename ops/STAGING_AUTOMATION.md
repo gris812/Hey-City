@@ -23,7 +23,7 @@ This does not provide complete VPS isolation: all projects share the host, Docke
    ```
 
    Never reuse `~/.ssh/heycity-deploy`. Do not paste the new private key into a chat or commit it. The **public** `heycity-staging-ci.pub` goes to the VPS administrator; the private key is entered directly into the GitHub *staging* environment secret.
-3. For the **SSH access bootstrap only**, staging credentials are not required yet. Later, prepare a separate, untracked `.env.staging` on the VPS from PR #19's `ops/staging.env.example`, permission `600`, with staging-only JWT/OTP/database credentials, scoped external-provider keys, tester allowlist, quotas, Resend sender and `NODE_ENV=staging`. **Never copy production env, DB, media, or secrets.** Do not print this file or share credential values.
+3. For the **SSH access bootstrap only**, staging credentials are not required yet. Later, prepare a separate, untracked `.env.staging` on the VPS from PR #19's `ops/staging.env.example`, permission `600`, with staging-only JWT/OTP/database credentials, external-provider credentials subject to the narrowly scoped temporary exception in `ops/STAGING_DEPLOYMENT.md`, tester allowlist, quotas, Resend sender and `NODE_ENV=staging`. **Never copy the production env file, DB, media, authentication secrets or SSH credentials.** Only the specifically authorized three provider-key values may temporarily be reused. Do not print this file or share credential values.
 4. Use an administrator/root VPS session to install *reviewed source files*, not ad hoc shell fetched from a URL. In a temporary isolated workspace, place `ops/heycity-staging-ssh`, `ops/heycity-staging-deploy`, `ops/bootstrap-staging-deployer.sh` from this PR and `docker-compose.staging.yml` from PR #19, validating source SHAs. Run:
 
    ```bash
@@ -51,7 +51,7 @@ This does not provide complete VPS isolation: all projects share the host, Docke
 
 GitHub `workflow_dispatch` workflows must be available on the default branch. This Draft PR is not an active deployment. After separate review and **explicit authorization**, activate only the workflow-only PR #20 on `main`, verifying that no existing production workflow triggers in consequence. Then manually run Actions → **Hey City staging deploy (manual, isolated)** from `main`, passing the exact approved SHA. The workflow builds and uploads one image through the forced staging-only SSH command, then checks public staging HTTPS and unchanged production HTTPS.
 
-If any required environment configuration, permission restriction, successful CI or HTTPS certificate is missing, **stop**; do not fall back to production keys/account or try running the workflow from an unreviewed PR branch.
+If any required environment configuration, permission restriction, successful CI or HTTPS certificate is missing, **stop**; never fall back to production SSH keys/account, database or authentication secrets, and never run the workflow from an unreviewed PR branch. The limited and explicitly authorized sharing of three *external provider* key values is documented in `ops/STAGING_DEPLOYMENT.md`.
 
 ## Acceptance / rollback
 
