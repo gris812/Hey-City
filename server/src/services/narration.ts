@@ -16,6 +16,8 @@ import { narrativeGenerator } from './narrativeGenerator';
 import { recordUsage } from './usage';
 import { getGuide, guideVersion } from './guides';
 import { ProgressiveAudio } from './progressiveAudio';
+import { OpenAISpeechProvider } from '../voice/speechProvider';
+import type { SpeechProvider } from '../voice/contracts';
 
 export interface GenerateNarrationInput {
   poiId: string;
@@ -47,10 +49,32 @@ export async function generateConversationSpeech(
   lang: string,
   userId?: string
 ): Promise<{ transcriptText: string; audioUrl: string }> {
+  const result = await getDefaultSpeechProvider().synthesize({ text, guideId: voiceId, language: lang, userId });
+  if (!result.audioUrl) throw new Error('Conversation SpeechProvider did not return an audio URL');
   return {
     transcriptText: text,
-    audioUrl: await synthesizeSpeech(text, voiceId, lang, userId, 'conversation_tts', media.progressiveSpeech),
+    audioUrl: result.audioUrl,
   };
+}
+
+let conversationSpeechProvider: SpeechProvider | undefined;
+
+/** Shared quality-TTS fallback for M3 text and M4 realtime output failure. */
+export function getDefaultSpeechProvider(): SpeechProvider {
+  return conversationSpeechProvider ??= new OpenAISpeechProvider(openai.ttsModel, request =>
+    synthesizeSpeech(
+      request.text,
+      request.guideId,
+      request.language,
+      request.userId,
+      'conversation_tts',
+      media.progressiveSpeech,
+      request.signal
+    ));
+}
+
+export function setDefaultSpeechProviderForTests(provider: SpeechProvider | undefined): void {
+  conversationSpeechProvider = provider;
 }
 
 export async function generateVoiceSample(
@@ -59,6 +83,7 @@ export async function generateVoiceSample(
   lang: string,
   userId?: string
 ): Promise<{ audioUrl: string; transcriptText: string }> {
+  if (!openai.apiKey && process.env.NODE_ENV !== 'test') throw new Error('VOICE_SAMPLE_TTS_NOT_CONFIGURED');
   const storyHash = createHash('sha256').update(`${lang}:${text}`).digest('hex').slice(0, 16);
   const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${voiceId}:${guideVersion(await getGuide(voiceId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
@@ -140,7 +165,9 @@ export function pendingSpeechAudio(filename: string): ProgressiveAudio | undefin
   return pendingSpeech.get(filename)?.audio;
 }
 async function synthesizeSpeech(text: string, voiceId: string, lang: string, userId?: string,
-  usageOperation: 'voice_sample' | 'story_tts' | 'conversation_tts' = 'story_tts', progressive = false): Promise<string> {
+  usageOperation: 'voice_sample' | 'story_tts' | 'conversation_tts' = 'story_tts', progressive = false,
+  signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
   const guide = await getGuide(voiceId);
   const hash = createHash('sha256').update(`${openai.ttsModel}:${voiceId}:${guideVersion(guide)}:${lang}:${text}`).digest('hex').slice(0,24);
   const filename = `${hash}.mp3`;
@@ -153,7 +180,7 @@ async function synthesizeSpeech(text: string, voiceId: string, lang: string, use
     if (!job) {
       if (pendingSpeech.size >= media.maxSpeechJobs) throw new Error('Speech capacity reached');
       const audio = new ProgressiveAudio(media.maxSpeechBytes);
-      const completion = synthesizeSpeechOnce(text, voiceId, lang, userId, usageOperation, guide, hash, audio);
+      const completion = synthesizeSpeechOnce(text, voiceId, lang, userId, usageOperation, guide, hash, audio, signal);
       job = { audio, completion };
       pendingSpeech.set(filename, job);
       void completion.then(() => {
@@ -178,7 +205,8 @@ async function synthesizeSpeechOnce(
   usageOperation: 'voice_sample' | 'story_tts' | 'conversation_tts',
   guide: Awaited<ReturnType<typeof getGuide>>,
   hash: string,
-  audio: ProgressiveAudio
+  audio: ProgressiveAudio,
+  signal?: AbortSignal
 ): Promise<string> {
   const filename = `${hash}.mp3`;
   const filePath = join(media.directory, filename);
@@ -200,7 +228,7 @@ async function synthesizeSpeechOnce(
     : `Speak in ${language}. Sound warm, observant, natural and conversational, like a curious local friend walking beside one person. Avoid announcer-style delivery.`;
   const startedAt = Date.now();
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    signal: AbortSignal.timeout(media.speechTimeoutMs),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(media.speechTimeoutMs)]) : AbortSignal.timeout(media.speechTimeoutMs),
     method: 'POST',
     headers: { Authorization: `Bearer ${openai.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: openai.ttsModel, voice, input: text.slice(0, 4096), instructions, response_format: 'mp3' }),

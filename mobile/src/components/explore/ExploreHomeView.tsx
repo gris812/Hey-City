@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -12,6 +12,7 @@ import MapView, { Marker, type LatLng, type Region } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
+import { exploreTopLayout } from '../../presentation/safeAreaLayout';
 
 export type ExploreHomeMarker = {
   id: string;
@@ -43,6 +44,9 @@ export type ExploreHomeViewProps = {
   onOpenGuide: () => void;
   onChooseGuidedWalk: () => void;
   onSelectPlace: (place: ExploreNearbyPlace) => void;
+  voiceState?: string;
+  voiceLabel?: string;
+  onToggleVoice?: () => void;
   statusMessage?: string;
   onRetry?: () => void;
   children?: React.ReactNode;
@@ -61,6 +65,9 @@ export function ExploreHomeView({
   onOpenGuide,
   onChooseGuidedWalk,
   onSelectPlace,
+  voiceState,
+  voiceLabel,
+  onToggleVoice,
   statusMessage,
   onRetry,
   children,
@@ -69,10 +76,17 @@ export function ExploreHomeView({
   const visibleNearbyPlaces = nearbyPlaces
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
+  const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
+  const mapRef = useRef<MapView | null>(null);
+
+  useEffect(() => {
+    mapRef.current?.animateToRegion(region, 450);
+  }, [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
 
   return (
     <View style={[styles.stage, { height }]}>
       <MapView
+        ref={mapRef}
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
         showsUserLocation
@@ -96,7 +110,7 @@ export function ExploreHomeView({
         ))}
       </MapView>
 
-      <View style={[styles.topBar, { top: topInset + spacing.sm }]}>
+      <View style={[styles.topBar, { top: controlTop }]}>
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={t('walking.openMenu')}
@@ -130,7 +144,7 @@ export function ExploreHomeView({
       <TouchableOpacity
         accessibilityRole="button"
         accessibilityLabel={t('walking.searchPlaceholder')}
-        style={[styles.searchBar, { top: topInset + 70 }]}
+        style={[styles.searchBar, { top: searchTop }]}
         onPress={onChooseGuidedWalk}
         activeOpacity={0.92}
       >
@@ -147,7 +161,7 @@ export function ExploreHomeView({
       </TouchableOpacity>
 
       {statusMessage && (
-        <View style={[styles.statusBanner, { top: topInset + 136 }]}>
+        <View style={[styles.statusBanner, { top: statusTop }]}>
           <View style={styles.statusWarningIcon}>
             <Text style={styles.statusWarningGlyph}>!</Text>
           </View>
@@ -165,6 +179,18 @@ export function ExploreHomeView({
       )}
 
       {children}
+
+      {onToggleVoice && (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={voiceLabel ?? 'Talk to guide'}
+          style={[styles.voiceButton, voiceState && voiceState !== 'closed' && styles.voiceButtonActive]}
+          onPress={onToggleVoice}
+        >
+          <Text style={styles.voiceGlyph}>{voiceState === 'connecting' ? '…' : '●'}</Text>
+          <Text style={styles.voiceLabel} numberOfLines={1}>{voiceLabel ?? 'Talk'}</Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.bottomSheet}>
         <View style={styles.sheetHandle} />
@@ -463,6 +489,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   retryText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  voiceButton: {
+    position: 'absolute',
+    right: spacing.md,
+    bottom: 300,
+    zIndex: 32,
+    minWidth: 92,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.floating,
+  },
+  voiceButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  voiceGlyph: { color: colors.danger, fontSize: 12 },
+  voiceLabel: { ...typography.caption, color: colors.foreground, fontWeight: '700' },
   bottomSheet: {
     position: 'absolute',
     left: spacing.sm,

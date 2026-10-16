@@ -52,12 +52,21 @@ export async function generateVoiceSample(req: AuthRequest, res: Response): Prom
     return;
   }
   const lang = req.body?.lang === 'en' ? 'en' : 'ru';
+  const requestedVoiceId = String(req.body?.voiceId || 'dana');
+  if (!['dana', 'artur', 'arthur'].includes(requestedVoiceId)) {
+    res.status(400).json({ error: 'Guide is unavailable' });
+    return;
+  }
   try {
-    const guide = await getGuide(String(req.body?.voiceId || 'dana'));
+    const guide = await getGuide(requestedVoiceId);
     if (!guide?.active) { res.status(400).json({ error: 'Guide is unavailable' }); return; }
     res.json(await generateSample(guide[lang].greeting, guide.id, lang, req.user.userId));
   } catch (error) {
     console.error('generateVoiceSample', error);
-    res.status(500).json({ error: 'Voice sample failed' });
+    if (error instanceof Error && error.message === 'VOICE_SAMPLE_TTS_NOT_CONFIGURED') {
+      res.status(503).json({ error: 'Voice sample is unavailable because server TTS is not configured.' });
+      return;
+    }
+    res.status(502).json({ error: 'Voice sample could not be generated. Please try again.' });
   }
 }

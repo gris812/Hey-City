@@ -16,12 +16,22 @@ export async function sendOtp(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    await sendOtpEmail(email);
-    res.json({ ok: true, message: isAdminEmail(email) ? 'Enter administrator access code' : 'OTP sent' });
+    const delivery = await sendOtpEmail(email);
+    const message =
+      delivery === 'admin_code'
+        ? 'Enter administrator access code'
+        : delivery === 'development_console'
+          ? 'Development OTP generated in server console; no email was sent'
+          : 'OTP sent';
+    res.json({ ok: true, delivery, message });
   } catch (e) {
     console.error('sendOtp', e);
     if (e instanceof Error && e.message === 'EMAIL_NOT_ALLOWED') {
       res.status(403).json({ error: 'Email is not enabled for the field test' });
+      return;
+    }
+    if (e instanceof Error && e.message === 'ADMIN_CODE_NOT_CONFIGURED') {
+      res.status(503).json({ error: 'Administrator access code is not configured on this server' });
       return;
     }
     res.status(502).json({ error: 'Failed to send OTP' });

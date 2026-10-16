@@ -13,6 +13,13 @@ async function run(): Promise<void> {
     assert.equal(response.headers.get('access-control-allow-origin'), 'https://heycity.example');
     assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
     assert.equal((await response.json() as { service: string }).service, 'hey-city-api');
+
+    const health = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.equal(health.status, 200);
+    const healthBody = await health.json() as { service: string; capabilities: string[] };
+    assert.equal(healthBody.service, 'hey-city-api');
+    assert(healthBody.capabilities.includes('m4_realtime_voice'),
+      'native field client can distinguish PR #17 backend from incompatible main/production backend');
     console.log('productionHttp tests passed');
   } finally { listener.close(); }
 }

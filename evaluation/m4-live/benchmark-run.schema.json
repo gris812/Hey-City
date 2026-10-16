@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hey.city/evaluation/m4-live/benchmark-run.schema.json",
+  "title": "Hey City M4 live native benchmark",
+  "type": "object",
+  "required": ["schemaVersion", "runId", "createdAt", "environment", "trials", "privacy", "cost"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "environment": {
+      "type": "object",
+      "required": ["mode", "device", "os", "appBuild", "gitSha", "network", "fixture"],
+      "properties": {
+        "mode": { "const": "live_native" },
+        "device": { "type": "string" },
+        "os": { "type": "string" },
+        "appBuild": { "type": "string" },
+        "gitSha": { "type": "string" },
+        "network": { "type": "string" },
+        "fixture": { "const": "m4-road-noise-v1-generated" }
+      },
+      "additionalProperties": false
+    },
+    "trials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trialId", "scenario", "repetition", "provider", "model", "guide", "language", "startedAt", "events"],
+        "properties": {
+          "trialId": { "type": "string" },
+          "scenario": { "enum": ["B1", "B2", "B3", "B4", "B5", "B6"] },
+          "repetition": { "type": "integer", "minimum": 1 },
+          "provider": { "enum": ["openai", "gemini"] },
+          "model": { "type": "string" },
+          "guide": { "type": "string" },
+          "language": { "enum": ["ru", "en"] },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time" },
+          "events": { "type": "array" },
+          "metrics": { "type": "object" },
+          "approvedM3AnswerText": { "type": "string" },
+          "providerOutputTranscript": { "type": "string" },
+          "factualComparison": { "enum": ["exact", "near-verbatim", "paraphrased", "omission", "added factual claim", "unverifiable"] },
+          "usage": { "type": "object" },
+          "humanScore": { "type": "object" },
+          "notes": { "type": "string", "maxLength": 500 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "privacy": { "type": "object" },
+    "cost": { "type": "object" }
+  },
+  "additionalProperties": false
+}

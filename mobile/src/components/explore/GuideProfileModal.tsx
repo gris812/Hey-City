@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   type ImageSourcePropType,
   Modal,
@@ -12,9 +13,11 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
 import type { GuidePreference } from '../../localization/preferences';
+import { resolveGuideSwipe, shouldCaptureGuideSwipe } from '../../features/guides/guideProfileInteraction';
 
 export type FullGuideProfile = {
   image: ImageSourcePropType;
+  imageResizeMode?: 'cover' | 'contain';
   name: string;
   role: string;
   body: string;
@@ -33,13 +36,20 @@ export type GuideProfileModalProps = {
   backToGuidesLabel: string;
   voiceSampleLabel: string;
   voicePlaceholderLabel: string;
+  voiceLoadingLabel: string;
+  voicePlayingLabel: string;
+  voiceErrorLabel: string;
+  voiceRetryLabel: string;
   swipeLabel: string;
+  voicePreviewState: 'idle' | 'loading' | 'playing' | 'error';
+  voicePreviewError?: string | null;
+  onVoiceSample: (guideId: GuidePreference) => void;
+  onRetryVoiceSample: () => void;
+  onStopVoiceSample: () => void;
   onChoose: (guideId: GuidePreference) => void;
   onBack: () => void;
   onBackToGuides: () => void;
 };
-
-const guideOrder: GuidePreference[] = ['dana', 'arthur'];
 
 export function GuideProfileModal({
   visible,
@@ -50,35 +60,62 @@ export function GuideProfileModal({
   backToGuidesLabel,
   voiceSampleLabel,
   voicePlaceholderLabel,
+  voiceLoadingLabel,
+  voicePlayingLabel,
+  voiceErrorLabel,
+  voiceRetryLabel,
   swipeLabel,
+  voicePreviewState,
+  voicePreviewError,
+  onVoiceSample,
+  onRetryVoiceSample,
+  onStopVoiceSample,
   onChoose,
   onBack,
   onBackToGuides,
 }: GuideProfileModalProps) {
   const [activeGuideId, setActiveGuideId] = useState<GuidePreference>(initialGuideId);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const stopRef = useRef(onStopVoiceSample);
+  const wasVisibleRef = useRef(false);
+  const initialGuideRef = useRef(initialGuideId);
+
+  stopRef.current = onStopVoiceSample;
 
   useEffect(() => {
-    if (!visible) return;
-    setActiveGuideId(initialGuideId);
-    setSampleOpen(false);
+    const opening = visible && !wasVisibleRef.current;
+    const closing = !visible && wasVisibleRef.current;
+    const requestedGuideChanged = visible && initialGuideRef.current !== initialGuideId;
+
+    if (opening || requestedGuideChanged) {
+      if (requestedGuideChanged) void stopRef.current();
+      setActiveGuideId(initialGuideId);
+      setSampleOpen(false);
+    }
+    if (closing) void stopRef.current();
+
+    wasVisibleRef.current = visible;
+    initialGuideRef.current = initialGuideId;
   }, [initialGuideId, visible]);
 
-  const switchGuide = (direction: -1 | 1) => {
-    const currentIndex = guideOrder.indexOf(activeGuideId);
-    const nextIndex = (currentIndex + direction + guideOrder.length) % guideOrder.length;
-    setActiveGuideId(guideOrder[nextIndex]);
-    setSampleOpen(false);
-  };
+  useEffect(() => () => {
+    void stopRef.current();
+  }, []);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+          shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
+        onPanResponderTerminationRequest: () => false,
         onPanResponderRelease: (_, gesture) => {
-          if (gesture.dx <= -48) switchGuide(1);
-          if (gesture.dx >= 48) switchGuide(-1);
+          const nextGuide = resolveGuideSwipe(activeGuideId, gesture.dx, gesture.dy);
+          if (nextGuide === activeGuideId) return;
+          void stopRef.current();
+          setActiveGuideId(nextGuide);
+          setSampleOpen(false);
         },
       }),
     [activeGuideId]
@@ -87,16 +124,28 @@ export function GuideProfileModal({
   const profile = profiles[activeGuideId];
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onBack}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={() => {
+        void stopRef.current();
+        onBack();
+      }}
+    >
       <View style={styles.screen} {...panResponder.panHandlers}>
-        <View style={styles.imageStage}>
-          <Image source={profile.image} style={styles.image} resizeMode="cover" />
-          <View style={[styles.topBar, { top: topInset + spacing.sm }]}>
+        <View style={[styles.imageStage, { paddingTop: Math.max(0, topInset) }]}>
+          <View style={styles.imageFrame}>
+            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'cover'} />
+          </View>
+          <View style={[styles.topBar, { top: Math.max(0, topInset) + spacing.sm }]}>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={backLabel}
               style={styles.backButton}
-              onPress={onBack}
+              onPress={() => {
+                void stopRef.current();
+                onBack();
+              }}
             >
               <Text style={styles.backGlyph}>‹</Text>
             </TouchableOpacity>
@@ -114,7 +163,7 @@ export function GuideProfileModal({
               <Text style={styles.name}>{profile.name}</Text>
               <Text style={styles.role}>{profile.role}</Text>
             </View>
-            <Text style={styles.pageIndex}>{guideOrder.indexOf(activeGuideId) + 1} / {guideOrder.length}</Text>
+            <Text style={styles.pageIndex}>{activeGuideId === 'dana' ? 1 : 2} / 2</Text>
           </View>
 
           <Text style={styles.body}>{profile.body}</Text>
@@ -123,22 +172,55 @@ export function GuideProfileModal({
 
           <TouchableOpacity
             accessibilityRole="button"
-            style={styles.voiceButton}
-            onPress={() => setSampleOpen((current) => !current)}
+            style={[styles.voiceButton, voicePreviewState === 'error' && styles.voiceButtonError]}
+            disabled={voicePreviewState === 'loading'}
+            onPress={() => {
+              setSampleOpen(true);
+              if (voicePreviewState === 'playing') void stopRef.current();
+              else onVoiceSample(activeGuideId);
+            }}
           >
-            <Text style={styles.voiceIcon}>▶</Text>
+            {voicePreviewState === 'loading' ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={styles.voiceIcon}>{voicePreviewState === 'playing' ? '■' : '▶'}</Text>
+            )}
             <View style={styles.voiceCopy}>
               <Text style={styles.voiceTitle}>{voiceSampleLabel}</Text>
-              <Text style={styles.voiceMeta}>{voicePlaceholderLabel}</Text>
+              <Text style={styles.voiceMeta}>
+                {voicePreviewState === 'loading'
+                  ? voiceLoadingLabel
+                  : voicePreviewState === 'playing'
+                    ? voicePlayingLabel
+                    : voicePreviewState === 'error'
+                      ? voiceErrorLabel
+                      : voicePlaceholderLabel}
+              </Text>
             </View>
           </TouchableOpacity>
-          {sampleOpen && <Text style={styles.voiceTranscript}>{profile.voiceGreeting}</Text>}
+          {sampleOpen && voicePreviewState !== 'error' && (
+            <Text style={styles.voiceTranscript}>{profile.voiceGreeting}</Text>
+          )}
+          {voicePreviewState === 'error' && (
+            <View style={styles.voiceErrorBox}>
+              <Text style={styles.voiceErrorText}>{voicePreviewError || voiceErrorLabel}</Text>
+              <TouchableOpacity accessibilityRole="button" style={styles.voiceRetryButton} onPress={onRetryVoiceSample}>
+                <Text style={styles.voiceRetryText}>{voiceRetryLabel}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.chooseButton} onPress={() => onChoose(activeGuideId)}>
+            <TouchableOpacity style={styles.chooseButton} onPress={() => {
+              void stopRef.current();
+              onChoose(activeGuideId);
+            }}>
               <Text style={styles.chooseText}>{profile.chooseLabel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.guidesButton} onPress={onBackToGuides}>
+            <TouchableOpacity style={styles.guidesButton} onPress={() => {
+              void stopRef.current();
+              onBackToGuides();
+            }}>
               <Text style={styles.guidesText}>{backToGuidesLabel}</Text>
             </TouchableOpacity>
           </View>
@@ -150,7 +232,8 @@ export function GuideProfileModal({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  imageStage: { height: '48%', backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  imageStage: { height: '46%', backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  imageFrame: { flex: 1, marginHorizontal: spacing.sm, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   image: { width: '100%', height: '100%' },
   topBar: {
     position: 'absolute',
@@ -209,6 +292,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface,
   },
+  voiceButtonError: { borderColor: colors.danger },
   voiceIcon: { color: colors.primary, fontSize: 16, lineHeight: 20 },
   voiceCopy: { flex: 1 },
   voiceTitle: { ...typography.body, color: colors.foreground, fontWeight: '600' },
@@ -220,6 +304,24 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
     paddingLeft: spacing.md,
   },
+  voiceErrorBox: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
+  },
+  voiceErrorText: { ...typography.caption, color: colors.danger },
+  voiceRetryButton: {
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  voiceRetryText: { ...typography.caption, color: colors.foreground, fontWeight: '700' },
   actions: { gap: spacing.sm, marginTop: spacing.sm },
   chooseButton: {
     minHeight: 52,

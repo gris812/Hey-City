@@ -1,9 +1,11 @@
 import { databaseEnabled, query } from './database';
 import { requestContext } from './requestContext';
+import { realtimePricing } from '../config';
+import type { RealtimeTransport, RealtimeUsage } from '../voice/contracts';
 
 export interface UsageEvent {
   userId?: string;
-  category: 'auth' | 'google_maps' | 'openai_text' | 'openai_tts' | 'ai' | 'product';
+  category: 'auth' | 'google_maps' | 'openai_text' | 'openai_tts' | 'realtime_voice' | 'ai' | 'product';
   operation: string;
   quantity?: number;
   inputTokens?: number;
@@ -24,6 +26,30 @@ export type ConversationTelemetryOperation =
   | 'conversation_tool'
   | 'conversation_response'
   | 'conversation_resume_decision';
+
+export type RealtimeTelemetryOperation =
+  | 'realtime_session_started'
+  | 'realtime_session_ready'
+  | 'realtime_user_turn_final'
+  | 'realtime_response_first_audio'
+  | 'realtime_barge_in'
+  | 'realtime_session_closed'
+  | 'realtime_provider_error';
+
+export interface RealtimeTelemetryEvent {
+  sessionId: string;
+  provider: string;
+  model?: string;
+  transport?: RealtimeTransport;
+  guideId?: string;
+  language?: string;
+  latencyMs?: number;
+  turnCount?: number;
+  closeReason?: string;
+  usage?: RealtimeUsage;
+  success?: boolean;
+  errorCode?: string;
+}
 
 export interface ConversationTelemetryEvent {
   sessionId: string;
@@ -133,6 +159,94 @@ export function sanitizeConversationTelemetryEvent(event: ConversationTelemetryE
   }
   if (typeof event.success === 'boolean') metadata.success = event.success;
   return metadata;
+}
+
+/** M4 allow-list. Raw audio, transcript, answers, provider payloads, secrets and GPS have no fields here. */
+export async function recordRealtimeEvent(
+  operation: RealtimeTelemetryOperation,
+  event: RealtimeTelemetryEvent,
+  userId?: string
+): Promise<void> {
+  await recordUsage({ userId, category: 'product', operation, metadata: sanitizeRealtimeTelemetryEvent(event) });
+}
+
+export function sanitizeRealtimeTelemetryEvent(event: RealtimeTelemetryEvent): Record<string, unknown> {
+  const text = (value: unknown, max = 120): string | undefined =>
+    typeof value === 'string' && value.length > 0 ? value.slice(0, max) : undefined;
+  const number = (value: unknown, max: number): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : undefined;
+  const metadata: Record<string, unknown> = {
+    sessionId: text(event.sessionId) ?? 'unknown',
+    provider: text(event.provider, 40) ?? 'unknown',
+  };
+  for (const [key, value] of Object.entries({
+    model: text(event.model, 80),
+    transport: text(event.transport, 20),
+    guideId: text(event.guideId, 40),
+    language: text(event.language, 20),
+    closeReason: text(event.closeReason, 60),
+    errorCode: text(event.errorCode, 80),
+    latencyMs: number(event.latencyMs, 10 * 60_000),
+    turnCount: number(event.turnCount, 1_000),
+  })) {
+    if (value !== undefined) metadata[key] = value;
+  }
+  if (typeof event.success === 'boolean') metadata.success = event.success;
+  if (event.usage) metadata.usage = sanitizeRealtimeUsage(event.usage);
+  return metadata;
+}
+
+export function estimateRealtimeCostUsd(provider: 'openai' | 'gemini', usage: RealtimeUsage): number {
+  const rate = realtimePricing[provider];
+  return roundUsd(
+    (usage.inputTextTokens ?? 0) / 1e6 * rate.inputTextUsdPerMillion +
+    (usage.outputTextTokens ?? 0) / 1e6 * rate.outputTextUsdPerMillion +
+    (usage.inputAudioTokens ?? 0) / 1e6 * rate.inputAudioUsdPerMillion +
+    (usage.outputAudioTokens ?? 0) / 1e6 * rate.outputAudioUsdPerMillion
+  );
+}
+
+/** Provider billing counters use the existing usage ledger, separately from product telemetry. */
+export async function recordRealtimeUsage(
+  provider: 'openai' | 'gemini' | 'deterministic',
+  model: string,
+  usage: RealtimeUsage,
+  userId?: string
+): Promise<void> {
+  const safeUsage = sanitizeRealtimeUsage(usage);
+  const estimatedCostUsd = provider === 'deterministic' ? 0 : estimateRealtimeCostUsd(provider, safeUsage);
+  await recordUsage({
+    userId,
+    category: 'realtime_voice',
+    operation: `${provider}:${model.slice(0, 80)}`,
+    inputTokens: safeUsage.inputTextTokens + safeUsage.inputAudioTokens,
+    outputTokens: safeUsage.outputTextTokens + safeUsage.outputAudioTokens,
+    estimatedCostUsd,
+    metadata: {
+      provider,
+      model: model.slice(0, 80),
+      inputAudioBytes: safeUsage.inputAudioBytes,
+      outputAudioBytes: safeUsage.outputAudioBytes,
+    },
+  });
+}
+
+function sanitizeRealtimeUsage(usage: RealtimeUsage): Required<RealtimeUsage> {
+  const bounded = (value: number | undefined, max: number): number =>
+    Number.isFinite(value) ? Math.max(0, Math.min(max, Math.floor(value!))) : 0;
+  return {
+    inputTextTokens: bounded(usage.inputTextTokens, 10_000_000),
+    outputTextTokens: bounded(usage.outputTextTokens, 10_000_000),
+    inputAudioTokens: bounded(usage.inputAudioTokens, 100_000_000),
+    outputAudioTokens: bounded(usage.outputAudioTokens, 100_000_000),
+    inputAudioBytes: bounded(usage.inputAudioBytes, 1_000_000_000),
+    outputAudioBytes: bounded(usage.outputAudioBytes, 1_000_000_000),
+    estimatedCostUsd: Math.max(0, Math.min(100_000, Number.isFinite(usage.estimatedCostUsd) ? usage.estimatedCostUsd! : 0)),
+  };
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 1e8) / 1e8;
 }
 
 const MAX_EXPERIENCE_CANDIDATES = 20;
