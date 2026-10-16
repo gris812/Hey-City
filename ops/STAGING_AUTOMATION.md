@@ -23,16 +23,17 @@ This does not provide complete VPS isolation: all projects share the host, Docke
    ```
 
    Never reuse `~/.ssh/heycity-deploy`. Do not paste the new private key into a chat or commit it. The **public** `heycity-staging-ci.pub` goes to the VPS administrator; the private key is entered directly into the GitHub *staging* environment secret.
-3. Prepare a separate, untracked `.env.staging` on the VPS from PR #19's `ops/staging.env.example`, permission `600`, with separate staging-only JWT/OTP/database credentials, scoped external-provider keys, tester allowlist, quotas, Resend sender and `NODE_ENV=staging`. **Never copy production env, DB, media, or secrets.** Do not print this file or share credential values.
+3. For the **SSH access bootstrap only**, staging credentials are not required yet. Later, prepare a separate, untracked `.env.staging` on the VPS from PR #19's `ops/staging.env.example`, permission `600`, with staging-only JWT/OTP/database credentials, scoped external-provider keys, tester allowlist, quotas, Resend sender and `NODE_ENV=staging`. **Never copy production env, DB, media, or secrets.** Do not print this file or share credential values.
 4. Use an administrator/root VPS session to install *reviewed source files*, not ad hoc shell fetched from a URL. In a temporary isolated workspace, place `ops/heycity-staging-ssh`, `ops/heycity-staging-deploy`, `ops/bootstrap-staging-deployer.sh` from this PR and `docker-compose.staging.yml` from PR #19, validating source SHAs. Run:
 
    ```bash
-   bash ops/bootstrap-staging-deployer.sh /path/to/heycity-staging-ci.pub /path/to/.env.staging
+   bash ops/bootstrap-staging-deployer.sh /path/to/heycity-staging-ci.pub
+   # Later, root installs .env.staging separately, with owner=root and permissions=600
    sudo -l -U heycity-staging-ci
    id -nG heycity-staging-ci
    ```
 
-   The bootstrap creates the locked account, forced command, root-owned staging files and restricted sudoers entry. It refuses to overwrite an existing setup. No production Docker or Nginx changes occur. Confirm the staging user is **not** in group `docker`.
+   The bootstrap creates the locked account, forced command, root-owned staging Compose file and restricted sudoers entry. It refuses to overwrite an existing setup. It can optionally accept a ready mode-600 staging environment file as a second argument, but SSH-only setup does not need one. No production Docker or Nginx changes occur. Confirm the staging user is **not** in group `docker`.
 5. Install a **new** Nginx staging vhost and Certbot certificate for `staging-api.heycity.stolbergco.com` per PR #19's two-phase Nginx templates. Do not modify the current `heycity` or `hackshelf` vhosts or their certificates. Root admin must run `nginx -t` before each reload and recheck production HTTPS afterwards.
 6. In GitHub `gris812/Hey-City` Settings → Environments, create environment `staging`, restrict deployment branch to `main`, and add a required reviewer if available. Configure:
 
