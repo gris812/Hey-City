@@ -60,7 +60,7 @@ export const auth = {
 };
 
 export function assertProductionConfig(): void {
-  if (server.nodeEnv !== 'production') return;
+  if (server.nodeEnv !== 'production' && server.nodeEnv !== 'staging') return;
   const missing: string[] = [];
   if (!production.databaseUrl) missing.push('DATABASE_URL');
   if (jwt.secret.length < 32 || jwt.secret.startsWith('change-me')) missing.push('JWT_SECRET');
@@ -72,6 +72,11 @@ export function assertProductionConfig(): void {
   if (!auth.adminCode) missing.push('ADMIN_AUTH_CODE');
   if (auth.otpPepper.length < 32) missing.push('OTP_PEPPER');
   if (auth.testerAllowlist.length === 0) missing.push('TESTER_EMAIL_ALLOWLIST');
+  if (server.nodeEnv === 'staging' && (!process.env.PUBLIC_API_URL ||
+      !/^https:\/\/[^/]+$/.test(process.env.PUBLIC_API_URL) ||
+      /localhost|127\\.0\\.0\\.1|172\\.20\\.|192\\.168\\./.test(process.env.PUBLIC_API_URL))) {
+    missing.push('PUBLIC_API_URL (public HTTPS staging origin)');
+  }
   if (missing.length) throw new Error(`Missing or unsafe production configuration: ${missing.join(', ')}`);
 }
 
