@@ -1,6 +1,6 @@
 # Hey City staging automation — installation and activation
 
-Status: **prepared, not deployed**. This document adds an independently reviewable staging-only automation mechanism. The canonical application/Compose/TLS setup is in PR #19, ops/STAGING_DEPLOYMENT.md.
+Status: **prepared, not deployed**. This document and the staging-only server scripts are in Draft PR #19. The manual activation workflow is isolated in Draft PR #20. The canonical application/Compose/TLS setup is in the adjacent ops/STAGING_DEPLOYMENT.md.
 
 ## Architecture
 
@@ -48,7 +48,7 @@ This does not provide complete VPS isolation: all projects share the host, Docke
 
 ## Activation gate
 
-GitHub `workflow_dispatch` workflows must be available on the default branch. This Draft PR is not an active deployment. After separate review and **explicit authorization**, activate only this independent infrastructure workflow on `main`, verifying that no existing production workflow triggers in consequence. Then manually run Actions → **Hey City staging deploy (manual, isolated)** from `main`, passing the exact approved SHA. The workflow builds and uploads one image through the forced staging-only SSH command, then checks public staging HTTPS and unchanged production HTTPS.
+GitHub `workflow_dispatch` workflows must be available on the default branch. This Draft PR is not an active deployment. After separate review and **explicit authorization**, activate only the workflow-only PR #20 on `main`, verifying that no existing production workflow triggers in consequence. Then manually run Actions → **Hey City staging deploy (manual, isolated)** from `main`, passing the exact approved SHA. The workflow builds and uploads one image through the forced staging-only SSH command, then checks public staging HTTPS and unchanged production HTTPS.
 
 If any required environment configuration, permission restriction, successful CI or HTTPS certificate is missing, **stop**; do not fall back to production keys/account or try running the workflow from an unreviewed PR branch.
 
