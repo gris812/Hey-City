@@ -30,6 +30,18 @@ Default: use separate provider projects and keys. For the initial, short-lived, 
 - Recheck provider-side quotas, usage, billing alerts and provider key restrictions **before** deployment. Per-user API rate limits and provider *budget alerts* do **not** guarantee a hard spending stop; shared quotas can disrupt production, and a compromised staging API can expose the production provider credentials. Do not claim financial isolation or a zero-risk rollback.
 - Revisit the exception after the initial field test: create restricted staging-only provider keys/projects and rotate any shared production keys if exposure is suspected. Do not assume this exception covers future stages, additional providers or use of the production deployment SSH key.
 
+## Public guest-entry cost-abuse blocker (code review 2026-10-16)
+
+**BLOCKED pending an access-control choice before any API deployment with shared provider keys.** Verified in PR #19 source:
+
+- `server/src/app.ts` publishes `/drive` and `/stories` on the publicly reachable staging domain.
+- `server/src/middleware/auth.ts` accepts a syntactically valid, client-supplied `x-hey-city-guest-id` for `requireAuthOrGuest`; no authenticated tester binding exists for this header.
+- `server/src/routes/drive.ts` uses guest-compatible auth and an IP-based 200 requests / 15 minutes rate limiter, while `server/src/routes/canonical.ts` accepts guest `/stories/voice-sample` requests at 30 / 15 minutes / IP. New guest IDs may reset per-user budgets; distributed clients can rotate IPs.
+- `server/src/services/budget.ts` limits legacy Google Places/Matrix only **per user in process memory**. `server/src/services/googleAheadDiscoveryProvider.ts` has a separate cached provider route which does not use this per-user budget guard, and `/stories/voice-sample` may generate paid TTS.
+- The OTP email allowlist protects login, **not** unauthenticated cost-triggering guest requests. Provider spend and rate limits are shared with production during the temporary exception.
+
+**Preferred narrow solution:** implement a *staging-only* access gate for cost-triggering guest requests, carried automatically by the dedicated internal-test client, without changing production guest-first semantics. Gate must deny missing/invalid credentials before provider calls, not expose the gate secret in server responses/logs, and not block health/ACME checks. A token embedded in a distributable client bundle is **only a practical deterrent**, not a strong security boundary: leaks/reverse engineering remain possible. Review the user experience, alternative VPN-only ingress, and provider restrictions before implementation. Protect shared-provider quotas with provider-side measures as well. Rebuild the internal iOS client for staging if its request headers change. Require CI, explicit negative tests, production behavior parity, and manual staging verification before field use. **Do not silently disable guest-first onboarding or select the realtime provider.**
+
 ## Hard gates before deployment
 
 1. Confirm head commit, CI status, staging source choice and image provenance. PR #19 includes PR #17's pending M4 work but does not mean that M4 acceptance has passed. Do not merge either PR.
