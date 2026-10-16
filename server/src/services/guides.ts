@@ -19,9 +19,25 @@ export type PublicGuide = Omit<Guide, 'personality' | 'voiceInstructions'> & {
 
 /** API contract shared by WebApp and native; legacy avatar/image fields remain intact. */
 export function toPublicGuide(guide: Guide): PublicGuide {
-  const { personality: _personality, voiceInstructions: _voiceInstructions, ...safe } = guide;
+  // Database JSONB may contain future admin-only fields; public output is allow-listed.
+  const localized = (copy: GuideCopy): GuideCopy => ({
+    name: copy.name,
+    role: copy.role,
+    body: copy.body,
+    interests: copy.interests,
+    greeting: copy.greeting,
+  });
   return {
-    ...safe,
+    id: guide.id,
+    avatar: guide.avatar,
+    image: guide.image,
+    ...(guide.cardImage ? { cardImage: guide.cardImage } : {}),
+    ...(guide.fullProfileImage ? { fullProfileImage: guide.fullProfileImage } : {}),
+    active: guide.active,
+    order: guide.order,
+    voice: guide.voice,
+    ru: localized(guide.ru),
+    en: localized(guide.en),
     media: {
       avatar: guide.avatar,
       card: guide.cardImage ?? guide.image,
