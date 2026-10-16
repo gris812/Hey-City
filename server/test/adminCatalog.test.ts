@@ -85,6 +85,7 @@ async function run() {
     const bundledMedia = await fetch(`http://127.0.0.1:${port}/assets/dana-v3-avatar.png`);
     assert.equal(bundledMedia.status, 200, 'native can load bundled guide image via API origin');
     assert.ok((bundledMedia.headers.get('content-type') || '').startsWith('image/png'));
+    assert.ok((await bundledMedia.arrayBuffer()).byteLength > 100, 'static asset response fully read');
     // Admin CRUD is immediately visible through the public catalog without new client source.
     const newGuide = (await getGuide('third'))!;
     assert.equal((await request('/admin/guides/third','slepak@stolbergco.com','admin','PUT',
