@@ -1,5 +1,7 @@
 import cors from 'cors';
 import express from 'express';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import helmet from 'helmet';
 import { media, production, server } from './config';
 import { adminRouter } from './routes/admin';
@@ -10,7 +12,7 @@ import { driveRouter } from './routes/drive';
 import { healthRouter } from './routes/health';
 import { meRouter } from './routes/me';
 import { narrationRouter } from './routes/narration';
-import { listGuides } from './services/guides';
+import { listGuides, toPublicGuide } from './services/guides';
 import { progressiveSpeech } from './middleware/progressiveSpeech';
 
 export function createApp(): express.Express {
@@ -23,6 +25,15 @@ export function createApp(): express.Express {
     return callback(new Error('Origin not allowed'));
   } }));
   app.use(express.json({ limit: '256kb' }));
+  // Canonical bundled guide media must be reachable from native over the API origin,
+  // not only from the WebApp's separate nginx container.
+  const assetCandidates = [
+    resolve(__dirname, '../../web/assets'), // ts-node from server/src
+    resolve(__dirname, '../../../web/assets'), // Docker build from server/dist/src
+  ];
+  const guideAssets = assetCandidates.find(path => existsSync(path));
+  if (guideAssets) app.use('/assets', express.static(guideAssets, { maxAge: '1d' }));
+
   app.use('/media', (_req, res, next) => {
     // Audio is intentionally consumed by the WebApp on a sibling origin.
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -41,7 +52,7 @@ export function createApp(): express.Express {
 
   app.use('/health', healthRouter);
   app.get('/guides', async (_req, res, next) => {
-    try { res.setHeader('Cache-Control', 'no-store'); res.json({ guides: (await listGuides()).map(({ personality, voiceInstructions, ...guide }) => guide) }); }
+    try { res.setHeader('Cache-Control', 'no-store'); res.json({ guides: (await listGuides()).map(toPublicGuide) }); }
     catch (error) { next(error); }
   });
   app.use('/auth', authRouter);
