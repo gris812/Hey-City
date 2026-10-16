@@ -51,6 +51,35 @@ async function run(): Promise<void> {
       }
     }
 
+    const { getGuide, saveGuide, archiveGuide } = await import('../src/services/guides');
+    const template = (await getGuide('dana'))!;
+    await saveGuide({
+      ...template, id: 'creator', active: true,
+      ru: { ...template.ru, greeting: 'Привет от нового гида' },
+      en: { ...template.en, greeting: 'Hello from a new guide' },
+    });
+    for (const lang of ['en', 'ru'] as const) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-hey-city-guest-id': 'guest_test_abcdefg',
+        },
+        body: JSON.stringify({ voiceId: 'creator', lang }),
+      });
+      assert.equal(response.status, 200, 'admin-created guide can preview without client whitelist');
+      const payload = await response.json() as { transcriptText: string; audioUrl: string };
+      assert.match(payload.transcriptText, lang === 'en' ? /new guide/ : /нового гида/);
+      assert.ok(payload.audioUrl.includes('/tts/'));
+    }
+    await archiveGuide('creator');
+    const disabled = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hey-city-guest-id': 'guest_test_abcdefg' },
+      body: JSON.stringify({ voiceId: 'creator', lang: 'en' }),
+    });
+    assert.equal(disabled.status, 400, 'disabled guide cannot request fresh preview');
+
     console.log('voiceSampleAccess tests passed');
   } finally {
     listener.close();
