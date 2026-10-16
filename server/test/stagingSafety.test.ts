@@ -21,7 +21,7 @@ async function run(): Promise<void> {
   const origin = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
     String(input).startsWith('https://api.resend.com/')
       ? new Response('test provider unavailable', { status: 503 })
       : originalFetch(input, init)) as typeof fetch;
