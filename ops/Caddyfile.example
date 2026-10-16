@@ -1,3 +1,7 @@
+# Legacy Caddy example (not the active VPS reverse proxy as of 2026-10-16).
+# Production currently uses Nginx; staging uses the nginx-staging-* templates.
+# Retained for historical/reference purposes. Do NOT apply to this VPS.
+
 heycity.stolbergco.com {
   reverse_proxy 127.0.0.1:4180
 }
