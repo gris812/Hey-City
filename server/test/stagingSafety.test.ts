@@ -60,9 +60,11 @@ async function run(): Promise<void> {
       body: JSON.stringify({ voiceId: 'dana', lang: 'en' }),
     });
     assert.equal(guest.status, 503, 'guest passes identity but TTS is unavailable without provider key');
+    await Promise.all([admin.text(), guideCatalog.text(), allowed.text(), rejected.text(), guest.text()]);
     console.log('staging auth, OTP, guest preview and health security regressions passed');
   } finally {
     globalThis.fetch = originalFetch;
+    listener.closeAllConnections();
     await new Promise<void>(resolve => listener.close(() => resolve()));
   }
 }
