@@ -19,7 +19,11 @@ async function run() {
   await initializeDatabase(); await initializeGuides(); await initializeDatabase();
   assert.equal((await listGuides()).length, 2);
   const dana = (await getGuide('dana'))!;
-  await saveGuide({ ...dana, id: 'third', ru: { ...dana.ru, name: 'Third' }, personality: 'Distinct style' });
+  await saveGuide({
+    ...dana, id: 'third', ru: { ...dana.ru, name: 'Third' },
+    personality: 'Distinct style', cardImage: '/assets/dana-v3-avatar.png',
+    fullProfileImage: '/assets/dana-v3-profile.png',
+  });
   await initializeGuides();
   assert.equal((await getGuide('third'))!.personality, 'Distinct style');
   assert.equal((await listGuides()).length, 3);
@@ -69,6 +73,32 @@ async function run() {
     const response = await request('/admin/guides','slepak@stolbergco.com'); assert.equal(response.status,200);
     const publicResponse = await fetch(`http://127.0.0.1:${port}/guides`); const catalog = await publicResponse.json() as { guides: Array<Record<string, unknown>> };
     assert.equal(catalog.guides.length,2); assert(!('personality' in catalog.guides[0]));
+    assert(!('voiceInstructions' in catalog.guides[0]), 'private voice direction stays server-side');
+    const publicDana = catalog.guides.find(g => g.id === 'dana')!;
+    assert.deepEqual(publicDana.supportedLanguages, ['ru', 'en']);
+    assert.deepEqual(publicDana.voiceCapabilities, { preview: true });
+    assert.deepEqual(publicDana.media, {
+      avatar: '/assets/dana-v3-avatar.png',
+      card: '/assets/dana-v3-profile.png',
+      fullProfile: '/assets/dana-v3-profile.png',
+    }, 'legacy catalog documents keep a complete three-surface contract');
+    const bundledMedia = await fetch(`http://127.0.0.1:${port}/assets/dana-v3-avatar.png`);
+    assert.equal(bundledMedia.status, 200, 'native can load bundled guide image via API origin');
+    assert.match(bundledMedia.headers.get('content-type') || '', /^image\\/png/);
+    // Admin CRUD is immediately visible through the public catalog without new client source.
+    const newGuide = (await getGuide('third'))!;
+    assert.equal((await request('/admin/guides/third','slepak@stolbergco.com','admin','PUT',
+      { ...newGuide, active: true, en: { ...newGuide.en, body: 'Updated dynamically' } })).status,200);
+    const afterSave = await (await fetch(`http://127.0.0.1:${port}/guides`)).json() as { guides: Array<Record<string, any>> };
+    const publishedThird = afterSave.guides.find(g => g.id === 'third')!;
+    assert.equal(publishedThird.en.body, 'Updated dynamically');
+    assert.equal(publishedThird.media.card, '/assets/dana-v3-avatar.png');
+    assert.equal(publishedThird.media.fullProfile, '/assets/dana-v3-profile.png');
+    assert.equal((await request('/admin/guides/third','slepak@stolbergco.com','admin','DELETE')).status,200);
+    const afterArchive = await (await fetch(`http://127.0.0.1:${port}/guides`)).json() as { guides: Array<{ id: string }> };
+    assert(!afterArchive.guides.some(g => g.id === 'third'), 'disabled guide disappears from selection');
+    assert(await getGuide('third'), 'archived guide remains resolvable for history');
+    assert(await getGuide('artur'), 'legacy Arthur alias is retained');
     assert.equal((await request('/admin/guides/dana','slepak@stolbergco.com','admin','PUT',{...dana,id:'different'})).status,400);
     assert.equal((await request('/admin/accounts','slepak@stolbergco.com')).status,200);
 
