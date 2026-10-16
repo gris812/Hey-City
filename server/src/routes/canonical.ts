@@ -1,5 +1,6 @@
 import { selectStory, selectedStoryAvailability, StorySelectionError } from '../services/selectedStory';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth, requireAuthOrGuest } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { getGuide } from '../services/guides';
@@ -85,7 +86,13 @@ discoveryRouter.use(requireAuth);
 discoveryRouter.post('/active-poi', getPoiCandidates);
 
 export const storiesRouter = Router();
-storiesRouter.post('/voice-sample', requireAuthOrGuest, generateVoiceSample);
+storiesRouter.post('/voice-sample', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+}), requireAuthOrGuest, generateVoiceSample);
 storiesRouter.use(requireAuth);
 storiesRouter.post('/generate', generateNarration);
 
