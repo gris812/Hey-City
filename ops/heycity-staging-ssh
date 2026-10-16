@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Dedicated staging SSH forced command. Deny interactive shell and all other commands.
+set -euo pipefail
+if [[ "${SSH_ORIGINAL_COMMAND:-}" =~ ^deploy\ ([a-f0-9]{40})$ ]]; then
+  exec sudo -n /usr/local/sbin/heycity-staging-deploy "${BASH_REMATCH[1]}"
+fi
+echo 'Unauthorized staging operation' >&2
+exit 64
