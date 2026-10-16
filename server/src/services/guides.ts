@@ -4,12 +4,49 @@ import { databaseEnabled, query, transaction } from './database';
 
 export interface GuideCopy { name: string; role: string; body: string; interests: string[]; greeting: string }
 export interface Guide {
-  id: string; avatar: string; image: string; active: boolean; order: number;
+  id: string; avatar: string; image: string; cardImage?: string; fullProfileImage?: string; active: boolean; order: number;
   voice: string; personality: string; voiceInstructions: string;
   ru: GuideCopy; en: GuideCopy;
 }
 const memory = new Map<string, Guide>(seeds.map(g => [g.id, g]));
 export const allowedVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'coral', 'sage', 'ash'];
+
+export type PublicGuide = Omit<Guide, 'personality' | 'voiceInstructions'> & {
+  media: { avatar: string; card: string; fullProfile: string };
+  supportedLanguages: Array<'ru' | 'en'>;
+  voiceCapabilities: { preview: boolean };
+};
+
+/** API contract shared by WebApp and native; legacy avatar/image fields remain intact. */
+export function toPublicGuide(guide: Guide): PublicGuide {
+  // Database JSONB may contain future admin-only fields; public output is allow-listed.
+  const localized = (copy: GuideCopy): GuideCopy => ({
+    name: copy.name,
+    role: copy.role,
+    body: copy.body,
+    interests: copy.interests,
+    greeting: copy.greeting,
+  });
+  return {
+    id: guide.id,
+    avatar: guide.avatar,
+    image: guide.image,
+    ...(guide.cardImage ? { cardImage: guide.cardImage } : {}),
+    ...(guide.fullProfileImage ? { fullProfileImage: guide.fullProfileImage } : {}),
+    active: guide.active,
+    order: guide.order,
+    voice: guide.voice,
+    ru: localized(guide.ru),
+    en: localized(guide.en),
+    media: {
+      avatar: guide.avatar,
+      card: guide.cardImage ?? guide.image,
+      fullProfile: guide.fullProfileImage ?? guide.image,
+    },
+    supportedLanguages: ['ru', 'en'],
+    voiceCapabilities: { preview: true },
+  };
+}
 
 export async function initializeGuides(): Promise<void> {
   if (!databaseEnabled()) return;
@@ -33,12 +70,12 @@ export function validateGuide(value: unknown): Guide {
   const g = value as Guide;
   const text = (v: unknown, max: number, required = true) => typeof v === 'string' && v.length <= max && (!required || v.trim().length > 0);
   const image = (v: unknown) => typeof v === 'string' && (/^\/assets\/[a-zA-Z0-9._-]+\.(png|webp|jpg)$/.test(v) || /^\/media\/guide-[a-f0-9-]+\.(png|jpg)$/.test(v));
-  if (!g || !/^[a-z][a-z0-9_-]{1,39}$/.test(g.id) || typeof g.active !== 'boolean' || !Number.isInteger(g.order) || Math.abs(g.order) > 10000 || !image(g.avatar) || !image(g.image) || !allowedVoices.includes(g.voice) || !text(g.personality, 2000) || !text(g.voiceInstructions, 1000, false)) throw new Error('Invalid guide settings or images');
+  if (!g || !/^[a-z][a-z0-9_-]{1,39}$/.test(g.id) || typeof g.active !== 'boolean' || !Number.isInteger(g.order) || Math.abs(g.order) > 10000 || !image(g.avatar) || !image(g.image) || (g.cardImage !== undefined && !image(g.cardImage)) || (g.fullProfileImage !== undefined && !image(g.fullProfileImage)) || !allowedVoices.includes(g.voice) || !text(g.personality, 2000) || !text(g.voiceInstructions, 1000, false)) throw new Error('Invalid guide settings or images');
   for (const lang of ['ru', 'en'] as const) {
     const c = g[lang];
     if (!c || !text(c.name, 80) || !text(c.role, 120) || !text(c.body, 2000) || !text(c.greeting, 1000) || !Array.isArray(c.interests) || c.interests.length > 8 || !c.interests.every(s => text(s, 80))) throw new Error(`Invalid ${lang} guide description`);
   }
-  return { id: g.id, avatar: g.avatar, image: g.image, active: g.active, order: g.order, voice: g.voice, personality: g.personality, voiceInstructions: g.voiceInstructions, ru: g.ru, en: g.en };
+  return { id: g.id, avatar: g.avatar, image: g.image, ...(g.cardImage !== undefined ? { cardImage: g.cardImage } : {}), ...(g.fullProfileImage !== undefined ? { fullProfileImage: g.fullProfileImage } : {}), active: g.active, order: g.order, voice: g.voice, personality: g.personality, voiceInstructions: g.voiceInstructions, ru: g.ru, en: g.en };
 }
 
 // Serialise publication changes so concurrent requests cannot remove the last guide.

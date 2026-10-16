@@ -19,6 +19,8 @@ COPY mobile/package.json mobile/package.json
 RUN npm ci --omit=dev --ignore-scripts
 COPY --from=build /app/server/dist server/dist
 COPY data /data
+# Expose the same packaged guide media on the API origin for native clients.
+COPY web/assets /app/web/assets
 RUN mkdir -p /app/data/media && chown -R node:node /app/data
 USER node
 EXPOSE 4000
