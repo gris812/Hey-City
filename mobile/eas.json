@@ -11,7 +11,16 @@
       }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "developmentClient": false,
+      "environment": "preview",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://staging-api.heycity.stolbergco.com",
+        "EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED": "false"
+      }
     },
     "production": {}
   }
