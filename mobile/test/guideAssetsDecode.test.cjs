@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const { createHash } = require('node:crypto');
 
 const root = path.resolve(__dirname, '..');
 const guideAssets = [
@@ -9,6 +10,7 @@ const guideAssets = [
   'assets/Guides/Artur.png',
   'assets/Guides/DanaSelection.png',
   'assets/Guides/ArturSelection.png',
+  'assets/Guides/ArthurFullProfile.png',
 ];
 
 function paeth(a, b, c) {
@@ -106,6 +108,12 @@ for (const relative of guideAssets) {
   assert.ok(fs.existsSync(file), `${relative}: missing guide asset`);
   const decoded = decodePng(file);
   console.log(`${relative}: decoded ${decoded.width}x${decoded.height}`);
+  if (relative === 'assets/Guides/ArthurFullProfile.png') {
+    assert.deepEqual([decoded.width, decoded.height], [1122, 1402], 'canonical Arthur v3.0 dimensions changed');
+    const hash = createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+    assert.equal(hash, 'bc3eebc1a411d3d6d36b05dfd636e6aa4017ac025f577128cbce3d79feb5ef59',
+      'Arthur v3.0 no longer matches the operator-approved original');
+  }
 }
 
 console.log('all canonical guide assets fully decoded');

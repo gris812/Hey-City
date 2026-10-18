@@ -16,12 +16,13 @@ export const guideSelectionImages: Record<GuidePreference, ImageSourcePropType> 
   arthur: require('../../assets/Guides/ArturSelection.png'),
 };
 
-/** Native field comparison:
- * ArturSelection.png is the 900x900 face-visible portrait; Artur.png is a
- * 1135x1989 vertical full-length asset, unsuitable for center-cropped avatars.
- * Render full-length sources with 'contain' (not a face-cutting square cover).
+/** Canonical guide surfaces:
+ * Compact Arthur portrait: ArturSelection.png (900x900, intact face).
+ * Approved Arthur v3.0 full profile: ArthurFullProfile.png (1122x1402).
+ * The full-profile image must render with contain on Settings and Explore.
+ * Keep legacy Artur.png in repository history; do not map it to live surfaces.
  */
 export const guideFullProfileImages: Record<GuidePreference, ImageSourcePropType> = {
   dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/Artur.png'),
+  arthur: require('../../assets/Guides/ArthurFullProfile.png'),
 };
