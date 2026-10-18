@@ -86,7 +86,7 @@ export function TourPreferencesSheet({
                 accessibilityRole="button"
                 onPress={() => onOpenGuidePreview(guideId)}
               >
-                <Image source={guideImages[guideId]} style={styles.guideImage} resizeMode="cover" />
+                <Image source={guideImages[guideId]} style={styles.guideImage} resizeMode="contain" />
                 <Text style={styles.guideName}>{getGuideName(guideId)}</Text>
                 <Text style={styles.guideRole}>{guideProfiles[guideId].role}</Text>
                 {selected && <Text style={styles.check}>✓</Text>}
