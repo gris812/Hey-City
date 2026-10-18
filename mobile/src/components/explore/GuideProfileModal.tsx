@@ -6,6 +6,7 @@ import {
   Modal,
   PanResponder,
   ScrollView,
+  useWindowDimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -75,6 +76,10 @@ export function GuideProfileModal({
   onBackToGuides,
 }: GuideProfileModalProps) {
   const [activeGuideId, setActiveGuideId] = useState<GuidePreference>(initialGuideId);
+  // Keep the gesture handler stable while its selected profile changes.
+  const activeGuideRef = useRef(activeGuideId);
+  activeGuideRef.current = activeGuideId;
+  const { height: screenHeight } = useWindowDimensions();
   const [sampleOpen, setSampleOpen] = useState(false);
   const stopRef = useRef(onStopVoiceSample);
   const wasVisibleRef = useRef(false);
@@ -89,6 +94,7 @@ export function GuideProfileModal({
 
     if (opening || requestedGuideChanged) {
       if (requestedGuideChanged) void stopRef.current();
+      activeGuideRef.current = initialGuideId;
       setActiveGuideId(initialGuideId);
       setSampleOpen(false);
     }
@@ -111,14 +117,16 @@ export function GuideProfileModal({
           shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
         onPanResponderTerminationRequest: () => false,
         onPanResponderRelease: (_, gesture) => {
-          const nextGuide = resolveGuideSwipe(activeGuideId, gesture.dx, gesture.dy);
-          if (nextGuide === activeGuideId) return;
+          const currentGuide = activeGuideRef.current;
+          const nextGuide = resolveGuideSwipe(currentGuide, gesture.dx, gesture.dy);
+          if (nextGuide === currentGuide) return;
+          activeGuideRef.current = nextGuide;
           void stopRef.current();
           setActiveGuideId(nextGuide);
           setSampleOpen(false);
         },
       }),
-    [activeGuideId]
+    []
   );
 
   const profile = profiles[activeGuideId];
@@ -133,23 +141,35 @@ export function GuideProfileModal({
       }}
     >
       <View style={styles.screen} {...panResponder.panHandlers}>
-        <View style={[styles.imageStage, { paddingTop: Math.max(0, topInset) }]}>
-          <View style={styles.imageFrame}>
-            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'cover'} />
-          </View>
-          <View style={[styles.topBar, { top: Math.max(0, topInset) + spacing.sm }]}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={backLabel}
-              style={styles.backButton}
-              onPress={() => {
-                void stopRef.current();
-                onBack();
-              }}
-            >
-              <Text style={styles.backGlyph}>‹</Text>
-            </TouchableOpacity>
+        <View style={[styles.topBar, { paddingTop: Math.max(0, topInset) + spacing.sm }]}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={backLabel}
+            style={styles.backButton}
+            onPress={() => {
+              void stopRef.current();
+              onBack();
+            }}
+          >
+            <Text style={styles.backGlyph}>‹</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={swipeLabel}
+            onPress={() => {
+              const nextGuide = activeGuideRef.current === 'dana' ? 'arthur' : 'dana';
+              activeGuideRef.current = nextGuide;
+              void stopRef.current();
+              setActiveGuideId(nextGuide);
+              setSampleOpen(false);
+            }}
+          >
             <Text style={styles.swipeHint}>{swipeLabel}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.imageStage, { height: Math.min(Math.max(screenHeight * 0.35, 220), 430) }]}>
+          <View style={styles.imageFrame}>
+            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'contain'} />
           </View>
         </View>
 
@@ -232,16 +252,16 @@ export function GuideProfileModal({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  imageStage: { height: '46%', backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  imageStage: { backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
   imageFrame: { flex: 1, marginHorizontal: spacing.sm, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   image: { width: '100%', height: '100%' },
   topBar: {
-    position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   backButton: {
     width: 44,
@@ -263,6 +283,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     paddingVertical: 7,
     paddingHorizontal: 10,
+    flexShrink: 1,
   },
   editorialPanel: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: 48, gap: spacing.md },
