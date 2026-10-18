@@ -16,11 +16,12 @@ export const guideSelectionImages: Record<GuidePreference, ImageSourcePropType> 
   arthur: require('../../assets/Guides/ArturSelection.png'),
 };
 
-/** Arthur full profile is an explicitly unresolved canonical asset dependency.
- * The current portrait below is a temporary fallback, not an approved full-body
- * source. Never substitute the headless Artur.png or generate a new character.
+/** Native field comparison:
+ * ArturSelection.png is the 900x900 face-visible portrait; Artur.png is a
+ * 1135x1989 vertical full-length asset, unsuitable for center-cropped avatars.
+ * Render full-length sources with 'contain' (not a face-cutting square cover).
  */
 export const guideFullProfileImages: Record<GuidePreference, ImageSourcePropType> = {
   dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArturSelection.png'),
+  arthur: require('../../assets/Guides/Artur.png'),
 };
