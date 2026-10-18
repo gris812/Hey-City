@@ -356,15 +356,15 @@ export function LiveScreen() {
   const fullGuideProfiles = {
     dana: {
       image: guideFullProfileImages.dana,
-      imageResizeMode: 'cover' as const,
+      imageResizeMode: 'contain' as const,
       name: t('guide.dana'),
       role: getLocalizedGuideProfile('dana').role,
       body: getLocalizedGuideProfile('dana').fullCopy,
       interests: getLocalizedGuideProfile('dana').interests,
-      quote: guideProfiles.dana.sample,
+      quote: t('guide.danaQuote'),
       chooseLabel: getLocalizedGuideProfile('dana').chooseLabel,
       voiceGreeting:
-        preferences.appLanguage === 'ru'
+        preferences.guideLanguage === 'ru'
           ? 'Привет! Я Dana. Я помогу замечать характер города, его людей и детали, мимо которых легко пройти.'
           : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
     },
@@ -375,10 +375,10 @@ export function LiveScreen() {
       role: getLocalizedGuideProfile('arthur').role,
       body: getLocalizedGuideProfile('arthur').fullCopy,
       interests: getLocalizedGuideProfile('arthur').interests,
-      quote: guideProfiles.arthur.sample,
+      quote: t('guide.arthurQuote'),
       chooseLabel: getLocalizedGuideProfile('arthur').chooseLabel,
       voiceGreeting:
-        preferences.appLanguage === 'ru'
+        preferences.guideLanguage === 'ru'
           ? 'Здравствуйте. Я Arthur. Вместе мы разберёмся, как история, архитектура и решения людей сформировали город вокруг нас.'
           : 'Hello. I’m Arthur. Together we’ll see how history, architecture, and human decisions shaped the city around us.',
     },
