@@ -12,14 +12,29 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { sendOtp, verifyOtp } from '../api/auth';
+import { sendOtp, verifyOtp, type OtpDeliveryMode } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { useAppTranslation } from '../localization';
 import { colors, radius, spacing, typography } from '../theme';
 
+function localizeAuthError(
+  message: string,
+  delivery: OtpDeliveryMode | null,
+  t: ReturnType<typeof useAppTranslation>['t'],
+): string {
+  if (message === 'Invalid or expired OTP') {
+    return t(delivery === 'admin_code' ? 'auth.invalidAdminCode' : 'auth.invalidOtp');
+  }
+  if (message === 'Email is not enabled for the field test') return t('auth.emailNotAllowed');
+  if (message === 'Administrator access code is not configured on this server') return t('auth.adminUnavailable');
+  if (message.toLowerCase().includes('too many requests')) return t('auth.rateLimited');
+  return message;
+}
+
 export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
+  const [delivery, setDelivery] = useState<OtpDeliveryMode | null>(null);
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [loading, setLoading] = useState(false);
   const { login, preferences } = useAuth();
@@ -34,16 +49,15 @@ export function LoginScreen() {
     try {
       const result = await sendOtp(e);
       setStep('code');
+      setDelivery(result.delivery);
       setCode('');
       if (result.delivery === 'development_console') {
         Alert.alert('Hey City', t('auth.devConsoleCode'));
-      } else if (result.delivery === 'admin_code') {
-        Alert.alert('Hey City', t('auth.adminCode'));
-      } else if (showConfirmation) {
+      } else if (showConfirmation && result.delivery === 'email') {
         Alert.alert('Hey City', t('auth.resendDone'));
       }
     } catch (err) {
-      Alert.alert(t('common.error'), (err as Error).message);
+      Alert.alert(t('common.error'), localizeAuthError((err as Error).message, delivery, t));
     } finally {
       setLoading(false);
     }
@@ -58,7 +72,7 @@ export function LoginScreen() {
       await login(token);
       navigation.navigate('Main' as never);
     } catch (err) {
-      Alert.alert(t('common.error'), (err as Error).message);
+      Alert.alert(t('common.error'), localizeAuthError((err as Error).message, delivery, t));
     } finally {
       setLoading(false);
     }
@@ -78,7 +92,7 @@ export function LoginScreen() {
           <>
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder={t('auth.emailPlaceholder')}
               placeholderTextColor={colors.textMuted}
               value={email}
               onChangeText={setEmail}
@@ -101,30 +115,35 @@ export function LoginScreen() {
         ) : (
           <>
             <Text style={styles.emailHint}>{email.trim().toLowerCase()}</Text>
-            <Text style={styles.codeHint}>{t('auth.codeHint')}</Text>
+            <Text style={styles.codeHint}>{t(delivery === 'admin_code' ? 'auth.adminCode' : 'auth.codeHint')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="123456"
+              placeholder={delivery === 'admin_code' ? t('auth.adminPlaceholder') : '123456'}
               placeholderTextColor={colors.textMuted}
               value={code}
               onChangeText={setCode}
-              keyboardType="number-pad"
-              textContentType="oneTimeCode"
-              autoComplete="one-time-code"
-              maxLength={6}
+              keyboardType={delivery === 'admin_code' ? 'default' : 'number-pad'}
+              textContentType={delivery === 'admin_code' ? 'none' : 'oneTimeCode'}
+              autoComplete={delivery === 'admin_code' ? 'off' : 'one-time-code'}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={delivery === 'admin_code'}
+              maxLength={delivery === 'admin_code' ? 128 : 6}
             />
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleVerify}
-              disabled={loading || code.trim().length !== 6}
+              disabled={loading || (delivery === 'admin_code' ? !code.trim() : code.trim().length !== 6)}
             >
               {loading ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.buttonText}>{t('auth.verify')}</Text>}
             </TouchableOpacity>
             <View style={styles.secondaryRow}>
-              <TouchableOpacity style={styles.secondaryAction} onPress={() => void handleSendOtp(true)} disabled={loading}>
-                <Text style={styles.linkText}>{t('auth.resend')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryAction} onPress={() => { setStep('email'); setCode(''); }} disabled={loading}>
+              {delivery !== 'admin_code' && (
+                <TouchableOpacity style={styles.secondaryAction} onPress={() => void handleSendOtp(true)} disabled={loading}>
+                  <Text style={styles.linkText}>{t('auth.resend')}</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.secondaryAction} onPress={() => { setStep('email'); setCode(''); setDelivery(null); }} disabled={loading}>
                 <Text style={styles.linkText}>{t('auth.changeEmail')}</Text>
               </TouchableOpacity>
             </View>
