@@ -90,7 +90,7 @@ assert.match(guideAssets, /guideFullProfileImages/, 'Guide assets define a full-
 assert.match(guideAssets, /Dana\.png/, 'Avatar mapping uses the canonical Dana portrait');
 assert.match(guideAssets, /arthur:\s*require\('\.\.\/\.\.\/assets\/Guides\/ArturSelection\.png'\)/, 'Arthur avatar uses face-visible canonical portrait');
 assert.match(guideAssets, /DanaSelection\.png/, 'Selection/full-profile mappings retain the approved Dana full-body asset');
-assert.match(guideAssets, /guideFullProfileImages[\\s\\S]*arthur: require\\('\\.\\.\\/\\.\\.\\/assets\\/Guides\\/Artur\\.png'\\)/, 'Arthur full profile uses the vertical full-length artwork');
+assert.match(guideAssets, /guideFullProfileImages[\s\S]*arthur: require\('\.\.\/\.\.\/assets\/Guides\/Artur\.png'\)/, 'Arthur full profile uses the vertical full-length artwork');
 assert.match(guideAssets, /ArturSelection\.png/, 'Selection/full-profile mappings retain the approved Arthur profile asset');
 assert.match(live, /imageResizeMode: 'contain'/, 'Full profiles show complete face and full-body/background composition');
 assert.match(live, /imageResizeMode: 'contain'/, 'Arthur full profile avoids cropping the head/face');
