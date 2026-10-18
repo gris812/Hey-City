@@ -7,7 +7,8 @@ import type { GuidePreference } from '../localization/preferences';
  */
 export const guideAvatarImages: Record<GuidePreference, ImageSourcePropType> = {
   dana: require('../../assets/Guides/Dana.png'),
-  arthur: require('../../assets/Guides/Artur.png'),
+  // Field photos show Artur.png as headless when used in round avatar. Use portrait.
+  arthur: require('../../assets/Guides/ArturSelection.png'),
 };
 
 export const guideSelectionImages: Record<GuidePreference, ImageSourcePropType> = {
@@ -15,6 +16,10 @@ export const guideSelectionImages: Record<GuidePreference, ImageSourcePropType> 
   arthur: require('../../assets/Guides/ArturSelection.png'),
 };
 
+/** Arthur full profile is an explicitly unresolved canonical asset dependency.
+ * The current portrait below is a temporary fallback, not an approved full-body
+ * source. Never substitute the headless Artur.png or generate a new character.
+ */
 export const guideFullProfileImages: Record<GuidePreference, ImageSourcePropType> = {
   dana: require('../../assets/Guides/DanaSelection.png'),
   arthur: require('../../assets/Guides/ArturSelection.png'),
