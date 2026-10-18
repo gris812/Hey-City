@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { sendOtp, verifyOtp, type OtpDeliveryMode } from '../api/auth';
+import { otpCodeEntry, authErrorTranslationKey } from '../features/auth/otpFlow';
 import { useAuth } from '../context/AuthContext';
 import { useAppTranslation } from '../localization';
 import { colors, radius, spacing, typography } from '../theme';
@@ -22,19 +23,15 @@ function localizeAuthError(
   delivery: OtpDeliveryMode | null,
   t: ReturnType<typeof useAppTranslation>['t'],
 ): string {
-  if (message === 'Invalid or expired OTP') {
-    return t(delivery === 'admin_code' ? 'auth.invalidAdminCode' : 'auth.invalidOtp');
-  }
-  if (message === 'Email is not enabled for the field test') return t('auth.emailNotAllowed');
-  if (message === 'Administrator access code is not configured on this server') return t('auth.adminUnavailable');
-  if (message.toLowerCase().includes('too many requests')) return t('auth.rateLimited');
-  return message;
+  const key = authErrorTranslationKey(message, delivery);
+  return key ? t(key) : message;
 }
 
 export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [delivery, setDelivery] = useState<OtpDeliveryMode | null>(null);
+  const codeEntry = otpCodeEntry(delivery);
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [loading, setLoading] = useState(false);
   const { login, preferences } = useAuth();
@@ -122,23 +119,23 @@ export function LoginScreen() {
               placeholderTextColor={colors.textMuted}
               value={code}
               onChangeText={setCode}
-              keyboardType={delivery === 'admin_code' ? 'default' : 'number-pad'}
+              keyboardType={codeEntry.keyboardType}
               textContentType={delivery === 'admin_code' ? 'none' : 'oneTimeCode'}
               autoComplete={delivery === 'admin_code' ? 'off' : 'one-time-code'}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry={delivery === 'admin_code'}
-              maxLength={delivery === 'admin_code' ? 128 : 6}
+              maxLength={codeEntry.maxLength}
             />
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleVerify}
-              disabled={loading || (delivery === 'admin_code' ? !code.trim() : code.trim().length !== 6)}
+              disabled={loading || !codeEntry.canVerify(code)}
             >
               {loading ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.buttonText}>{t('auth.verify')}</Text>}
             </TouchableOpacity>
             <View style={styles.secondaryRow}>
-              {delivery !== 'admin_code' && (
+              {codeEntry.canResend && (
                 <TouchableOpacity style={styles.secondaryAction} onPress={() => void handleSendOtp(true)} disabled={loading}>
                   <Text style={styles.linkText}>{t('auth.resend')}</Text>
                 </TouchableOpacity>
