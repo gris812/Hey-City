@@ -3,7 +3,7 @@ import type { GuidePreference } from '../../localization/preferences';
 export const guideProfileOrder: GuidePreference[] = ['dana', 'arthur'];
 
 export function shouldCaptureGuideSwipe(dx: number, dy: number): boolean {
-  return Math.abs(dx) >= 20 && Math.abs(dx) > Math.abs(dy) * 1.2;
+  return Math.abs(dx) >= 16 && Math.abs(dx) > Math.abs(dy) * 1.35;
 }
 
 export function resolveGuideSwipe(
