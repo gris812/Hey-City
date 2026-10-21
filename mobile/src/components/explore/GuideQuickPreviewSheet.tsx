@@ -53,7 +53,7 @@ export function GuideQuickPreviewSheet({
           <View style={styles.handle} />
           <ScrollView contentContainerStyle={styles.content}>
             <View style={styles.headerRow}>
-              <Image source={guideImage} style={styles.avatar} resizeMode="cover" />
+              <Image source={guideImage} style={styles.avatar} resizeMode="contain" />
               <View style={styles.headerText}>
                 <View style={styles.nameRow}>
                   <Text style={styles.name} maxFontSizeMultiplier={1.2}>

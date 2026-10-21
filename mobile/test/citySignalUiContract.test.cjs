@@ -48,10 +48,10 @@ assert.match(live, /onRetry=.*startSession/s, 'Walking degraded state retries th
 assert.doesNotMatch(exploreHome, /region=\{region\}/, 'Walking map is not locked by a controlled region');
 assert.match(live, /scrollEnabled=\{!mapFirstForeground\}/, 'Walking and guided maps are not trapped in a scrolling parent');
 assert.match(live, /returnTo: 'explore'/, 'Walking guide preview returns to the map');
-assert.match(liveSurface, /Start your walk/, 'Tour Preferences surface exists');
+assert.match(liveSurface, /tourPreferences\.title/, 'Tour Preferences uses localized title');
 assert.match(live, /guideProfileOpen/, 'Guide Profile surface exists');
-assert.match(liveSurface, /choose up to 3|Choose up to 3 interests/, 'Interest limit guard exists');
-assert.match(liveSurface, /No interests selected/, 'Zero-interest fallback exists');
+assert.match(liveSurface, /tourPreferences\.interests/, 'Interest limit copy is localized');
+assert.match(liveSurface, /tourPreferences\.fallback/, 'Zero-interest fallback is localized');
 assert.match(liveSurface, /Transcript/, 'Transcript access exists');
 assert.match(live, /End tour\?/, 'End Tour confirmation exists');
 assert.match(liveSurface, /topChip/, 'Navigating state has top destination chip');
@@ -64,10 +64,10 @@ assert.match(history, /Your City Stories|history\.title/, 'Stories title is cons
 assert.match(history, /Start your first walk/, 'Stories empty state is not blank');
 assert.match(history, /MapView/, 'Stories cards use a route thumbnail');
 
-assert.match(settings, /Guide & Interests/, 'Settings has Guide & Interests');
-assert.match(settings, /Audio & Text/, 'Settings has Audio & Text');
-assert.match(settings, /History & Privacy/, 'Settings has History & Privacy');
-assert.match(settings, /About Hey City/, 'Settings has About Hey City');
+assert.match(settings, /settings\.guideInterests/, 'Settings guide section is localized');
+assert.match(settings, /settings\.audioText/, 'Settings audio section is localized');
+assert.match(settings, /settings\.historyPrivacy/, 'Settings privacy section is localized');
+assert.match(settings, /settings\.about/, 'Settings about section is localized');
 assert.match(settings, /Switch value disabled/, 'Settings does not expose inert audio controls as active');
 assert.match(settings, /nestedScrollEnabled/, 'Settings explicitly enables nested scrolling');
 assert.match(settings, /alwaysBounceVertical/, 'Settings exposes vertical scrolling on iOS');
@@ -75,7 +75,10 @@ assert.match(settings, /flexGrow: 1/, 'Settings content owns a full-height scrol
 assert.doesNotMatch(settings, /Welcome v2 · Settings scroll v2/, 'Settings hides internal build markers from users');
 assert.match(settings, /Native M4 corrective build/, 'Build diagnostics remain available only in the developer panel');
 assert.match(settings, /setGuideProfileOpen\(guide\.id\)/, 'Settings guide images open the full profile');
-assert.match(guideProfile, /PanResponder\.create/, 'Full guide profile supports horizontal swipe');
+assert.match(guideProfile, /onTouchStart=\{handleSwipeStart\}/, 'Full guide profile tracks touch start on visible image');
+assert.match(guideProfile, /onTouchEnd=\{handleSwipeEnd\}/, 'Full guide profile processes swipe release on image');
+assert.match(guideProfile, /resolveGuideSwipe\(activeGuideRef\.current/, 'Swipe uses the active guide and horizontal direction');
+assert.match(guideProfile, /aspectRatio: 1870 \/ 1402/, 'Profile image stage uses wide canonical image ratio');
 assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a real voice sample control');
 assert.match(guideProfile, /voicePreviewState === 'loading'/, 'Guide voice preview exposes loading state');
 assert.match(guideProfile, /voicePreviewState === 'error'/, 'Guide voice preview exposes error/retry state');
@@ -88,10 +91,11 @@ assert.match(guideAssets, /guideAvatarImages/, 'Guide assets define an avatar su
 assert.match(guideAssets, /guideSelectionImages/, 'Guide assets define a selection/settings-card mapping');
 assert.match(guideAssets, /guideFullProfileImages/, 'Guide assets define a full-profile mapping');
 assert.match(guideAssets, /Dana\.png/, 'Avatar mapping uses the canonical Dana portrait');
-assert.match(guideAssets, /Artur\.png/, 'Avatar mapping uses the canonical Arthur portrait');
+assert.match(guideAssets, /arthur:\s*require\('\.\.\/\.\.\/assets\/Guides\/ArturSelection\.png'\)/, 'Arthur avatar uses face-visible canonical portrait');
 assert.match(guideAssets, /DanaSelection\.png/, 'Selection/full-profile mappings retain the approved Dana full-body asset');
-assert.match(guideAssets, /ArturSelection\.png/, 'Selection/full-profile mappings retain the approved Arthur profile asset');
-assert.match(live, /imageResizeMode: 'cover'/, 'Dana full profile keeps the approved full-body/background composition');
+assert.match(guideAssets, /guideFullProfileImages[\s\S]*arthur: require\('\.\.\/\.\.\/assets\/Guides\/ArthurFullProfile\.png'\)/, 'Arthur full profile uses approved Arthur v3.0 image');
+assert.match(guideAssets, /ArturSelection\.png/, 'Arthur avatar and selection cards use the approved face-visible portrait');
+assert.match(live, /imageResizeMode: 'contain'/, 'Full profiles show complete face and full-body/background composition');
 assert.match(live, /imageResizeMode: 'contain'/, 'Arthur full profile avoids cropping the head/face');
 assert.doesNotMatch(live, /onStopVoiceSample=\{\(\) => void voicePreview\.stop\(\)\}/, 'Explore does not recreate stop callback on rerender');
 assert.doesNotMatch(settings, /onStopVoiceSample=\{\(\) => void voicePreview\.stop\(\)\}/, 'Settings does not recreate stop callback on rerender');
