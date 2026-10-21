@@ -12,6 +12,11 @@ export function otpCodeEntry(delivery: OtpDeliveryMode | null) {
   };
 }
 
+/** Admin code is an opaque secret: never normalize or trim it before verification. */
+export function normalizeSubmittedCode(delivery: OtpDeliveryMode | null, value: string): string {
+  return delivery === 'admin_code' ? value : value.trim();
+}
+
 export function authErrorTranslationKey(
   message: string,
   delivery: OtpDeliveryMode | null,
