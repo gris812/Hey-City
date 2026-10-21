@@ -176,8 +176,8 @@ export function GuideProfileModal({
           onTouchCancel={() => { gestureStart.current = null; }}
           accessible={false}
         >
-          <View style={styles.imageFrame}>
-            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'contain'} pointerEvents="none" />
+          <View style={styles.imageFrame} pointerEvents="none">
+            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'contain'} />
           </View>
         </View>
 
