@@ -75,7 +75,10 @@ assert.match(settings, /flexGrow: 1/, 'Settings content owns a full-height scrol
 assert.doesNotMatch(settings, /Welcome v2 · Settings scroll v2/, 'Settings hides internal build markers from users');
 assert.match(settings, /Native M4 corrective build/, 'Build diagnostics remain available only in the developer panel');
 assert.match(settings, /setGuideProfileOpen\(guide\.id\)/, 'Settings guide images open the full profile');
-assert.match(guideProfile, /PanResponder\.create/, 'Full guide profile supports horizontal swipe');
+assert.match(guideProfile, /onTouchStart=\{handleSwipeStart\}/, 'Full guide profile tracks touch start on visible image');
+assert.match(guideProfile, /onTouchEnd=\{handleSwipeEnd\}/, 'Full guide profile processes swipe release on image');
+assert.match(guideProfile, /resolveGuideSwipe\(activeGuideRef\.current/, 'Swipe uses the active guide and horizontal direction');
+assert.match(guideProfile, /aspectRatio: 1870 \/ 1402/, 'Profile image stage uses wide canonical image ratio');
 assert.match(guideProfile, /voiceSampleLabel/, 'Full guide profile exposes a real voice sample control');
 assert.match(guideProfile, /voicePreviewState === 'loading'/, 'Guide voice preview exposes loading state');
 assert.match(guideProfile, /voicePreviewState === 'error'/, 'Guide voice preview exposes error/retry state');
