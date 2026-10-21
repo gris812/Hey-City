@@ -4,8 +4,8 @@ import {
   Image,
   type ImageSourcePropType,
   Modal,
-  PanResponder,
   ScrollView,
+  type GestureResponderEvent,
   useWindowDimensions,
   StyleSheet,
   Text,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
 import type { GuidePreference } from '../../localization/preferences';
-import { resolveGuideSwipe, shouldCaptureGuideSwipe } from '../../features/guides/guideProfileInteraction';
+import { resolveGuideSwipe } from '../../features/guides/guideProfileInteraction';
 
 export type FullGuideProfile = {
   image: ImageSourcePropType;
@@ -79,7 +79,7 @@ export function GuideProfileModal({
   // Keep the gesture handler stable while its selected profile changes.
   const activeGuideRef = useRef(activeGuideId);
   activeGuideRef.current = activeGuideId;
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
   const [sampleOpen, setSampleOpen] = useState(false);
   const stopRef = useRef(onStopVoiceSample);
   const wasVisibleRef = useRef(false);
@@ -108,26 +108,32 @@ export function GuideProfileModal({
     void stopRef.current();
   }, []);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          shouldCaptureGuideSwipe(gesture.dx, gesture.dy),
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderRelease: (_, gesture) => {
-          const currentGuide = activeGuideRef.current;
-          const nextGuide = resolveGuideSwipe(currentGuide, gesture.dx, gesture.dy);
-          if (nextGuide === currentGuide) return;
-          activeGuideRef.current = nextGuide;
-          void stopRef.current();
-          setActiveGuideId(nextGuide);
-          setSampleOpen(false);
-        },
-      }),
-    []
-  );
+  // ScrollView can win responder negotiation on iOS; use native touch events
+  // from the dedicated image surface and never capture vertical scrolling.
+  const gestureStart = useRef<{ x: number; y: number } | null>(null);
+  const switchToGuide = (nextGuide: GuidePreference) => {
+    if (nextGuide === activeGuideRef.current) return;
+    activeGuideRef.current = nextGuide;
+    void stopRef.current();
+    setSampleOpen(false);
+    setActiveGuideId(nextGuide);
+  };
+  const handleSwipeStart = (event: GestureResponderEvent) => {
+    if (event.nativeEvent.touches.length !== 1) {
+      gestureStart.current = null;
+      return;
+    }
+    const { pageX, pageY } = event.nativeEvent;
+    gestureStart.current = { x: pageX, y: pageY };
+  };
+  const handleSwipeEnd = (event: GestureResponderEvent) => {
+    const start = gestureStart.current;
+    gestureStart.current = null;
+    if (!start || event.nativeEvent.changedTouches.length !== 1) return;
+    const { pageX, pageY } = event.nativeEvent;
+    switchToGuide(resolveGuideSwipe(activeGuideRef.current, pageX - start.x, pageY - start.y));
+  };
+
 
   const profile = profiles[activeGuideId];
 
@@ -140,7 +146,7 @@ export function GuideProfileModal({
         onBack();
       }}
     >
-      <View style={styles.screen} {...panResponder.panHandlers}>
+      <View style={styles.screen}>
         <View style={[styles.topBar, { paddingTop: Math.max(0, topInset) + spacing.sm }]}>
           <TouchableOpacity
             accessibilityRole="button"
@@ -157,19 +163,21 @@ export function GuideProfileModal({
             accessibilityRole="button"
             accessibilityLabel={swipeLabel}
             onPress={() => {
-              const nextGuide = activeGuideRef.current === 'dana' ? 'arthur' : 'dana';
-              activeGuideRef.current = nextGuide;
-              void stopRef.current();
-              setActiveGuideId(nextGuide);
-              setSampleOpen(false);
+              switchToGuide(activeGuideRef.current === 'dana' ? 'arthur' : 'dana');
             }}
           >
             <Text style={styles.swipeHint}>{swipeLabel}</Text>
           </TouchableOpacity>
         </View>
-        <View style={[styles.imageStage, { height: Math.min(Math.max(screenHeight * 0.35, 220), 430) }]}>
+        <View
+          style={[styles.imageStage, { width: screenWidth, aspectRatio: 1870 / 1402 }]}
+          onTouchStart={handleSwipeStart}
+          onTouchEnd={handleSwipeEnd}
+          onTouchCancel={() => { gestureStart.current = null; }}
+          accessible={false}
+        >
           <View style={styles.imageFrame}>
-            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'contain'} />
+            <Image source={profile.image} style={styles.image} resizeMode={profile.imageResizeMode ?? 'contain'} pointerEvents="none" />
           </View>
         </View>
 
@@ -253,7 +261,7 @@ export function GuideProfileModal({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   imageStage: { backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
-  imageFrame: { flex: 1, marginHorizontal: spacing.sm, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
+  imageFrame: { flex: 1, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   image: { width: '100%', height: '100%' },
   topBar: {
     paddingHorizontal: spacing.md,
