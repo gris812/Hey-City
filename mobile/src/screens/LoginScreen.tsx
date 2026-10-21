@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { sendOtp, verifyOtp, type OtpDeliveryMode } from '../api/auth';
-import { otpCodeEntry, authErrorTranslationKey } from '../features/auth/otpFlow';
+import { otpCodeEntry, authErrorTranslationKey, normalizeSubmittedCode } from '../features/auth/otpFlow';
 import { useAuth } from '../context/AuthContext';
 import { useAppTranslation } from '../localization';
 import { colors, radius, spacing, typography } from '../theme';
@@ -65,7 +65,7 @@ export function LoginScreen() {
     if (!e || !code.trim()) return;
     setLoading(true);
     try {
-      const { token } = await verifyOtp(e, code.trim());
+      const { token } = await verifyOtp(e, normalizeSubmittedCode(delivery, code));
       await login(token);
       navigation.navigate('Main' as never);
     } catch (err) {
