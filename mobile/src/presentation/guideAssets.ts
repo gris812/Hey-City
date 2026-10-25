@@ -18,11 +18,11 @@ export const guideSelectionImages: Record<GuidePreference, ImageSourcePropType> 
 
 /** Canonical guide surfaces:
  * Compact Arthur portrait: ArturSelection.png (900x900, intact face).
- * Approved Arthur v3.0 full profile: ArthurFullProfile.png (1122x1402).
+ * Approved wide full profiles: ArthurFullProfileWide.png and DanaFullProfileWide.png (1870x1402).
  * The full-profile image must render with contain on Settings and Explore.
  * Keep legacy Artur.png in repository history; do not map it to live surfaces.
  */
 export const guideFullProfileImages: Record<GuidePreference, ImageSourcePropType> = {
-  dana: require('../../assets/Guides/DanaSelection.png'),
-  arthur: require('../../assets/Guides/ArthurFullProfile.png'),
+  dana: require('../../assets/Guides/DanaFullProfileWide.png'),
+  arthur: require('../../assets/Guides/ArthurFullProfileWide.png'),
 };
