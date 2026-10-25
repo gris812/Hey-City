@@ -11,6 +11,8 @@ const guideAssets = [
   'assets/Guides/DanaSelection.png',
   'assets/Guides/ArturSelection.png',
   'assets/Guides/ArthurFullProfile.png',
+  'assets/Guides/ArthurFullProfileWide.png',
+  'assets/Guides/DanaFullProfileWide.png',
 ];
 
 function paeth(a, b, c) {
