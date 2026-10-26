@@ -40,11 +40,13 @@ flowchart TD
 
 ### Automatic movement mode
 
-An active WebApp session with `autoMode: true` starts in walking mode and switches deterministically from GPS speed. Explicit native Walking and Drive sessions remain fixed. Two
+An active WebApp or native City Explorer session with `autoMode: true` starts in walking mode and switches deterministically from GPS speed. Explicit fixed-mode sessions remain fixed. Two
 consecutive readings at or above 15 km/h select vehicle mode; two readings at or below 7 km/h
 return to walking mode. The gap between thresholds is deliberate hysteresis, preventing mode
 flicker in traffic or from a single inaccurate GPS reading. The server owns this decision and
 returns the active mode to the client; no LLM participates in mode selection.
+Unknown speed is not an observed stop; the client must not map missing GPS speed to 0 for mode classification.
+Server mode applies to drive-safe UI and interaction limits independently of product scenario or search profile.
 
 | Input | Description |
 |---|---|
