@@ -37,6 +37,33 @@ export async function startDriveSession(params: {
   });
 }
 
+export type SelectedStoryResult = {
+  poiId: string;
+  name: string;
+  momentId?: string;
+  audioUrl?: string;
+  transcriptText?: string;
+  textPreview?: string;
+  availability?: { short: boolean; long: boolean };
+  level: 'identify' | 'short' | 'long';
+};
+
+export async function selectDriveStory(
+  sessionId: string,
+  poiId: string,
+  level: 'short' | 'long',
+  language: string,
+  guestId?: string,
+  signal?: AbortSignal,
+): Promise<SelectedStoryResult> {
+  return apiFetch<SelectedStoryResult>(`/sessions/${encodeURIComponent(sessionId)}/select`, {
+    method: 'POST',
+    headers: guestHeaders(guestId),
+    signal,
+    body: { poiId, level, language },
+  });
+}
+
 export async function stopDriveSession(sessionId: string, guestId?: string): Promise<void> {
   await apiFetch('/drive/session/stop', {
     method: 'POST',
