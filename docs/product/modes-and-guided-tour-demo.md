@@ -10,6 +10,34 @@ Hey City has three selectable product modes:
 
 `exploring`, `approaching`, `arrived`, `narrating`, and similar values are journey states, not product modes.
 
+## Native field behaviors (stacked Draft PR #25 → #26)
+
+These refinements do not add product modes. **City Explorer / Guided Tour** remain product
+scenarios; **walking / vehicle** is an authoritative server movement state; and
+**walking / urban / highway** are discovery search profiles. The native City Explorer
+starts a server session with `mode: walking, autoMode: true` and displays confirmed
+`PingResult.mode`. GPS speed is converted from meters/second to km/h for transport;
+unavailable speed does not count as a stop. The existing server hysteresis applies.
+
+When the user opens a known object associated with the active session, **Tell me about
+this place / Рассказать сейчас** requests a short verified narrative using
+`POST /sessions/:sessionId/select`. A detailed request uses the same endpoint at
+`level: long` and can legitimately fail with 422 for missing evidence. An explicit
+request bypasses automatic timing; it does **not** bypass evidence, safety, costs or
+session ownership. Discovery target, opened POI and audible narrative target are
+distinct. Route handoff to Maps remains an independent user action.
+
+The native map compass toggles **north-up** / **course-up** using existing GPS course
+(no routing API); course-up falls back to north without a trustworthy moving heading.
+Pan gestures release camera following; explicit recenter restores it. Orientation
+never changes Discovery geometry or provider costs.
+
+Unit preference (metric / imperial) is persisted in the same guest/auth preferences,
+independently from UI/guide language. SI remains canonical for backend calculations,
+scoring and thresholds. **Foreground** City Explorer/Guided Tour uses Expo keep-awake
+while the session is active and releases on stop, unmount or background. Keep-awake
+prevents automatic dim/sleep; it does not grant background location/audio execution.
+
 ## Navigation
 
 The bottom navigation is:
