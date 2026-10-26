@@ -54,6 +54,7 @@ import {
   type ExplorationMode,
 } from '../demo/guidedTour';
 import { useDriveDiscoverySession } from '../features/live/useDriveDiscoverySession';
+import { formatSpeed, formatDistance } from '../localization/measurement';
 import { useExploreNarrative } from '../features/live/useExploreNarrative';
 import { createSnapshotLocation, useGuidedTourDemo } from '../features/live/useGuidedTourDemo';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
@@ -673,6 +674,7 @@ export function LiveScreen() {
           }))}
           nearbyPlaces={exploreNearbyPlaces}
           activeTarget={exploreActiveTarget}
+          unitSystem={preferences.unitSystem}
           guideImage={guideImages[preferences.preferredGuideId]}
           viewModel={exploreHomeViewModel}
           onOpenMenu={() => navigation.navigate('Settings' as never)}
@@ -988,7 +990,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {(lastMotion.speedKmh === null ? 'unknown' : lastMotion.speedKmh.toFixed(1))} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
+                  Speed {(lastMotion.speedKmh === null ? 'unknown' : formatSpeed(lastMotion.speedKmh, preferences.unitSystem))} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
@@ -1027,7 +1029,7 @@ export function LiveScreen() {
                         Type: {lastResult.aheadDiscovery.decision.target.targetType} · Score {lastResult.aheadDiscovery.decision.score}
                       </Text>
                       <Text style={styles.aheadDebugText}>
-                        Distance: {(lastResult.aheadDiscovery.decision.target.distanceMeters / 1609.344).toFixed(1)} mi / {lastResult.aheadDiscovery.decision.target.distanceMeters} m · Bearing {lastResult.aheadDiscovery.decision.target.bearingDegrees}° · Δ {lastResult.aheadDiscovery.decision.target.headingDeltaDegrees}°
+                        Distance: {formatDistance(lastResult.aheadDiscovery.decision.target.distanceMeters, preferences.unitSystem)} · Bearing {lastResult.aheadDiscovery.decision.target.bearingDegrees}° · Δ {lastResult.aheadDiscovery.decision.target.headingDeltaDegrees}°
                       </Text>
                       <Text style={styles.aheadDebugText}>
                         Reasons: {lastResult.aheadDiscovery.decision.reasons.join('; ')}
