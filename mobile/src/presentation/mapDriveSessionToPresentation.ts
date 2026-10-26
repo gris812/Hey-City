@@ -58,7 +58,7 @@ function getPlaybackState(
   if (localState.playbackState === 'loading') return 'loading';
   if (localState.playbackState === 'paused') return 'paused';
   if (localState.playbackState === 'completed') return 'completed';
-  if (result?.nextAction === 'PLAY') return 'playing';
+  // Backend PLAY is an instruction to prepare audio, not proof of native playback.
   return localState.playbackState === 'playing' ? 'playing' : 'idle';
 }
 
