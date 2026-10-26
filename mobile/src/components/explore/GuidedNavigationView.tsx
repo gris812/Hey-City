@@ -1,3 +1,4 @@
+import { useMeasurements } from '../../localization/useMeasurements';
 import React from 'react';
 import {
   Image,
@@ -58,6 +59,7 @@ export function GuidedNavigationView({
   onTranscript,
   onEndTour,
 }: GuidedNavigationViewProps) {
+  const measurements = useMeasurements();
   return (
     <View style={[styles.mapWrap, { height }]}>
       <MapView style={StyleSheet.absoluteFillObject} initialRegion={region} region={region}>
@@ -109,7 +111,7 @@ export function GuidedNavigationView({
           </Text>
           {typeof distanceMeters === 'number' && (
             <Text style={styles.mutedText} numberOfLines={1} maxFontSizeMultiplier={1}>
-              Distance: {Math.round(distanceMeters)} m
+              {measurements.distance(distanceMeters)}
             </Text>
           )}
         </View>

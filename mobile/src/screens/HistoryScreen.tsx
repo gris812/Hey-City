@@ -1,3 +1,4 @@
+import { useMeasurements } from '../localization/useMeasurements';
 import React, { useState, useEffect } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -20,6 +21,7 @@ const storyPreviewRegion: Region = {
 export function HistoryScreen() {
   const { identity } = useAuth();
   const { t } = useAppTranslation();
+  const measurements = useMeasurements();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [items, setItems] = useState<HistoryItem[]>([]);
@@ -106,7 +108,7 @@ export function HistoryScreen() {
       <View style={styles.storyCopy}>
         <Text style={styles.itemType}>{item.type === 'poi_played' ? 'City Story' : 'Completed walk'}</Text>
         <Text style={styles.itemPlace}>{title}</Text>
-        <Text style={styles.itemMeta}>{guideName} - {stops} stops - 52 min - 2.3 km</Text>
+        <Text style={styles.itemMeta}>{guideName} - {stops} stops - 52 min - {measurements.distance(2300)}</Text>
         <Text style={styles.itemTime}>{date}</Text>
       </View>
     </TouchableOpacity>

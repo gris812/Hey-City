@@ -10,6 +10,10 @@ import {
 const TOKEN_KEY = 'auth_token';
 let authInvalidationHandler: (() => void | Promise<void>) | null = null;
 
+export class ApiRequestError extends Error {
+  constructor(readonly status: number, message: string) { super(message); this.name = 'ApiRequestError'; }
+}
+
 export class AuthSessionExpiredError extends Error {
   readonly isAuthSessionExpired = true;
 
@@ -75,7 +79,7 @@ export async function apiFetch<T>(
       throw new AuthSessionExpiredError();
     }
 
-    throw new Error(toUserSafeRequestMessage(res.status, backendMessage));
+    throw new ApiRequestError(res.status, toUserSafeRequestMessage(res.status, backendMessage));
   }
   return res.json() as Promise<T>;
 }

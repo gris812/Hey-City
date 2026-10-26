@@ -12,7 +12,10 @@ export type LanguagePreferences = {
   guideLanguage: SupportedLocale;
 };
 
+export type MeasurementUnits = 'metric' | 'imperial';
+
 export type GuestPreferences = LanguagePreferences & {
+  measurementUnits: MeasurementUnits;
   preferredGuideId: GuidePreference;
   onboardingCompleted: boolean;
   showOnboardingAtLaunch: boolean;
@@ -40,6 +43,7 @@ export function normalizeGuidePreference(value: string | null | undefined): Guid
 
 export function createInitialGuestPreferences(systemLocale: SupportedLocale): GuestPreferences {
   return {
+    measurementUnits: 'metric',
     appLanguage: systemLocale,
     guideLanguage: systemLocale,
     preferredGuideId: 'dana',
@@ -55,6 +59,7 @@ export function sanitizeGuestPreferences(
 ): GuestPreferences {
   const initial = createInitialGuestPreferences(systemLocale);
   return {
+    measurementUnits: stored.measurementUnits === 'imperial' ? 'imperial' : 'metric',
     appLanguage:
       typeof stored.appLanguage === 'string'
         ? normalizeLocale(stored.appLanguage)

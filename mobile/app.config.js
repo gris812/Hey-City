@@ -16,6 +16,7 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
+      ...(process.env.HEY_CITY_FIELD_BUILD_NUMBER ? { buildNumber: process.env.HEY_CITY_FIELD_BUILD_NUMBER } : {}),
       bundleIdentifier: 'com.sunshine.aiguide',
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY || '',

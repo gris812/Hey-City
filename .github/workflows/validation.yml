@@ -44,6 +44,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -67,7 +69,16 @@ jobs:
         run: npm run test:web
 
       - name: Build production API image
-        run: docker build -f server/Dockerfile -t heycity-api-ci .
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker build --build-arg GIT_SHA="$SOURCE_SHA" -f server/Dockerfile \
+            -t heycity-api-ci -t "heycity-staging-api:git-$SOURCE_SHA" .
+          mkdir -p staging-image
+          docker image inspect "heycity-staging-api:git-$SOURCE_SHA" \
+            --format '{"sourceSha":"{{index .Config.Labels "org.opencontainers.image.revision"}}","imageId":"{{.Id}}","os":"{{.Os}}","architecture":"{{.Architecture}}"}' \
+            > staging-image/provenance.json
+          cat staging-image/provenance.json
 
       - name: Validate staging Compose isolation syntax
         run: |
@@ -78,6 +89,21 @@ jobs:
 
       - name: Build production WebApp image
         run: docker build --build-arg GOOGLE_MAPS_BROWSER_KEY=ci-placeholder -f web/Dockerfile -t heycity-web-ci .
+
+      - name: Package reviewed staging image (no deploy)
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker save "heycity-staging-api:git-$SOURCE_SHA" | gzip > staging-image/api.tar.gz
+          (cd staging-image && sha256sum api.tar.gz > SHA256SUMS)
+
+      - name: Upload reviewed staging image
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-api-${{ github.event.pull_request.head.sha || github.sha }}
+          path: staging-image/
+          retention-days: 7
+          if-no-files-found: error
 
   deploy:
     needs: validate

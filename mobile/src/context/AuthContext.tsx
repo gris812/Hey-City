@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import {
   getToken,
@@ -15,9 +15,9 @@ import {
   getSystemLocale,
   type GuestPreferences,
 } from '../localization/locales';
+import { readPreferences, persistPreferences } from './preferenceStorage';
 import {
   createInitialGuestPreferences,
-  sanitizeGuestPreferences,
 } from '../localization/preferences';
 
 type AuthContextType = {
@@ -35,12 +35,6 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 const GUEST_ID_KEY = 'guest_id';
-const APP_LANGUAGE_KEY = 'pref_app_language';
-const GUIDE_LANGUAGE_KEY = 'pref_guide_language';
-const PREFERRED_GUIDE_KEY = 'pref_guide_id';
-const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
-const SHOW_ONBOARDING_AT_LAUNCH_KEY = 'show_onboarding_at_launch';
-const WELCOME_EXPERIENCE_SEEN_KEY = 'welcome_experience_v1_seen';
 
 async function getOrCreateGuestId(): Promise<string> {
   const storedGuestId = await SecureStore.getItemAsync(GUEST_ID_KEY);
@@ -51,72 +45,15 @@ async function getOrCreateGuestId(): Promise<string> {
   return guestId;
 }
 
-async function readPreferences(): Promise<GuestPreferences> {
-  const systemLocale = getSystemLocale();
-  const [appLanguage, guideLanguage, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch, welcomeExperienceSeen] =
-    await Promise.all([
-      SecureStore.getItemAsync(APP_LANGUAGE_KEY),
-      SecureStore.getItemAsync(GUIDE_LANGUAGE_KEY),
-      SecureStore.getItemAsync(PREFERRED_GUIDE_KEY),
-      SecureStore.getItemAsync(ONBOARDING_COMPLETED_KEY),
-      SecureStore.getItemAsync(SHOW_ONBOARDING_AT_LAUNCH_KEY),
-      SecureStore.getItemAsync(WELCOME_EXPERIENCE_SEEN_KEY),
-    ]);
-
-  const hasStoredPreferences =
-    appLanguage !== null ||
-    guideLanguage !== null ||
-    preferredGuideId !== null ||
-    onboardingCompleted !== null ||
-    showOnboardingAtLaunch !== null ||
-    welcomeExperienceSeen !== null;
-
-  if (!hasStoredPreferences) {
-    const initial = createInitialGuestPreferences(systemLocale);
-    await persistPreferences(initial);
-    return initial;
-  }
-
-  return sanitizeGuestPreferences(
-    {
-      appLanguage,
-      guideLanguage,
-      preferredGuideId,
-      onboardingCompleted: onboardingCompleted === 'true',
-      showOnboardingAtLaunch:
-        showOnboardingAtLaunch === null ? null : showOnboardingAtLaunch === 'true',
-      welcomeExperienceSeen:
-        welcomeExperienceSeen === null ? null : welcomeExperienceSeen === 'true',
-    },
-    systemLocale
-  );
-}
-
-async function persistPreferences(preferences: GuestPreferences): Promise<void> {
-  await Promise.all([
-    SecureStore.setItemAsync(APP_LANGUAGE_KEY, preferences.appLanguage),
-    SecureStore.setItemAsync(GUIDE_LANGUAGE_KEY, preferences.guideLanguage),
-    SecureStore.setItemAsync(PREFERRED_GUIDE_KEY, preferences.preferredGuideId),
-    SecureStore.setItemAsync(
-      ONBOARDING_COMPLETED_KEY,
-      preferences.onboardingCompleted ? 'true' : 'false'
-    ),
-    SecureStore.setItemAsync(
-      SHOW_ONBOARDING_AT_LAUNCH_KEY,
-      preferences.showOnboardingAtLaunch ? 'true' : 'false'
-    ),
-    SecureStore.setItemAsync(
-      WELCOME_EXPERIENCE_SEEN_KEY,
-      preferences.welcomeExperienceSeen ? 'true' : 'false'
-    ),
-  ]);
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [identity, setIdentity] = useState<AppIdentityState>({ status: 'loading' });
   const [preferences, setPreferences] = useState<GuestPreferences>(
     createInitialGuestPreferences(getSystemLocale())
   );
+
+  const preferencesRef = useRef(preferences);
+  const preferenceWriteRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     let mounted = true;
@@ -130,8 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await becomeGuest();
     });
 
-    Promise.all([getToken(), getOrCreateGuestId(), readPreferences()]).then(([t, guestId, prefs]) => {
+    Promise.all([getToken(), getOrCreateGuestId(), readPreferences(SecureStore, getSystemLocale())]).then(([t, guestId, prefs]) => {
       if (!mounted) return;
+      preferencesRef.current = prefs;
       setPreferences(prefs);
       setIdentity(identityFromStoredToken(t, guestId));
     });
@@ -154,11 +92,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updatePreferences = async (patch: Partial<GuestPreferences>) => {
-    setPreferences((current) => {
-      const next = { ...current, ...patch };
-      void persistPreferences(next);
-      return next;
-    });
+    const next = { ...preferencesRef.current, ...patch };
+    preferencesRef.current = next;
+    setPreferences(next);
+    const write = preferenceWriteRef.current.then(() => persistPreferences(SecureStore, next));
+    // Preserve write order so rapid language/units changes cannot persist an older snapshot last.
+    preferenceWriteRef.current = write.catch(() => { console.warn('preferences_save_failed'); });
+    await write;
   };
 
   const completeOnboarding = async () => {

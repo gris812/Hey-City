@@ -4,9 +4,10 @@ import { discoveryEvidence } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
-import type { StoryAvailability } from '@heycity/shared';
+import { isCircuitOpen } from './budget';
+import type { SelectedStoryResult, StoryAvailability } from '@heycity/shared';
 import { generateIdentification, generateNarrationFromPlan } from './narration';
-import { narration } from '../config';
+import { narration, driveDiscovery } from '../config';
 
 let selectedMomentSequence = 0;
 
@@ -17,13 +18,30 @@ export class StorySelectionError extends Error {
 const categories: Record<string, [string,string]> = {city:['город','city'],museum:['музей','museum'],park:['парк','park'],national_park:['национальный парк','national park'],historical_landmark:['историческое место','historic landmark'],cultural_landmark:['достопримечательность','landmark'],monument:['памятник','monument'],university:['университет','university'],region:['регион','region']};
 
 /** Latest explicit choice supersedes previous work; discovery never waits for this pipeline. */
-export async function selectStory(id: string, userId: string, poiId: string, level: string, language?: string) {
+export function selectStory(id: string, userId: string, poiId: string, level: string, language?: string, clientRequestId?: string): Promise<SelectedStoryResult> {
+  const session = getSession(id);
+  if (!session || session.userId !== userId) return Promise.reject(new StorySelectionError(404, 'Session not found'));
+  if (!clientRequestId) return prepareSelectedStory(id, userId, poiId, level, language, clientRequestId);
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(clientRequestId)) return Promise.reject(new StorySelectionError(400, 'Invalid request identity'));
+  const key = JSON.stringify([poiId, level, language ?? session.params.language, session.params.voiceId]);
+  const requests = session.selectionRequests ??= new Map();
+  const existing = requests.get(clientRequestId);
+  if (existing) return existing.key === key ? existing.result : Promise.reject(new StorySelectionError(409, 'Request identity already used'));
+  const result = prepareSelectedStory(id, userId, poiId, level, language, clientRequestId);
+  requests.set(clientRequestId, { key, result });
+  if (requests.size > 32) requests.delete(requests.keys().next().value!);
+  return result;
+}
+
+async function prepareSelectedStory(id: string, userId: string, poiId: string, level: string, language?: string, clientRequestId?: string): Promise<SelectedStoryResult> {
   const session = getSession(id);
   if (!session || session.userId !== userId) throw new StorySelectionError(404,'Session not found');
   const candidate = sessionDiscoveryCandidate(id,poiId);
   if (!candidate) throw new StorySelectionError(404,'Object is no longer available');
   if (!['identify','short','long'].includes(level)) throw new StorySelectionError(400,'Invalid story level');
   if (language !== undefined && !['ru','en'].includes(language)) throw new StorySelectionError(400,'Invalid language');
+  if (isCircuitOpen(userId)) throw new StorySelectionError(429, 'Story budget temporarily unavailable');
+  session.selectionRevision = (session.selectionRevision ?? 0) + 1;
   // A new explicit choice invalidates any unfinished delivered moment before work begins.
   // A superseded short segment was never confirmed as heard, so it cannot feed M1 continuation.
   const activeMoment = session.journeyState?.getActiveMoment();
@@ -33,6 +51,7 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
   session.journeyState?.markSuperseded();
   session.storyRequest?.abort();
   const request = new AbortController(); session.storyRequest = request;
+  session.selectedRequestId = clientRequestId;
   const momentId = `selected:${poiId}:${Date.now()}:${++selectedMomentSequence}`;
   const params = {...session.params, language: language ?? session.params.language};
   session.params.language = params.language;
@@ -50,7 +69,7 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
     let planned: ReturnType<typeof prepareNarrative> | undefined;
     if (level === 'identify') {
       const category = (categories[candidate.targetType] ?? ['место','place'])[params.language === 'ru' ? 0 : 1];
-      const text = params.language === 'ru' ? `${candidate.name} — ${category} рядом с вами.` : `${candidate.name}, a ${category} near you.`;
+      const text = params.language === 'ru' ? `${candidate.name} — ${category}.` : `${candidate.name}, a ${category}.`;
       result = await generateIdentification(text,params.voiceId,params.language,userId);
       // Availability is resolved separately so identifying a place never waits for knowledge lookup.
     } else {
@@ -64,6 +83,13 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
       journey?.selectCallback({ entityId: poiId, topicKeys });
       planned = prepareNarrative({poiId,placeName:candidate.name,mode:params.mode ?? 'walking',guideId:params.voiceId,themeTags:params.themeTags,targetDurationSec:duration}, evidence,
         { level: level as 'short' | 'long', language: params.language, continuation: session.storyContinuation, journey: journey?.getSnapshot() });
+      planned.plan.selectionContext = { distanceMeters: candidate.distanceMeters, isAhead: candidate.isAhead };
+      if (candidate.distanceMeters > driveDiscovery.fallbackDistanceM) {
+        const forbidden = [...planned.plan.mustAvoid,
+          'right (?:here|in front of (?:us|you))|прямо (?:перед (?:нами|вами)|здесь)|мы (?:стоим|находимся) (?:у|около)'];
+        planned.plan.mustAvoid = forbidden;
+        planned.brief.constraints.forbiddenPatterns = forbidden;
+      }
       result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal});
     }
     check();
@@ -94,14 +120,16 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
       await recordSessionStoryStarted(session, poiId);
       check();
     }
-    session.alreadyListening = !!result.audioUrl;
+    // This is delivery ownership, not proof of audible start. Text-only explicit choices
+    // retain the session until skip/completion and cannot be displaced by an automatic ping.
+    session.alreadyListening = level !== 'identify' || !!result.audioUrl;
     session.lastStoryStartedAt = Date.now();
     (session.spokenProviderIds ??= new Set()).add(poiId);
     succeeded = true;
     const attribution = evidence ? publicAttribution(evidence) : undefined;
-    return {...result,poiId,name:candidate.name,level,language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability};
+    return {...result,poiId,name:candidate.name,guideId:canonicalGuideId(params.voiceId),level:level as SelectedStoryResult['level'],language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability};
   } finally {
-    if (session.storyRequest === request) {session.storyRequest = undefined; if (!succeeded) session.alreadyListening = false;}
+    if (session.storyRequest === request) {session.storyRequest = undefined; session.selectedRequestId = undefined; if (!succeeded) session.alreadyListening = false;}
   }
 }
 

@@ -10,7 +10,10 @@ COPY shared shared
 RUN npm run build --workspace server
 
 FROM node:22-alpine
+ARG GIT_SHA=unknown
 ENV NODE_ENV=production
+ENV GIT_SHA=${GIT_SHA}
+LABEL org.opencontainers.image.revision=${GIT_SHA}
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json server/package.json

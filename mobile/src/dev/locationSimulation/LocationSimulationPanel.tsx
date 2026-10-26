@@ -1,3 +1,4 @@
+import { useMeasurements } from '../../localization/useMeasurements';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
@@ -18,6 +19,7 @@ const firstTimestampMs = tourBLocationEvents[0]?.timestampMs ?? 0;
 
 export function LocationSimulationPanel() {
   const { t } = useAppTranslation();
+  const measurements = useMeasurements();
   const { preferences } = useAuth();
   const [state, setState] = useState<GuidedTourState>(() =>
     createInitialGuidedTourState(preferences.preferredGuideId, preferences.guideLanguage)
@@ -106,7 +108,7 @@ export function LocationSimulationPanel() {
         <Text style={styles.metric}>{t('sim.elapsed')}: {elapsedSec}s</Text>
         <Text style={styles.metric}>{t('tour.currentTarget')}: {currentTarget?.name ?? '-'}</Text>
         <Text style={styles.metric}>
-          {t('tour.distance')}: {typeof state.distanceToCurrentTargetMeters === 'number' ? `${Math.round(state.distanceToCurrentTargetMeters)} m` : '-'}
+          {t('tour.distance')}: {typeof state.distanceToCurrentTargetMeters === 'number' ? measurements.distance(state.distanceToCurrentTargetMeters) : '-'}
         </Text>
         <Text style={styles.metric}>{t('tour.state')}: {t(`journey.${state.journeyState}`)}</Text>
         <Text style={styles.metric}>

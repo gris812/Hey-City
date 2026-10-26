@@ -21,11 +21,15 @@ type AheadDiscoverySessionState = {
 
 const states = new Map<string, AheadDiscoverySessionState>();
 
+/** Explicit selection lookup: retain taxonomy/evidence eligibility, deliberately bypass heading.
+ * Automatic ranking continues to use filterAheadCandidates with real geometry below. */
 export function sessionDiscoveryCandidate(sessionId: string, providerId: string): DiscoveryCandidate | undefined {
   const state = states.get(sessionId);
   const candidate = state?.candidates.find(c => c.providerId === providerId);
   if (!candidate || !state?.previousMovement) return undefined;
-  return filterAheadCandidates([{ ...candidate, ...createCandidateGeometry(state.previousMovement, candidate), isAhead: true }]).included[0];
+  const geometry = { ...candidate, ...createCandidateGeometry(state.previousMovement, candidate) };
+  // Override heading only for eligibility, retaining truthful relative direction in the plan.
+  return filterAheadCandidates([{ ...geometry, isAhead: true }]).included.length ? geometry : undefined;
 }
 
 function getState(sessionId: string): AheadDiscoverySessionState {
@@ -155,7 +159,6 @@ async function refreshProviderCandidates(
   logAheadDiscovery('ahead_discovery_provider_refresh_started', {
     sessionId,
     forced,
-    location: roundedLocation(movement),
     stableHeading: movement.headingDegrees,
   });
 
@@ -380,13 +383,6 @@ function safeErrorCode(error: unknown): string {
   if (message.includes('timeout')) return 'timeout';
   if (message.includes('malformed')) return 'malformed_provider_response';
   return 'provider_unavailable';
-}
-
-function roundedLocation(movement: MovementContext) {
-  return {
-    latitude: Math.round(movement.latitude * 10000) / 10000,
-    longitude: Math.round(movement.longitude * 10000) / 10000,
-  };
 }
 
 function logAheadDiscovery(event: string, payload: Record<string, unknown>): void {
