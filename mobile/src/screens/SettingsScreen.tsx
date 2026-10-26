@@ -27,14 +27,14 @@ import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
-import { guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
+import { guideAvatarImages, guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
   { id: 'arthur' },
 ];
 
-const guideImages = guideSelectionImages;
+const guideImages = { ...guideSelectionImages, dana: guideAvatarImages.dana };
 
 export function SettingsScreen() {
   const { identity, logout, preferences, updatePreferences } = useAuth();
