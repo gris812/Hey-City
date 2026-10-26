@@ -130,7 +130,9 @@ async function generateSelectedStory(id: string, userId: string, poiId: string, 
       await recordSessionStoryStarted(session, poiId);
       check();
     }
-    session.alreadyListening = !!result.audioUrl;
+    // Explicit text-only selection stays owned until dismissed; a discovery ping
+    // must not preempt a user-selected factual moment merely because TTS failed.
+    session.alreadyListening = level !== 'identify';
     session.lastStoryStartedAt = Date.now();
     (session.spokenProviderIds ??= new Set()).add(poiId);
     succeeded = true;
