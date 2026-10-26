@@ -51,7 +51,7 @@ import type {
   M4NativeBenchmarkRecorder,
 } from './realtimeVoiceBenchmark';
 
-export type DriveMotion = { speedKmh: number | null; heading: number | null };
+export type DriveMotion = { speedKmh: number | null; heading: number | null; observedAtMs: number };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
 
 export function clearDrivePingInterval(
@@ -336,7 +336,14 @@ export function useDriveDiscoverySession(input: {
         if (heading !== null) lastHeadingRef.current = heading;
 
         const speedKmh = gpsSpeedKmh(loc.coords.speed);
-        setLastMotion({ speedKmh, heading });
+        setLastMotion({
+          speedKmh,
+          // Camera uses only this sample's trusted heading, not the stale
+          // fallback used by Discovery's separate heading-grace policy.
+          heading: typeof rawHeading === 'number' && Number.isFinite(rawHeading) && rawHeading >= 0
+            ? rawHeading : null,
+          observedAtMs: Date.now(),
+        });
         const accuracyMeters =
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
             ? loc.coords.accuracy
