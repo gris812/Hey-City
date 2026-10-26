@@ -61,6 +61,7 @@ function getPlaybackState(
 ): PlaybackState {
   if (!localState.sessionActive) return 'idle';
   if (localState.playbackState === 'error') return 'error';
+  if (localState.playbackState === 'text-only') return 'text-only';
   if (localState.playbackState === 'loading') return 'loading';
   if (localState.playbackState === 'paused') return 'paused';
   if (localState.playbackState === 'completed') return 'completed';
