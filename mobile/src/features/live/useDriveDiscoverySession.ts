@@ -296,11 +296,11 @@ export function useDriveDiscoverySession(input: {
             : lastHeadingRef.current;
         if (heading !== null) lastHeadingRef.current = heading;
 
-        const speedMps =
-          typeof loc.coords.speed === 'number' && loc.coords.speed > 0
-            ? loc.coords.speed
-            : 0;
-        const speedKmh = speedMps * 3.6;
+        // Missing/invalid GPS speed is unknown, not a reliable stop.
+        const speedMps = typeof loc.coords.speed === 'number' &&
+          Number.isFinite(loc.coords.speed) && loc.coords.speed >= 0
+          ? loc.coords.speed : null;
+        const speedKmh = speedMps === null ? Number.NaN : speedMps * 3.6;
         setLastMotion({ speedKmh, heading });
         const accuracyMeters =
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
