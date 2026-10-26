@@ -122,6 +122,11 @@ export function useDriveDiscoverySession(input: {
   const realtimeBenchmarkRecorderRef = useRef<M4NativeBenchmarkRecorder | null>(null);
   const realtimeBenchmarkRepetitionRef = useRef<Record<string, number>>({});
   const guestId = identity.status === 'guest' ? identity.guestId : undefined;
+  const ownerKey = identity.status === 'authenticated' ? identity.token : identity.status === 'guest' ? identity.guestId : 'loading';
+  const ownerKeyRef = useRef(ownerKey);
+  ownerKeyRef.current = ownerKey;
+  const sessionOwnerRef = useRef<string | null>(null);
+  const sessionGuestIdRef = useRef<string | undefined>(undefined);
 
   const startSession = useCallback(async () => {
     if (startingRef.current || activeSessionIdRef.current) return;
@@ -184,6 +189,12 @@ export function useDriveDiscoverySession(input: {
         autoplay,
         guestId,
       });
+      if (ownerKeyRef.current !== ownerKey) {
+        void stopDriveSession(id, guestId).catch(() => console.warn('native_stale_session_stop_failed'));
+        throw new Error(guideLanguage === 'ru' ? 'Аккаунт изменился. Запустите исследование ещё раз.' : 'Account changed. Please retry exploration.');
+      }
+      sessionOwnerRef.current = ownerKey;
+      sessionGuestIdRef.current = guestId;
       activeSessionIdRef.current = id;
       ++requestRevisionRef.current;
       setSessionId(id);
@@ -202,7 +213,7 @@ export function useDriveDiscoverySession(input: {
     } finally {
       startingRef.current = false;
     }
-  }, [autoplay, guestId, guideId, guideLanguage, identity, leadTimeMin, lengthSec, style, themes]);
+  }, [autoplay, guestId, guideId, guideLanguage, identity, leadTimeMin, lengthSec, ownerKey, style, themes]);
 
   const clearConversationPlayback = useCallback(async () => {
     pendingResumeRef.current = null;
@@ -223,6 +234,7 @@ export function useDriveDiscoverySession(input: {
 
   const stopSession = useCallback(async () => {
     const id = activeSessionIdRef.current;
+    const ownerGuestId = sessionGuestIdRef.current;
     if (!id) return;
     activeSessionIdRef.current = null;
     explicitSelectionRef.current.cancel();
@@ -241,8 +253,13 @@ export function useDriveDiscoverySession(input: {
     realtimeVoiceRef.current = null;
     if (voice) await voice.dispose().catch(() => reportPlaybackError('voice_dispose_failed'));
     await clearConversationPlayback().catch(() => reportPlaybackError('audio_unload_failed'));
-    await stopDriveSession(id, guestId).catch(() => reportPlaybackError('session_stop_failed'));
+    await stopDriveSession(id, ownerGuestId).catch(() => console.warn('native_session_stop_failed'));
   }, [clearConversationPlayback, guestId, reportPlaybackError]);
+
+  useEffect(() => {
+    // Auth changes must never reuse a session owned by the previous guest/account.
+    if (activeSessionIdRef.current && sessionOwnerRef.current !== ownerKey) void stopSession();
+  }, [ownerKey, stopSession]);
 
   const loadStoryPlayback = useCallback(async (story: StoryPlaybackIdentity, audioUrl?: string) => {
     if (activeSessionIdRef.current !== story.sessionId || activeMomentIdRef.current === story.momentId) return;
@@ -384,7 +401,7 @@ export function useDriveDiscoverySession(input: {
         setLastMotion({ speedKmh, heading, timestampMs: loc.timestamp, accuracyMeters: loc.coords.accuracy ?? undefined });
         const accuracy = typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0 ? loc.coords.accuracy : undefined;
         const result = await pingDriveSession(sessionId, loc.coords.latitude, loc.coords.longitude,
-          heading, speedKmh, loc.timestamp, accuracy, false, guestId, explicitSelectionRef.current.holdsAutomaticNarration);
+          heading, speedKmh, loc.timestamp, accuracy, false, guestId, muted || explicitSelectionRef.current.holdsAutomaticNarration);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
         if (result.mode) setMovementMode(result.mode);
         // Discovery can advance while the current audio identity remains intact.
