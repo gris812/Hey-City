@@ -315,7 +315,7 @@ export function LiveScreen() {
     primaryStatusLabel: sessionError
       ? t('common.error')
       : sessionId
-        ? t('walking.modeStatus')
+        ? t(lastResult?.mode === 'vehicle' ? 'walking.vehicleModeStatus' : 'walking.modeStatus')
         : t('app.loading'),
     secondaryActionLabel: t('walking.chooseWalk'),
   });
