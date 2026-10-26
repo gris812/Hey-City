@@ -275,7 +275,8 @@ export function LiveScreen() {
     isAhead: aheadTarget.isAhead,
     selected: true,
     isNarrating:
-      presentation.playbackState === 'playing' || presentation.playbackState === 'paused',
+      presentation.activeTarget?.id === aheadTarget.providerId &&
+      (presentation.playbackState === 'playing' || presentation.playbackState === 'paused'),
   } : undefined;
   const selectedExplorePlace = [exploreActiveTarget, ...exploreNearbyPlaces].find(
     (place): place is ExploreNearbyPlace => Boolean(place && place.id === selectedExplorePlaceId)
