@@ -35,6 +35,7 @@ import type { GuidePreference, SupportedLocale } from '../../localization/prefer
 import type { PlaybackMoment } from '../../presentation/livePresentation';
 import { clearRuntimeInterval } from './runtimeControllerContracts';
 import { ConversationPlayback, isCurrentConversationTurn } from './conversationPlayback';
+import { gpsSpeedKmh } from './gpsMotion';
 import {
   bargeInRealtimeVoice,
   closeRealtimeVoice,
@@ -334,9 +335,7 @@ export function useDriveDiscoverySession(input: {
             : lastHeadingRef.current;
         if (heading !== null) lastHeadingRef.current = heading;
 
-        const speedKmh = typeof loc.coords.speed === 'number' &&
-          Number.isFinite(loc.coords.speed) && loc.coords.speed >= 0
-            ? loc.coords.speed * 3.6 : null;
+        const speedKmh = gpsSpeedKmh(loc.coords.speed);
         setLastMotion({ speedKmh, heading });
         const accuracyMeters =
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
@@ -720,16 +719,13 @@ export function useDriveDiscoverySession(input: {
         typeof loc.coords.heading === 'number' && loc.coords.heading >= 0
           ? loc.coords.heading
           : lastHeadingRef.current;
-      const speedMps =
-        typeof loc.coords.speed === 'number' && Number.isFinite(loc.coords.speed) && loc.coords.speed >= 0
-          ? loc.coords.speed
-          : null;
+      const speedKmh = gpsSpeedKmh(loc.coords.speed);
       const result = await forceAheadDiscoveryRefresh({
         sessionId,
         lat: loc.coords.latitude,
         lng: loc.coords.longitude,
         heading,
-        speed: speedMps === null ? null : speedMps * 3.6,
+        speed: speedKmh,
         timestamp: Date.now(),
         accuracyMeters:
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
