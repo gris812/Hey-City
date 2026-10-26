@@ -11,6 +11,7 @@ type StoryPanelProps = {
 const playbackLabels: Record<LivePresentationState['playbackState'], string> = {
   idle: 'Ready',
   loading: 'Loading story',
+  'text-only': 'Text only — no audio',
   playing: 'Playing',
   paused: 'Paused',
   completed: 'Completed',
@@ -67,6 +68,7 @@ function getEmptyCopy(
 ): string {
   if (playbackState === 'loading') return 'Preparing the next story from the current session state.';
   if (playbackState === 'paused') return 'Playback is paused locally.';
+  if (playbackState === 'text-only') return 'Narration text is available; audio was not delivered.';
   if (playbackState === 'completed') return 'Story completed.';
   if (playbackState === 'error') return 'Playback could not continue. Try ending or skipping the story.';
   if (discoveryPhase === 'holding') return 'Holding until the backend session returns the next action.';
