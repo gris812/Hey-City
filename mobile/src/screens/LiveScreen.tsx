@@ -10,9 +10,11 @@ import {
   Image,
   Modal,
   Linking,
+  AppState,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
@@ -301,6 +303,29 @@ export function LiveScreen() {
     driveDiscoveryOn,
     overlayKind: liveOverlay?.kind ?? null,
   });
+  const keepAwakeRequired = Boolean(
+    sessionId || (mode === 'guided_tour' && foregroundPhase.startsWith('guided_'))
+  );
+  useEffect(() => {
+    if (!keepAwakeRequired) return;
+    const tag = 'heycity-foreground-exploration';
+    const apply = (active: boolean) => {
+      if (active) {
+        void activateKeepAwakeAsync(tag).catch(() => {
+          // Keep-awake failure must not interrupt map, location or narration.
+        });
+      } else {
+        void deactivateKeepAwake(tag);
+      }
+    };
+    apply(AppState.currentState === 'active');
+    const subscription = AppState.addEventListener('change', state => apply(state === 'active'));
+    return () => {
+      subscription.remove();
+      void deactivateKeepAwake(tag);
+    };
+  }, [keepAwakeRequired]);
+
   const mapFirstForeground =
     mode === 'city_explorer' ||
     foregroundPhase === 'guided_navigating' ||
