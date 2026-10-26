@@ -35,6 +35,7 @@ import {
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
 import { clearRuntimeInterval } from './runtimeControllerContracts';
 import { ConversationPlayback, isCurrentConversationTurn } from './conversationPlayback';
+import { isDuplicateExplicitSelection, shouldAcceptAutomaticPlay, shouldSendCompletion } from './storyOwnership';
 import {
   bargeInRealtimeVoice,
   closeRealtimeVoice,
@@ -237,7 +238,7 @@ export function useDriveDiscoverySession(input: {
           if (status.isLoaded) {
             if (activeMomentIdRef.current !== momentId) return;
             if (status.didJustFinish && sessionId) {
-              if (completedMomentRef.current === momentId) return;
+              if (!shouldSendCompletion(activeMomentIdRef.current, momentId, completedMomentRef.current)) return;
               completedMomentRef.current = momentId;
               void finishDriveStory(sessionId, 'ended', guestId, momentId).catch(() => {
                 setSessionError('Story completion could not be confirmed with the server.');
@@ -273,8 +274,7 @@ export function useDriveDiscoverySession(input: {
 
   const tellStoryNow = useCallback(async (poiId: string, level: 'short' | 'long' = 'short') => {
     if (!sessionId || !poiId) return;
-    if (explicitRequestRef.current?.poiId === poiId &&
-        explicitRequestRef.current.level === level) return;
+    if (isDuplicateExplicitSelection(explicitRequestRef.current, poiId, level)) return;
     if (activeAudio?.poiId === poiId && localPlaybackState === 'playing') return;
 
     const revision = ++explicitRevisionRef.current;
@@ -395,8 +395,7 @@ export function useDriveDiscoverySession(input: {
         if (result.mode === 'vehicle' || result.mode === 'walking') setMovementMode(result.mode);
         setLastResult(result);
         if (result.nextAction === 'PLAY' && result.poi &&
-            !explicitRequestRef.current &&
-            !activeMomentIdRef.current?.startsWith('selected:')) {
+            shouldAcceptAutomaticPlay(explicitRequestRef.current, activeMomentIdRef.current)) {
           if (result.momentId && activeMomentIdRef.current !== result.momentId) {
             completedMomentRef.current = null;
             activeMomentIdRef.current = result.momentId;
