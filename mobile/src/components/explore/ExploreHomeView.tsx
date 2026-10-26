@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import MapView, { Marker, type LatLng, type Region } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
+import type { MeasurementSystem } from '../../localization/preferences';
+import { formatDistance as formatDistanceUnits } from '../../localization/measurement';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
@@ -35,6 +37,7 @@ export type ExploreHomeViewProps = {
   height: number;
   topInset: number;
   region: Region;
+  measurementSystem?: MeasurementSystem;
   markers: ExploreHomeMarker[];
   nearbyPlaces: ExploreNearbyPlace[];
   activeTarget?: ExploreActiveTarget;
@@ -56,7 +59,8 @@ export function ExploreHomeView({
   height,
   topInset,
   region,
-  markers,
+  measurementSystem = 'metric',
+  markers:
   nearbyPlaces,
   activeTarget,
   guideImage,
@@ -217,7 +221,7 @@ export function ExploreHomeView({
                 {activeTarget.title}
               </Text>
               <Text style={styles.placeMeta} numberOfLines={1}>
-                {formatTargetType(activeTarget.targetType, locale)} · {formatDistance(activeTarget.distanceMeters)}
+                {formatTargetType(activeTarget.targetType, locale)} · {formatDistance(activeTarget.distanceMeters, measurementSystem)}
               </Text>
               <Text style={styles.activeSummary} numberOfLines={2}>
                 {activeTarget.isNarrating
@@ -273,7 +277,7 @@ export function ExploreHomeView({
                   <Text style={styles.nearbyName} numberOfLines={2}>
                     {place.title}
                   </Text>
-                  <Text style={styles.nearbyDistance}>{formatDistance(place.distanceMeters)}</Text>
+                  <Text style={styles.nearbyDistance}>{formatDistance(place.distanceMeters, measurementSystem)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -359,9 +363,8 @@ export function formatTargetType(targetType: string | undefined, locale: 'en' | 
   return labels[targetType]?.[locale] ?? targetType.replace(/_/g, ' ');
 }
 
-export function formatDistance(distanceMeters: number): string {
-  if (distanceMeters < 1000) return `${Math.max(10, Math.round(distanceMeters / 10) * 10)} m`;
-  return `${(distanceMeters / 1000).toFixed(1)} km`;
+export function formatDistance(distanceMeters: number, system: MeasurementSystem = 'metric'): string {
+  return formatDistanceUnits(distanceMeters, system);
 }
 
 const styles = StyleSheet.create({
