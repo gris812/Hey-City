@@ -8,6 +8,7 @@ export type DiscoveryPhase =
 export type PlaybackState =
   | 'idle'
   | 'loading'
+  | 'text-only'
   | 'playing'
   | 'paused'
   | 'completed'
