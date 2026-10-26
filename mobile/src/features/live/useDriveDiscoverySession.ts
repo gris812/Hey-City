@@ -467,17 +467,21 @@ export function useDriveDiscoverySession(input: {
   };
 
   const pausePlayback = () => {
-    if (localPlaybackState === 'playing' || localPlaybackState === 'loading') {
-      setLocalPlaybackState('paused');
-      void storySoundRef.current?.pauseAsync().catch(() => {});
-    }
+    if (localPlaybackState !== 'playing') return;
+    // The native playback callback confirms the paused status.
+    void storySoundRef.current?.pauseAsync().catch(() => {
+      setSessionError('Could not pause audio.');
+      setLocalPlaybackState('error');
+    });
   };
 
   const resumePlayback = () => {
-    if (localPlaybackState === 'paused') {
-      setLocalPlaybackState(playingName ? 'playing' : 'idle');
-      void storySoundRef.current?.playAsync().catch(() => {});
-    }
+    if (localPlaybackState !== 'paused') return;
+    // Never declare audio playing before the native player confirms it.
+    void storySoundRef.current?.playAsync().catch(() => {
+      setSessionError('Could not resume audio.');
+      setLocalPlaybackState('error');
+    });
   };
 
   const applyResumeDirective = useCallback(async (directive: ResumeDirective): Promise<void> => {
