@@ -16,7 +16,7 @@ export type NarrativeOverlayProps = {
   guideName: string;
   guideImage?: ImageSourcePropType;
   text: string;
-  playbackState: 'idle' | 'playing' | 'paused' | 'completed';
+  playbackState: 'idle' | 'loading' | 'text-only' | 'error' | 'playing' | 'paused' | 'completed';
   progress?: number;
   autoContinueRemainingMs?: number;
   onPause: () => void;
@@ -45,6 +45,7 @@ export function NarrativeOverlay({
   const { t } = useAppTranslation();
   const paused = playbackState === 'paused';
   const completed = playbackState === 'completed';
+  const audioActive = playbackState === 'playing' || paused;
 
   return (
     <View pointerEvents="box-none" style={styles.overlay}>
@@ -56,7 +57,7 @@ export function NarrativeOverlay({
               style={[
                 styles.compactWaveBar,
                 { height },
-                (paused || completed) && styles.waveBarInactive,
+                (!audioActive || completed) && styles.waveBarInactive,
               ]}
             />
           ))}
@@ -65,7 +66,10 @@ export function NarrativeOverlay({
           {guideImage ? <Image source={guideImage} style={styles.guideAvatar} /> : null}
           <View style={styles.headerCopy}>
             <Text style={styles.guide}>
-              {t('walking.guideSpeaking').replace('{guide}', guideName)}
+              {audioActive ? t('walking.guideSpeaking').replace('{guide}', guideName)
+                : playbackState === 'loading' ? t('walking.storyLoading')
+                : playbackState === 'text-only' ? t('walking.textOnly')
+                : playbackState === 'error' ? t('walking.audioError') : guideName}
             </Text>
             <Text style={styles.title} numberOfLines={2}>{title}</Text>
           </View>
@@ -88,7 +92,7 @@ export function NarrativeOverlay({
         )}
 
         <View style={styles.controls}>
-          {!completed && (
+          {audioActive && (
             <TouchableOpacity
               accessibilityRole="button"
               style={styles.playbackButton}
