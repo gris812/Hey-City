@@ -29,6 +29,10 @@ export type DiscoveryPlaceSheetProps = {
   unitSystem: UnitSystem;
   guideImage: ImageSourcePropType;
   hasActiveStory: boolean;
+  selectionPending?: boolean;
+  selectionError?: string | null;
+  vehicleMode?: boolean;
+  onTellStory: (level: 'short' | 'long') => void;
   onClose: () => void;
   onOpenMaps: (place: ExploreNearbyPlace) => void;
   onOpenStory: () => void;
@@ -42,6 +46,10 @@ export function DiscoveryPlaceSheet({
   unitSystem,
   guideImage,
   hasActiveStory,
+  selectionPending,
+  selectionError,
+  vehicleMode,
+  onTellStory,
   onClose,
   onOpenMaps,
   onOpenStory,
@@ -117,6 +125,32 @@ export function DiscoveryPlaceSheet({
                 </Text>
               </View>
             </View>
+
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={t('walking.tellNow')}
+              disabled={selectionPending}
+              style={[styles.primaryButton, selectionPending && { opacity: 0.55 }]}
+              onPress={() => onTellStory('short')}
+            >
+              <Text style={styles.primaryButtonText}>
+                {selectionPending ? t('walking.storyLoading') : t('walking.tellNow')}
+              </Text>
+            </TouchableOpacity>
+            {!vehicleMode && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t('walking.tellDetailed')}
+                disabled={selectionPending}
+                style={styles.secondaryButton}
+                onPress={() => onTellStory('long')}
+              >
+                <Text style={styles.secondaryButtonText}>{t('walking.tellDetailed')}</Text>
+              </TouchableOpacity>
+            )}
+            {!!selectionError && (
+              <Text accessibilityRole="alert" style={styles.contextCopy}>{selectionError}</Text>
+            )}
 
             {hasActiveStory && (
               <TouchableOpacity style={styles.primaryButton} onPress={onOpenStory}>
