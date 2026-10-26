@@ -675,6 +675,9 @@ export function LiveScreen() {
           nearbyPlaces={exploreNearbyPlaces}
           activeTarget={exploreActiveTarget}
           unitSystem={preferences.unitSystem}
+          movementHeading={lastMotion?.heading ?? null}
+          movementSpeedKmh={lastMotion?.speedKmh ?? null}
+          movementObservedAtMs={lastMotion?.observedAtMs ?? null}
           guideImage={guideImages[preferences.preferredGuideId]}
           viewModel={exploreHomeViewModel}
           onOpenMenu={() => navigation.navigate('Settings' as never)}
