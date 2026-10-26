@@ -13,6 +13,8 @@ import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
+import { formatDistance } from '../../localization/measurement';
+import type { UnitSystem } from '../../localization/preferences';
 
 export type ExploreHomeMarker = {
   id: string;
@@ -40,6 +42,7 @@ export type ExploreHomeViewProps = {
   activeTarget?: ExploreActiveTarget;
   guideImage: ImageSourcePropType;
   viewModel: ExploreHomeViewModel;
+  unitSystem: UnitSystem;
   onOpenMenu: () => void;
   onOpenGuide: () => void;
   onChooseGuidedWalk: () => void;
@@ -61,6 +64,7 @@ export function ExploreHomeView({
   activeTarget,
   guideImage,
   viewModel,
+  unitSystem,
   onOpenMenu,
   onOpenGuide,
   onChooseGuidedWalk,
@@ -217,7 +221,7 @@ export function ExploreHomeView({
                 {activeTarget.title}
               </Text>
               <Text style={styles.placeMeta} numberOfLines={1}>
-                {formatTargetType(activeTarget.targetType, locale)} · {formatDistance(activeTarget.distanceMeters)}
+                {formatTargetType(activeTarget.targetType, locale)} · {formatDistance(activeTarget.distanceMeters, unitSystem)}
               </Text>
               <Text style={styles.activeSummary} numberOfLines={2}>
                 {activeTarget.isNarrating
@@ -273,7 +277,7 @@ export function ExploreHomeView({
                   <Text style={styles.nearbyName} numberOfLines={2}>
                     {place.title}
                   </Text>
-                  <Text style={styles.nearbyDistance}>{formatDistance(place.distanceMeters)}</Text>
+                  <Text style={styles.nearbyDistance}>{formatDistance(place.distanceMeters, unitSystem)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -357,11 +361,6 @@ export function formatTargetType(targetType: string | undefined, locale: 'en' | 
   };
   if (!targetType) return locale === 'ru' ? 'Городской объект' : 'City place';
   return labels[targetType]?.[locale] ?? targetType.replace(/_/g, ' ');
-}
-
-export function formatDistance(distanceMeters: number): string {
-  if (distanceMeters < 1000) return `${Math.max(10, Math.round(distanceMeters / 10) * 10)} m`;
-  return `${(distanceMeters / 1000).toFixed(1)} km`;
 }
 
 const styles = StyleSheet.create({
