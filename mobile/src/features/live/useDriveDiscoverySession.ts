@@ -76,6 +76,7 @@ export function useDriveDiscoverySession(input: {
   const [autoplay, setAutoplay] = useState(true);
   const [muted, setMuted] = useState(false);
   const [lastResult, setLastResult] = useState<PingResult | null>(null);
+  const [movementMode, setMovementMode] = useState<'walking' | 'vehicle'>('walking');
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [activeAudio, setActiveAudio] = useState<{ momentId: string; poiId: string; name: string; guideId?: string } | null>(null);
   const completedMomentRef = useRef<string | null>(null);
@@ -95,6 +96,7 @@ export function useDriveDiscoverySession(input: {
   const [realtimeBenchmarkScenario, setRealtimeBenchmarkScenario] = useState<M4BenchmarkScenario>('B1');
   const [realtimeBenchmarkExportStatus, setRealtimeBenchmarkExportStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingRevisionRef = useRef(0);
   const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
@@ -169,6 +171,7 @@ export function useDriveDiscoverySession(input: {
         guestId,
       });
       setSessionId(id);
+      setMovementMode('walking');
       activeMomentIdRef.current = null;
       conversationTurnRevisionRef.current += 1;
       setConversationResult(null);
@@ -205,6 +208,8 @@ export function useDriveDiscoverySession(input: {
     void clearConversationPlayback();
     setDriveDiscoveryOn(false);
     clearDrivePingInterval(pingIntervalRef);
+    pingRevisionRef.current += 1;
+    setMovementMode('walking');
     setLastResult(null);
     setPlayingName(null);
     setActiveAudio(null);
@@ -303,6 +308,7 @@ export function useDriveDiscoverySession(input: {
     if (!sessionId || muted) return;
 
     const runPing = async () => {
+      const revision = ++pingRevisionRef.current;
       try {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -337,6 +343,8 @@ export function useDriveDiscoverySession(input: {
           false,
           guestId
         );
+        if (revision !== pingRevisionRef.current) return;
+        if (result.mode === 'vehicle' || result.mode === 'walking') setMovementMode(result.mode);
         setLastResult(result);
         if (result.nextAction === 'PLAY' && result.poi) {
           if (result.momentId && activeMomentIdRef.current !== result.momentId) {
@@ -365,7 +373,10 @@ export function useDriveDiscoverySession(input: {
     runPing();
     const id = setInterval(runPing, config.pingIntervalSec * 1000);
     pingIntervalRef.current = id;
-    return () => clearDrivePingInterval(pingIntervalRef);
+    return () => {
+      pingRevisionRef.current += 1;
+      clearDrivePingInterval(pingIntervalRef);
+    };
   }, [guestId, loadStoryPlayback, muted, sessionId]);
 
   useEffect(() => () => {
@@ -746,6 +757,7 @@ export function useDriveDiscoverySession(input: {
     muted,
     setMuted,
     lastResult,
+    movementMode,
     lastMotion,
     deviceLocation,
     aheadRefreshLoading,
