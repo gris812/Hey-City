@@ -11,6 +11,7 @@ type StoryPanelProps = {
 const playbackLabels: Record<LivePresentationState['playbackState'], string> = {
   idle: 'Ready',
   loading: 'Loading story',
+  'text-only': 'Text available (audio unavailable)',
   playing: 'Playing',
   paused: 'Paused',
   completed: 'Completed',
