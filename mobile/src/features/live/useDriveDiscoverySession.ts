@@ -392,7 +392,9 @@ export function useDriveDiscoverySession(input: {
         if (revision !== pingRevisionRef.current) return;
         if (result.mode === 'vehicle' || result.mode === 'walking') setMovementMode(result.mode);
         setLastResult(result);
-        if (result.nextAction === 'PLAY' && result.poi) {
+        if (result.nextAction === 'PLAY' && result.poi &&
+            !explicitRequestRef.current &&
+            !activeMomentIdRef.current?.startsWith('selected:')) {
           if (result.momentId && activeMomentIdRef.current !== result.momentId) {
             completedMomentRef.current = null;
             activeMomentIdRef.current = result.momentId;
