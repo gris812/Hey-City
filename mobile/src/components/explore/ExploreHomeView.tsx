@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -15,6 +15,7 @@ import { formatDistance as formatDistanceUnits } from '../../localization/measur
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
+import { courseHeading, type MapOrientation } from '../../presentation/cameraOrientation';
 
 export type ExploreHomeMarker = {
   id: string;
@@ -38,6 +39,8 @@ export type ExploreHomeViewProps = {
   topInset: number;
   region: Region;
   measurementSystem?: MeasurementSystem;
+  courseDegrees?: number | null;
+  courseSpeedKmh?: number | null;
   markers: ExploreHomeMarker[];
   nearbyPlaces: ExploreNearbyPlace[];
   activeTarget?: ExploreActiveTarget;
@@ -60,7 +63,9 @@ export function ExploreHomeView({
   topInset,
   region,
   measurementSystem = 'metric',
-  markers:
+  courseDegrees,
+  courseSpeedKmh,
+  markers,
   nearbyPlaces,
   activeTarget,
   guideImage,
@@ -82,10 +87,17 @@ export function ExploreHomeView({
     .slice(0, 4);
   const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
   const mapRef = useRef<MapView | null>(null);
+  const [following, setFollowing] = useState(true);
+  const [orientation, setOrientation] = useState<MapOrientation>('north-up');
+  const validCourse = courseHeading(courseDegrees, courseSpeedKmh);
 
   useEffect(() => {
-    mapRef.current?.animateToRegion(region, 450);
-  }, [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
+    if (!following) return;
+    mapRef.current?.animateCamera({
+      center: { latitude: region.latitude, longitude: region.longitude },
+      heading: orientation === 'course-up' ? (validCourse ?? 0) : 0,
+    }, { duration: 450 });
+  }, [following, orientation, validCourse, region.latitude, region.longitude]);
 
   return (
     <View style={[styles.stage, { height }]}>
@@ -97,6 +109,7 @@ export function ExploreHomeView({
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
+        onPanDrag={() => setFollowing(false)}
       >
         {markers.map((marker) => (
           <Marker
@@ -163,6 +176,27 @@ export function ExploreHomeView({
           {t('walking.guidedWalk')}
         </Text>
       </TouchableOpacity>
+
+      <View style={[styles.mapCameraControls, { top: searchTop + 65 }]}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={orientation === 'course-up' ? t('walking.northUp') : t('walking.courseUp')}
+          accessibilityState={{ selected: orientation === 'course-up' }}
+          style={styles.mapCameraButton}
+          onPress={() => setOrientation(o => o === 'north-up' ? 'course-up' : 'north-up')}
+        >
+          <Text style={styles.mapCameraIcon}>{orientation === 'course-up' ? '▲' : 'N↑'}</Text>
+        </TouchableOpacity>
+        {!following && (
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.recenter')}
+            style={styles.mapCameraButton} onPress={() => setFollowing(true)}>
+            <Text style={styles.mapCameraIcon}>◎</Text>
+          </TouchableOpacity>
+        )}
+        {orientation === 'course-up' && validCourse === null && (
+          <Text style={styles.courseHint} accessibilityLabel={t('walking.courseUnavailable')}>–</Text>
+        )}
+      </View>
 
       {statusMessage && (
         <View style={[styles.statusBanner, { top: statusTop }]}>
@@ -368,6 +402,18 @@ export function formatDistance(distanceMeters: number, system: MeasurementSystem
 }
 
 const styles = StyleSheet.create({
+  mapCameraControls: {
+    position: 'absolute', right: spacing.md, zIndex: 20,
+    alignItems: 'center', gap: spacing.xs,
+  },
+  mapCameraButton: {
+    width: 46, height: 46, borderRadius: 23, backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border,
+  },
+  mapCameraIcon: { fontSize: 19, color: colors.foreground, fontWeight: '700' },
+  courseHint: { fontSize: 14, color: colors.textMuted },
+
   stage: {
     overflow: 'hidden',
     backgroundColor: colors.surfaceMuted,
