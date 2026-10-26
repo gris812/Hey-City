@@ -32,6 +32,7 @@ export type DiscoveryPlaceSheetProps = {
   onClose: () => void;
   onOpenMaps: (place: ExploreNearbyPlace) => void;
   onOpenStory: () => void;
+  onTellNow: (place: ExploreNearbyPlace, level: 'short' | 'long') => void;
 };
 
 export function DiscoveryPlaceSheet({
@@ -45,6 +46,7 @@ export function DiscoveryPlaceSheet({
   onClose,
   onOpenMaps,
   onOpenStory,
+  onTellNow,
 }: DiscoveryPlaceSheetProps) {
   const { locale, t } = useAppTranslation();
   if (!place) return null;
@@ -118,9 +120,17 @@ export function DiscoveryPlaceSheet({
               </View>
             </View>
 
+            <TouchableOpacity accessibilityRole="button" style={styles.primaryButton}
+              onPress={() => onTellNow(place, 'short')}>
+              <Text style={styles.primaryButtonText}>{t('walking.tellNow')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" style={styles.secondaryButton}
+              onPress={() => onTellNow(place, 'long')}>
+              <Text style={styles.secondaryButtonText}>{t('walking.tellDetailed')}</Text>
+            </TouchableOpacity>
             {hasActiveStory && (
-              <TouchableOpacity style={styles.primaryButton} onPress={onOpenStory}>
-                <Text style={styles.primaryButtonText}>{t('walking.openStory')}</Text>
+              <TouchableOpacity style={styles.secondaryButton} onPress={onOpenStory}>
+                <Text style={styles.secondaryButtonText}>{t('walking.openStory')}</Text>
               </TouchableOpacity>
             )}
 
