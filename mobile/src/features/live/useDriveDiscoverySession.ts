@@ -101,6 +101,7 @@ export function useDriveDiscoverySession(input: {
   const [realtimeBenchmarkExportStatus, setRealtimeBenchmarkExportStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingRevisionRef = useRef(0);
+  const pingInFlightRef = useRef(false);
   const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<{ value: number; observedAt: number } | null>(null);
@@ -354,7 +355,9 @@ export function useDriveDiscoverySession(input: {
     if (!sessionId || muted) return;
 
     const runPing = async () => {
-      const revision = ++pingRevisionRef.current;
+      if (pingInFlightRef.current) return;
+      pingInFlightRef.current = true;
+      const revision = pingRevisionRef.current;
       try {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -415,7 +418,9 @@ export function useDriveDiscoverySession(input: {
         }
         // A new discovery ping must not clear or impersonate a playing moment.
       } catch (error) {
-        setSessionError('Unable to update discovery. Retrying.');
+        if (revision === pingRevisionRef.current) setSessionError('Unable to update discovery. Retrying.');
+      } finally {
+        pingInFlightRef.current = false;
       }
     };
 
