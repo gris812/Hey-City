@@ -173,6 +173,7 @@ export function LiveScreen() {
     muted,
     setMuted,
     lastResult,
+    movementMode,
     lastMotion,
     deviceLocation,
     aheadRefreshLoading,
@@ -316,7 +317,7 @@ export function LiveScreen() {
     primaryStatusLabel: sessionError
       ? t('common.error')
       : sessionId
-        ? t(lastResult?.mode === 'vehicle' ? 'walking.vehicleModeStatus' : 'walking.modeStatus')
+        ? t(movementMode === 'vehicle' ? 'walking.vehicleModeStatus' : 'walking.modeStatus')
         : t('app.loading'),
     secondaryActionLabel: t('walking.chooseWalk'),
   });
