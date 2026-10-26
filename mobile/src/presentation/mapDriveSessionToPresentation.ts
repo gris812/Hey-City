@@ -6,12 +6,14 @@ import type {
   GuideId,
   LivePresentationState,
   PlaybackState,
+  PlaybackMoment,
   PresentationMode,
 } from './livePresentation';
 
 export type LocalPresentationSessionState = {
   sessionActive: boolean;
   playbackState: PlaybackState;
+  playbackMoment?: PlaybackMoment | null;
   audioProgress?: number;
 };
 
@@ -21,17 +23,21 @@ export function mapDriveSessionToPresentation(
   result: PingResult | null,
   localState: LocalPresentationSessionState
 ): LivePresentationState {
-  const activeTarget = getActiveTarget(result);
+  const discoveryTarget = getActiveTarget(result);
   const playbackState = getPlaybackState(result, localState);
+  const playbackMoment = playbackState === 'idle' ? undefined : localState.playbackMoment ?? undefined;
+  const activeTarget = playbackMoment ? { id: playbackMoment.poiId, name: playbackMoment.name, latitude: playbackMoment.latitude, longitude: playbackMoment.longitude } : discoveryTarget;
   const discoveryPhase = getDiscoveryPhase(result, localState.sessionActive);
 
   return {
     discoveryPhase,
     playbackState,
     activeTarget,
-    activeGuideId: getGuideId(result),
+    discoveryTarget,
+    playbackMoment,
+    activeGuideId: playbackMoment?.guideId ?? getGuideId(result),
     presentationMode: getPresentationMode(discoveryPhase, playbackState),
-    transcriptPreview: getTranscriptPreview(result),
+    transcriptPreview: playbackMoment?.transcriptText ? playbackMoment.transcriptText.slice(0, TRANSCRIPT_PREVIEW_LIMIT) : getTranscriptPreview(result),
     audioProgress: localState.audioProgress,
     holdReason: result?.decision?.type === 'hold' ? result.decision.reason : undefined,
   };
@@ -56,9 +62,9 @@ function getPlaybackState(
   if (!localState.sessionActive) return 'idle';
   if (localState.playbackState === 'error') return 'error';
   if (localState.playbackState === 'loading') return 'loading';
+  if (localState.playbackState === 'text-only') return 'text-only';
   if (localState.playbackState === 'paused') return 'paused';
   if (localState.playbackState === 'completed') return 'completed';
-  if (result?.nextAction === 'PLAY') return 'playing';
   return localState.playbackState === 'playing' ? 'playing' : 'idle';
 }
 
