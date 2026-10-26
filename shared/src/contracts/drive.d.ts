@@ -142,6 +142,8 @@ export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }
 export interface StoryAvailability { short: boolean; long: boolean }
 
 export interface NarrativePlan extends NarrativePlanInput {
+  /** Explicit request context, without coordinates; not an automatic ranking input. */
+  selectionContext?: { distanceMeters: number; isAhead: boolean };
   level: NarrativeLevel;
   moment: MomentPlan;
   narrativeAngle: string;
@@ -406,4 +408,20 @@ export interface RealtimeVoiceUsageReport {
   inputAudioBytes?: number;
   outputAudioBytes?: number;
   estimatedCostUsd?: number;
+}
+
+/** Existing /sessions/:id/select response; native uses the same NarrativePlan pipeline. */
+export interface SelectedStoryResult {
+  audioUrl: string;
+  transcriptText: string;
+  poiId: string;
+  name: string;
+  guideId: string;
+  level: 'identify' | 'short' | 'long';
+  language: string;
+  momentId?: string;
+  estimatedDurationSec?: number;
+  sourceUrl?: string;
+  attribution?: NarrativeAttribution;
+  availability: StoryAvailability;
 }

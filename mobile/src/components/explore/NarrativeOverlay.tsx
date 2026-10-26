@@ -13,6 +13,7 @@ import { colors, radius, shadows, spacing, typography } from '../../theme';
 import { useAppTranslation } from '../../localization';
 
 export type NarrativeOverlayProps = {
+  vehicleMode?: boolean;
   title: string;
   guideName: string;
   guideImage?: ImageSourcePropType;
@@ -29,6 +30,7 @@ export type NarrativeOverlayProps = {
 };
 
 export function NarrativeOverlay({
+  vehicleMode = false,
   title,
   guideName,
   guideImage,
@@ -74,9 +76,9 @@ export function NarrativeOverlay({
           </View>
         </View>
 
-        <ScrollView style={styles.textScroll} showsVerticalScrollIndicator={false}>
+        {!vehicleMode && <ScrollView style={styles.textScroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.body}>{text}</Text>
-        </ScrollView>
+        </ScrollView>}
 
         {typeof progress === 'number' && (
           <View style={styles.progressTrack}>
@@ -101,7 +103,7 @@ export function NarrativeOverlay({
               <Text style={styles.playbackText}>{paused ? t('tour.resume') : t('tour.pause')}</Text>
             </TouchableOpacity>
           )}
-          {onTranscript && (
+          {onTranscript && !vehicleMode && (
             <TouchableOpacity style={styles.secondaryButton} onPress={onTranscript}>
               <Text style={styles.secondaryText}>{t('walking.transcript')}</Text>
             </TouchableOpacity>

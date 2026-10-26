@@ -1,3 +1,5 @@
+import * as Application from 'expo-application';
+import { config } from '../config';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -193,6 +195,21 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.units')}</Text>
+          <View style={styles.chipRow}>
+            {(['metric', 'imperial'] as const).map((measurementUnits) => (
+              <TouchableOpacity key={measurementUnits} accessibilityRole="button"
+                accessibilityState={{ selected: preferences.measurementUnits === measurementUnits }}
+                accessibilityLabel={t(`settings.units.${measurementUnits}`)}
+                style={[styles.chip, preferences.measurementUnits === measurementUnits && styles.chipActive]}
+                onPress={() => void updatePreferences({ measurementUnits })}>
+                <Text style={styles.chipText}>{t(`settings.units.${measurementUnits}`)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.audioText')}</Text>
           <Text style={styles.hint}>{t('settings.audioHint')}</Text>
           <View style={styles.row}>
@@ -225,6 +242,7 @@ export function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.about')}</Text>
+          <Text selectable style={styles.hint}>{Application.nativeApplicationVersion ?? '1.0.0'} ({Application.nativeBuildVersion ?? 'unknown'}) · {config.buildSha.slice(0, 12)}</Text>
           <Text style={styles.hint}>Version 1.0.0</Text>
         </View>
 

@@ -1,3 +1,4 @@
+import { useMeasurements } from '../../localization/useMeasurements';
 import React from 'react';
 import {
   Image,
@@ -13,7 +14,6 @@ import MapView, { Marker } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import {
-  formatDistance,
   formatTargetType,
   getTargetAccent,
   getTargetGlyph,
@@ -30,6 +30,10 @@ export type DiscoveryPlaceSheetProps = {
   onClose: () => void;
   onOpenMaps: (place: ExploreNearbyPlace) => void;
   onOpenStory: () => void;
+  onTellNow: () => void;
+  onTellMore?: () => void;
+  selectionBusy?: boolean;
+  vehicleMode?: boolean;
 };
 
 export function DiscoveryPlaceSheet({
@@ -42,8 +46,13 @@ export function DiscoveryPlaceSheet({
   onClose,
   onOpenMaps,
   onOpenStory,
+  onTellNow,
+  onTellMore,
+  selectionBusy = false,
+  vehicleMode = false,
 }: DiscoveryPlaceSheetProps) {
   const { locale, t } = useAppTranslation();
+  const measurements = useMeasurements();
   if (!place) return null;
 
   const accent = getTargetAccent(place.targetType);
@@ -61,7 +70,7 @@ export function DiscoveryPlaceSheet({
         <View style={[styles.sheet, { paddingBottom: Math.max(spacing.md, bottomInset) }]}>
           <View style={styles.handle} />
 
-          <View style={styles.hero}>
+          {!vehicleMode && <View style={styles.hero}>
             <MapView
               key={place.id}
               pointerEvents="none"
@@ -92,16 +101,19 @@ export function DiscoveryPlaceSheet({
             >
               <Text style={styles.closeGlyph}>×</Text>
             </TouchableOpacity>
-          </View>
+          </View>}
 
           <View style={styles.content}>
             <View style={styles.metaRow}>
               <Text style={styles.categoryLabel}>{formatTargetType(place.targetType, locale)}</Text>
               <View style={styles.distancePill}>
-                <Text style={styles.distanceText}>{formatDistance(place.distanceMeters)}</Text>
+                <Text style={styles.distanceText}>{measurements.distance(place.distanceMeters)}</Text>
               </View>
             </View>
 
+            {vehicleMode && <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('common.close')} onPress={onClose} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>{t('common.close')}</Text>
+            </TouchableOpacity>}
             <Text style={styles.title}>{place.title}</Text>
             <Text style={styles.contextCopy}>{contextCopy}</Text>
 
@@ -110,11 +122,18 @@ export function DiscoveryPlaceSheet({
               <View style={styles.guideCopy}>
                 <Text style={styles.guideName}>{guideName}</Text>
                 <Text style={styles.guideStatus}>
-                  {hasActiveStory ? t('walking.storyReady') : t('walking.storyAutomatic')}
+                  {hasActiveStory ? t('walking.storyReady') : t('walking.tellNow')}
                 </Text>
               </View>
             </View>
 
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
+              disabled={selectionBusy} accessibilityState={{ disabled: selectionBusy }} style={styles.primaryButton} onPress={onTellNow}>
+              <Text style={styles.primaryButtonText}>{selectionBusy ? t('playback.preparing') : t('walking.tellNow')}</Text>
+            </TouchableOpacity>
+            {onTellMore && !vehicleMode && <TouchableOpacity accessibilityRole="button" style={styles.secondaryButton} onPress={onTellMore}>
+              <Text style={styles.secondaryButtonText}>{t('walking.tellMore')}</Text>
+            </TouchableOpacity>}
             {hasActiveStory && (
               <TouchableOpacity style={styles.primaryButton} onPress={onOpenStory}>
                 <Text style={styles.primaryButtonText}>{t('walking.openStory')}</Text>

@@ -29,23 +29,29 @@ import {
 } from '../controllers/realtimeVoice';
 
 export const sessionsRouter = Router();
-sessionsRouter.use(requireAuth);
-sessionsRouter.post('/start', startSession);
-sessionsRouter.get('/:sessionId/objects/:poiId/availability', async (req: AuthRequest, res, next) => {
+sessionsRouter.get('/:sessionId/objects/:poiId/availability', requireAuthOrGuest, async (req: AuthRequest, res, next) => {
   try { res.json(await selectedStoryAvailability(req.params.sessionId, req.user!.userId, req.params.poiId)); }
   catch (error) {
     if (error instanceof StorySelectionError) { res.status(error.status).json({ error: error.message }); return; }
     next(error);
   }
 });
-sessionsRouter.post('/:sessionId/select', async (req: AuthRequest, res, next) => {
-  try { res.json(await selectStory(req.params.sessionId,req.user!.userId,String(req.body.poiId),req.body.level ?? 'short',req.body.language)); }
+sessionsRouter.post('/:sessionId/select', rateLimit({ windowMs: 15 * 60 * 1000, limit: 200, standardHeaders: true, legacyHeaders: false, skip: () => process.env.NODE_ENV === 'test' }), requireAuthOrGuest, async (req: AuthRequest, res, next) => {
+  const requestId = req.body.clientRequestId;
+  res.once('close', () => {
+    if (res.writableEnded || typeof requestId !== 'string') return;
+    const session = getSession(req.params.sessionId);
+    if (session?.userId === req.user?.userId && session?.selectedRequestId === requestId) session?.storyRequest?.abort();
+  });
+  try { res.json(await selectStory(req.params.sessionId,req.user!.userId,String(req.body.poiId),req.body.level ?? 'short',req.body.language,req.body.clientRequestId)); }
   catch (error) {
     if (error instanceof StorySelectionError) {res.status(error.status).json({error:error.message});return;}
     if (error instanceof Error && error.name === 'AbortError') {res.status(409).json({error:'Selection superseded'});return;}
     res.status(503).json({error:req.body.language === 'en' ? 'Story is temporarily unavailable. Try again.' : 'Рассказ временно недоступен. Попробуйте ещё раз.'});
   }
 });
+sessionsRouter.use(requireAuth);
+sessionsRouter.post('/start', startSession);
 sessionsRouter.put('/:sessionId/guide', async (req: AuthRequest, res, next) => {
   try {
     const session = getSession(req.params.sessionId);

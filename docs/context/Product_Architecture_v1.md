@@ -631,3 +631,11 @@ Drive Discovery Engine
 Это создаёт новую категорию продуктов:
 
 **Conversational City Exploration Platforms**
+
+## Native field interaction clarification — 2026-10-26
+
+The primary native map keeps one MapView while display units or orientation change. Compass switches north-up/course-up; follow-user is independent. Panning disables automatic centring until the explicit follow control is used. Course-up accepts fresh valid movement course at sufficient speed for direction reliability, handles the shortest angular transition across north, and falls back to north when direction is absent/stale. This is camera presentation only, never a second movement classifier. No routing/geocoding calls are needed for rotation.
+
+Measurement units are an existing-preferences extension, shared by guest and authenticated usage on the device: metric (m/km, km/h) or imperial (ft/mi, mph). SecureStore persistence is independent of app and guide language. Native distances and speed use one display formatter. API/calculation units, scoring, thresholds and geometry remain unchanged.
+
+An active foreground exploration/tour on the focused native exploration screen acquires Expo keep-awake. Ending exploration, pausing/ending the tour, leaving the screen, backgrounding or teardown releases it; asynchronous activation cannot retain a lock after teardown. Keep-awake prevents automatic screen sleep only. Manual screen lock, background audio and background GPS are separate capabilities and require separate device acceptance. No fake audio or new background-location permissions are part of this change. Session/explicit-selection delivery remains defined in `Hey_City_MVP_API_Specification_v1.md`, Native session adapter clarification.

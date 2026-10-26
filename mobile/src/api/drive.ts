@@ -67,12 +67,13 @@ export async function pingDriveSession(
   timestamp: number,
   accuracyMeters?: number,
   forceAheadRefresh = false,
-  guestId?: string
+  guestId?: string,
+  discoveryOnly = false
 ): Promise<PingResult> {
   return apiFetch<PingResult>('/drive/session/ping', {
     method: 'POST',
     headers: guestHeaders(guestId),
-    body: { sessionId, lat, lng, heading, speed, timestamp, accuracyMeters, forceAheadRefresh },
+    body: { sessionId, lat, lng, heading, speed, timestamp, accuracyMeters, forceAheadRefresh, discoveryOnly },
   });
 }
 
@@ -91,5 +92,21 @@ export async function forceAheadDiscoveryRefresh(params: {
     method: 'POST',
     headers: guestHeaders(guestId),
     body,
+  });
+}
+
+/** Explicit selection reuses the canonical server pipeline, including ownership and evidence. */
+export async function selectDriveStory(params: {
+  sessionId: string;
+  poiId: string;
+  level: 'short' | 'long';
+  language: string;
+  clientRequestId: string;
+  guestId?: string;
+  signal?: AbortSignal;
+}): Promise<import('@heycity/shared').SelectedStoryResult> {
+  const { sessionId, guestId, signal, ...body } = params;
+  return apiFetch(`/sessions/${encodeURIComponent(sessionId)}/select`, {
+    method: 'POST', headers: guestHeaders(guestId), body, signal,
   });
 }

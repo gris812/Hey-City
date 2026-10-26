@@ -83,6 +83,7 @@ export class NarrativeGenerator {
           (policy.id === 'arthur' ? 'Arthur calmly explains why one precise historical or architectural distinction matters; he does not ask “Did you know?”. ' : '') +
           (brief.continuation ? 'Continue from ALREADY HEARD as shared context. Do not repeat its opening, subject introduction, or facts already stated. Lead with a transition into unused evidence and add only new supported context. ' : 'This is a standalone spoken moment. ') +
           (brief.journey?.callback ? 'A validated earlier delivered moment is supplied as a callback opportunity. Mention it briefly only through the allowed relationship and shared topic, without adding earlier factual claims or suggesting an unheard story occurred. ' : 'Do not claim we discussed a previous place. ') +
+          (plan.selectionContext ? 'This is an explicit request about a selected place at the supplied distance, not an arrival announcement. Do not imply that we are at the place or right in front of it. If it is distant, describe it by name without claiming proximity. ' : '') +
           'For city context describe the city without claiming its centre is ahead or giving directions.',
         input:
           `Language: ${request.language}\n` +

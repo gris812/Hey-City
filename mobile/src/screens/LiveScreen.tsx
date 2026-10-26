@@ -1,3 +1,4 @@
+import { useMeasurements } from '../localization/useMeasurements';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Alert,
@@ -13,7 +14,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useExplorationKeepAwake } from '../features/live/useExplorationKeepAwake';
+import { shouldKeepExplorationAwake } from '../features/live/explorationWakeLock';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { LiveControls } from '../components/live/LiveControls';
@@ -123,7 +126,9 @@ type SharePreviewState = 'ready' | 'invalid_link' | 'unsupported_location';
 export function LiveScreen() {
   const { identity, preferences, updatePreferences } = useAuth();
   const { t } = useAppTranslation();
+  const measurements = useMeasurements();
   const navigation = useNavigation();
+  const focused = useIsFocused();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const { height: windowHeight } = useWindowDimensions();
@@ -132,7 +137,8 @@ export function LiveScreen() {
   const [liveOverlay, setLiveOverlay] = useState<LiveOverlay>(null);
   const [guideProfileOpen, setGuideProfileOpen] = useState<GuidePreference | null>(null);
   const [guideProfileReturnTo, setGuideProfileReturnTo] = useState<'explore' | 'tour_preferences'>('explore');
-  const [selectedExplorePlaceId, setSelectedExplorePlaceId] = useState<string | null>(null);
+  const [selectedExplorePlace, setSelectedExplorePlace] = useState<ExploreNearbyPlace | null>(null);
+  const [explorationStopped, setExplorationStopped] = useState(false);
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hidden Gems', 'Local Life']);
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
   const [sharePreviewState, setSharePreviewState] = useState<SharePreviewState>('ready');
@@ -179,6 +185,8 @@ export function LiveScreen() {
     aheadRefreshLoading,
     aheadRefreshStatus,
     presentation,
+    tellPlaceNow,
+    selectionAvailability,
     startSession,
     stopSession,
     toggleTheme,
@@ -226,10 +234,24 @@ export function LiveScreen() {
     resumeTour,
     applySnapshotState,
   } = guided;
+  useExplorationKeepAwake(shouldKeepExplorationAwake({ focused, foreground: true, scenario: mode,
+    sessionActive: Boolean(sessionId) && driveDiscoveryOn, tourState: tourState.journeyState, tourPaused: tourState.isPaused }));
+  const selectStoryForPlace = (place: ExploreNearbyPlace, level: 'short' | 'long' = 'short') => {
+    setSelectedExplorePlace(null);
+    void tellPlaceNow(place, level);
+  };
+  const retryExploration = () => {
+    const target = presentation.playback?.target;
+    if (target?.id && target.latitude !== undefined && target.longitude !== undefined &&
+        (presentation.playbackState === 'error' || presentation.playbackState === 'text_only')) {
+      void tellPlaceNow({ id: target.id, title: target.name, coordinate: { latitude: target.latitude, longitude: target.longitude } });
+    } else if (sessionId) void forceAheadRefresh();
+    else void startSession();
+  };
   const liveMovement = lastResult?.aheadDiscovery?.movement;
-  const passiveMapUserCoordinate = liveMovement
+  const passiveMapUserCoordinate = deviceLocation ?? (liveMovement
     ? { latitude: liveMovement.latitude, longitude: liveMovement.longitude }
-    : deviceLocation ?? exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate;
+    : exploreNarrative.target?.coordinates ?? tourState.location ?? tourB.startCoordinate);
   const guidedMapHeight = Math.max(520, windowHeight - tabBarHeight);
   const tourRegion: Region = useMemo(
     () => ({
@@ -277,9 +299,6 @@ export function LiveScreen() {
     selected: true,
     isNarrating: presentation.playback?.poiId === aheadTarget.providerId && presentation.playbackState === 'playing',
   } : undefined;
-  const selectedExplorePlace = [exploreActiveTarget, ...exploreNearbyPlaces].find(
-    (place): place is ExploreNearbyPlace => Boolean(place && place.id === selectedExplorePlaceId)
-  );
   const backendWalkingStoryVisible = Boolean(
     mode === 'city_explorer' &&
     presentation.activeTarget &&
@@ -347,7 +366,7 @@ export function LiveScreen() {
     typeof tourState.distanceToCurrentTargetMeters === 'number'
       ? tourState.distanceToCurrentTargetMeters <= 95
         ? t('tour.aboutOneMinAway')
-        : `${Math.round(tourState.distanceToCurrentTargetMeters)} m`
+        : measurements.distance(tourState.distanceToCurrentTargetMeters)
       : undefined;
   const targetForArrival = narrativeTarget ?? currentTarget;
   const targetCategoryLabel = targetForArrival
@@ -398,9 +417,9 @@ export function LiveScreen() {
   };
 
   useEffect(() => {
-    if (mode !== 'city_explorer' || identity.status === 'loading' || sessionId) return;
+    if (mode !== 'city_explorer' || identity.status === 'loading' || sessionId || explorationStopped) return;
     void startSession();
-  }, [identity.status, mode, sessionId, startSession]);
+  }, [identity.status, mode, sessionId, startSession, explorationStopped]);
 
   const startTour = () => {
     if (movementMode === 'vehicle') return;
@@ -681,7 +700,11 @@ export function LiveScreen() {
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
           vehicleMode={movementMode === 'vehicle'}
-          onSelectPlace={(place) => setSelectedExplorePlaceId(place.id)}
+          onSelectPlace={setSelectedExplorePlace}
+          motion={lastMotion}
+          onTellNow={selectStoryForPlace}
+          selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === exploreActiveTarget?.id}
+          onEndExploration={() => { setExplorationStopped(true); void stopSession(); }}
           voiceState={realtimeVoiceState}
           voiceLabel={preferences.appLanguage === 'ru'
             ? (realtimeVoiceState === 'closed' ? 'Говорить' : 'Закончить')
@@ -693,8 +716,8 @@ export function LiveScreen() {
               void closeRealtimeVoiceSession();
             }
           } : undefined}
-          statusMessage={sessionError ?? undefined}
-          onRetry={sessionError ? (locationSettingsRequired ? () => void openLocationSettings() : () => void startSession()) : undefined}
+          statusMessage={explorationStopped ? t('walking.explorationStopped') : sessionError ?? undefined}
+          onRetry={explorationStopped ? () => { setExplorationStopped(false); void startSession(); } : sessionError ? (locationSettingsRequired ? () => void openLocationSettings() : retryExploration) : undefined}
         >
           {realtimeBenchmarkEnabled && (
             <TouchableOpacity
@@ -712,6 +735,7 @@ export function LiveScreen() {
               guideName={t(`guide.${presentation.activeGuideId}`)}
               guideImage={guideImages[presentation.activeGuideId]}
               text={backendWalkingStoryText}
+              vehicleMode={movementMode === 'vehicle'}
               playbackState={presentation.playbackState}
               progress={presentation.audioProgress}
               continueLabel={t('walking.finishStory')}
@@ -754,7 +778,7 @@ export function LiveScreen() {
               <Text style={styles.completionMetricLabel}>Stops</Text>
             </View>
             <View style={styles.completionMetricCard}>
-              <Text style={styles.completionMetricValue}>2.3 km</Text>
+              <Text style={styles.completionMetricValue}>{measurements.distance(2300)}</Text>
               <Text style={styles.completionMetricLabel}>Distance</Text>
             </View>
             <View style={styles.completionMetricCard}>
@@ -991,7 +1015,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {lastMotion.speedKmh?.toFixed(1) ?? '—'} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
+                  Speed {measurements.speed(lastMotion.speedKmh)} · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
@@ -1015,7 +1039,7 @@ export function LiveScreen() {
                     Movement: {lastResult.aheadDiscovery.movement.latitude.toFixed(5)}, {lastResult.aheadDiscovery.movement.longitude.toFixed(5)}
                   </Text>
                   <Text style={styles.aheadDebugText}>
-                    Speed: {((lastResult.aheadDiscovery.movement.speedMps ?? 0) * 2.23694).toFixed(1)} mph · Heading: {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}° · GPS ±{Math.round(lastResult.aheadDiscovery.movement.accuracyMeters)} m
+                    Speed: {measurements.speed(lastResult.aheadDiscovery.movement.speedMps === null ? null : lastResult.aheadDiscovery.movement.speedMps * 3.6)} · Heading: {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}° · GPS ±{measurements.distance(lastResult.aheadDiscovery.movement.accuracyMeters)}
                   </Text>
                   <Text style={styles.aheadDebugText}>
                     Provider: {lastResult.aheadDiscovery.provider} · interval {lastResult.aheadDiscovery.providerRefresh.configuredIntervalMinutes} min · next {lastResult.aheadDiscovery.providerRefresh.nextRefreshAt ?? 'not scheduled'}
@@ -1030,7 +1054,7 @@ export function LiveScreen() {
                         Type: {lastResult.aheadDiscovery.decision.target.targetType} · Score {lastResult.aheadDiscovery.decision.score}
                       </Text>
                       <Text style={styles.aheadDebugText}>
-                        Distance: {(lastResult.aheadDiscovery.decision.target.distanceMeters / 1609.344).toFixed(1)} mi / {lastResult.aheadDiscovery.decision.target.distanceMeters} m · Bearing {lastResult.aheadDiscovery.decision.target.bearingDegrees}° · Δ {lastResult.aheadDiscovery.decision.target.headingDeltaDegrees}°
+                        Distance: {measurements.distance(lastResult.aheadDiscovery.decision.target.distanceMeters)} · Bearing {lastResult.aheadDiscovery.decision.target.bearingDegrees}° · Δ {lastResult.aheadDiscovery.decision.target.headingDeltaDegrees}°
                       </Text>
                       <Text style={styles.aheadDebugText}>
                         Reasons: {lastResult.aheadDiscovery.decision.reasons.join('; ')}
@@ -1075,7 +1099,7 @@ export function LiveScreen() {
           arthur: { role: getLocalizedGuideProfile('arthur').role },
         }}
         tourTitle={tourB.title[preferences.guideLanguage]}
-        routeMeta={`4 stops - 2.3 km - 52 min - ${t(`guide.${preferences.preferredGuideId}`)}`}
+        routeMeta={`4 stops - ${measurements.distance(2300)} - 52 min - ${t(`guide.${preferences.preferredGuideId}`)}`}
         startWalkLabel={t('tour.startWalk')}
         moreSettingsLabel={t('tour.moreSettings')}
         selectedLabel={t('guide.selected')}
@@ -1272,7 +1296,7 @@ export function LiveScreen() {
       <DiscoveryPlaceSheet
         visible={Boolean(selectedExplorePlace)}
         bottomInset={insets.bottom}
-        place={selectedExplorePlace}
+        place={selectedExplorePlace ?? undefined}
         guideName={t(`guide.${preferences.preferredGuideId}`)}
         guideImage={guideImages[preferences.preferredGuideId]}
         hasActiveStory={Boolean(
@@ -1280,9 +1304,14 @@ export function LiveScreen() {
           presentation.activeTarget?.id === selectedExplorePlace.id &&
           backendWalkingStoryVisible
         )}
-        onClose={() => setSelectedExplorePlaceId(null)}
+        onClose={() => setSelectedExplorePlace(null)}
+        onTellNow={() => { if (selectedExplorePlace) selectStoryForPlace(selectedExplorePlace); }}
+        onTellMore={selectedExplorePlace && selectionAvailability?.poiId === selectedExplorePlace.id && selectionAvailability.availability.long
+          ? () => selectStoryForPlace(selectedExplorePlace, 'long') : undefined}
+        selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === selectedExplorePlace?.id}
+        vehicleMode={movementMode === 'vehicle'}
         onOpenMaps={(place) => void openPlaceInMaps(place)}
-        onOpenStory={() => setSelectedExplorePlaceId(null)}
+        onOpenStory={() => setSelectedExplorePlace(null)}
       />
 
       <Modal visible={sharePreviewOpen} animationType="slide">
@@ -1311,7 +1340,7 @@ export function LiveScreen() {
               </View>
               <View style={styles.routeSummaryCard}>
                 <Text style={styles.routeSummaryTitle}>{t(`guide.${activeGuideId}`)} created a walk for you</Text>
-                <Text style={styles.routeSummaryMeta}>4 stops - 2.3 km - 52 min</Text>
+                <Text style={styles.routeSummaryMeta}>4 stops - {measurements.distance(2300)} - 52 min</Text>
               </View>
               <View style={styles.completedList}>
                 {tourBTargets.map((target) => (

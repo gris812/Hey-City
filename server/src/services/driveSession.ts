@@ -8,6 +8,7 @@ import type {
   NarrativePlan,
   StoryFinishReason,
   StoryFinishResult,
+  SelectedStoryResult,
 } from '@heycity/shared';
 import { randomUUID } from 'node:crypto';
 import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings, journeyMemory } from '../config';
@@ -58,6 +59,10 @@ export interface DriveSession {
   lastCandidates: NearbyPlace[];
   alreadyListening: boolean;
   storyRequest?: AbortController;
+  selectedRequestId?: string;
+  /** Bounded per-session explicit request replay; no duplicate generation/accounting on retries. */
+  selectionRequests?: Map<string, { key: string; result: Promise<SelectedStoryResult> }>;
+  selectionRevision?: number;
   storyContinuation?: StoryContinuationState;
   journeyState: JourneyState;
   /** Exactly one M3 runtime is owned by this DriveSession. */
@@ -243,6 +248,7 @@ export async function pingSession(
     return { nextAction: 'NONE' };
   }
 
+  const selectionRevision = session.selectionRevision;
   const now = timestamp || Date.now();
   const activeMode = updateSessionMode(session, speedKmh, now);
   const movement = createMovementContext({
@@ -421,7 +427,7 @@ export async function pingSession(
     return { nextAction:'NONE',mode:activeMode,speedKmh,decision:{type:'hold',reason:'anti_repeat'},aheadDiscovery };
   }
   const { plan: narrativePlan, brief, policy } = planned;
-  if (session.storyRequest || sessions.get(sessionId) !== session) {
+  if (session.storyRequest || session.selectionRevision !== selectionRevision || sessions.get(sessionId) !== session) {
     return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
       decision:{type:'hold',reason:'already_listening'}};
   }

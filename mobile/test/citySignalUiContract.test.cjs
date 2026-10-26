@@ -106,3 +106,12 @@ console.log('citySignalUiContract tests passed');
 
 assert.match(settings, /const guideImages = \{ \.\.\.guideSelectionImages, dana: guideAvatarImages\.dana \}/, 'Dana Settings card uses the approved face portrait, independent of full profile');
 assert.match(exploreHome, /source=\{guideImage\} style=\{styles\.guideAvatar\} resizeMode="contain"/, 'Primary map avatar keeps the complete head in its existing round frame');
+
+assert.match(live, /motion=\{lastMotion\}/, 'Primary native map uses actual GPS course samples');
+assert.match(exploreHome, /onPanDrag/, 'Manual panning exits follow mode');
+assert.match(exploreHome, /animateCamera/, 'Orientation updates the existing native camera');
+assert.match(discoveryPlace, /onTellNow/, 'Known POI sheet exposes the existing explicit narrative action');
+assert.match(settings, /preferences\.measurementUnits/, 'Guest and authenticated Settings share measurement preference');
+
+const driveSessionHook = readFileSync(join(root, 'src/features/live/useDriveDiscoverySession.ts'), 'utf8');
+assert.match(driveSessionHook, /sessionOwnerRef\.current !== ownerKey/, 'Guest/account changes invalidate the previous owned session');

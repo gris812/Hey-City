@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import { useMeasurements } from '../../localization/useMeasurements';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -12,6 +13,7 @@ import MapView, { Marker, type LatLng, type Region } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
+import { MapCameraController, type CameraMotion } from '../../presentation/mapCamera';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
 
 export type ExploreHomeMarker = {
@@ -33,6 +35,10 @@ export type ExploreActiveTarget = ExploreNearbyPlace & {
 
 export type ExploreHomeViewProps = {
   vehicleMode?: boolean;
+  motion?: CameraMotion | null;
+  onTellNow?: (place: ExploreNearbyPlace) => void;
+  selectionBusy?: boolean;
+  onEndExploration?: () => void;
   height: number;
   topInset: number;
   region: Region;
@@ -56,6 +62,10 @@ export type ExploreHomeViewProps = {
 export function ExploreHomeView({
   height,
   vehicleMode = false,
+  motion = null,
+  onTellNow,
+  selectionBusy = false,
+  onEndExploration,
   topInset,
   region,
   markers,
@@ -75,15 +85,24 @@ export function ExploreHomeView({
   children,
 }: ExploreHomeViewProps) {
   const { locale, t } = useAppTranslation();
+  const measurements = useMeasurements();
   const visibleNearbyPlaces = (vehicleMode ? [] : nearbyPlaces)
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
   const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
   const mapRef = useRef<MapView | null>(null);
 
+  const camera = useRef(new MapCameraController());
+  const [cameraVersion, setCameraVersion] = useState(0);
+  const [now, setNow] = useState(Date.now());
+  const [mapReady, setMapReady] = useState(false);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
-    mapRef.current?.animateToRegion(region, 450);
-  }, [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
+    if (!mapReady) return;
+    const command = camera.current.update({ latitude: region.latitude, longitude: region.longitude }, motion, now);
+    if (command) mapRef.current?.animateCamera(command, { duration: 450 });
+  }, [mapReady, region.latitude, region.longitude, motion?.heading, motion?.speedKmh, motion?.timestampMs, now, cameraVersion]);
+  const changeCamera = (action: () => void) => { action(); setCameraVersion(value => value + 1); };
 
   return (
     <View style={[styles.stage, { height }]}>
@@ -91,6 +110,9 @@ export function ExploreHomeView({
         ref={mapRef}
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
+        onMapReady={() => setMapReady(true)}
+        onPanDrag={() => changeCamera(() => camera.current.pan())}
+        rotateEnabled={false}
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass={false}
@@ -144,6 +166,24 @@ export function ExploreHomeView({
         </TouchableOpacity>
       </View>
 
+      <View style={[styles.cameraControls, { top: searchTop + (vehicleMode ? 0 : 68) }]}>
+        <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
+          accessibilityLabel={t(camera.current.orientation === 'north-up' ? 'map.northUp' : camera.current.reliableCourse ? 'map.courseUp' : 'map.waitingCourse')}
+          accessibilityHint={t(camera.current.orientation === 'north-up' ? 'map.courseUp' : 'map.northUp')}
+          onPress={() => changeCamera(() => camera.current.toggleOrientation())}>
+          <Text style={{ color: colors.primary, fontWeight: '800', transform: [{ rotate: `${-camera.current.heading}deg` }] }}>N ↑</Text>
+        </TouchableOpacity>
+        {!camera.current.following && <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
+          accessibilityLabel={t('map.follow')} onPress={() => changeCamera(() => camera.current.follow())}>
+          <Text style={styles.audioBadgeIcon}>◎</Text>
+        </TouchableOpacity>}
+        {onEndExploration && <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
+          accessibilityLabel={t('walking.endSession')} onPress={onEndExploration}>
+          <Text style={styles.audioBadgeIcon}>■</Text>
+        </TouchableOpacity>}
+      </View>
+
+      {!vehicleMode && (
       <TouchableOpacity
         accessibilityRole="button"
         accessibilityLabel={t('walking.searchPlaceholder')}
@@ -163,6 +203,7 @@ export function ExploreHomeView({
           {t('walking.guidedWalk')}
         </Text>
       </TouchableOpacity>
+      )}
 
       {statusMessage && (
         <View style={[styles.statusBanner, { top: statusTop }]}>
@@ -221,7 +262,7 @@ export function ExploreHomeView({
                 {activeTarget.title}
               </Text>
               <Text style={styles.placeMeta} numberOfLines={1}>
-                {formatTargetType(activeTarget.targetType, locale)} · {formatDistance(activeTarget.distanceMeters)}
+                {formatTargetType(activeTarget.targetType, locale)} · {measurements.distance(activeTarget.distanceMeters)}
               </Text>
               <Text style={styles.activeSummary} numberOfLines={2}>
                 {activeTarget.isNarrating
@@ -254,6 +295,14 @@ export function ExploreHomeView({
           </View>
         )}
 
+        {activeTarget && onTellNow && (
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
+            accessibilityState={{ disabled: selectionBusy }} disabled={selectionBusy}
+            style={styles.guidedButton} onPress={() => onTellNow(activeTarget)}>
+            <Text style={styles.guidedButtonText}>{selectionBusy ? t('playback.preparing') : t('walking.tellNow')}</Text>
+          </TouchableOpacity>
+        )}
+
         {visibleNearbyPlaces.length > 0 ? (
           <>
             <Text style={styles.nearbyTitle}>{t('walking.interestingNearby')}</Text>
@@ -277,12 +326,12 @@ export function ExploreHomeView({
                   <Text style={styles.nearbyName} numberOfLines={2}>
                     {place.title}
                   </Text>
-                  <Text style={styles.nearbyDistance}>{formatDistance(place.distanceMeters)}</Text>
+                  <Text style={styles.nearbyDistance}>{measurements.distance(place.distanceMeters)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </>
-        ) : (
+        ) : !vehicleMode ? (
           <TouchableOpacity
             accessibilityRole="button"
             style={styles.guidedButton}
@@ -291,7 +340,7 @@ export function ExploreHomeView({
           >
             <Text style={styles.guidedButtonText}>{t('walking.chooseWalk')}</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
     </View>
   );
@@ -364,12 +413,9 @@ export function formatTargetType(targetType: string | undefined, locale: 'en' | 
   return labels[targetType]?.[locale] ?? targetType.replace(/_/g, ' ');
 }
 
-export function formatDistance(distanceMeters: number): string {
-  if (distanceMeters < 1000) return `${Math.max(10, Math.round(distanceMeters / 10) * 10)} m`;
-  return `${(distanceMeters / 1000).toFixed(1)} km`;
-}
 
 const styles = StyleSheet.create({
+  cameraControls: { position: 'absolute', right: spacing.md, zIndex: 30, gap: spacing.sm },
   stage: {
     overflow: 'hidden',
     backgroundColor: colors.surfaceMuted,
@@ -620,7 +666,7 @@ const styles = StyleSheet.create({
   nearbyName: { ...typography.caption, minHeight: 32, color: colors.foreground, fontWeight: '600' },
   nearbyDistance: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
   guidedButton: {
-    minHeight: 46,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.pill,
