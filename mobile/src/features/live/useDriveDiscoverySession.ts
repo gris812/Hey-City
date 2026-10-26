@@ -49,7 +49,7 @@ import type {
   M4NativeBenchmarkRecorder,
 } from './realtimeVoiceBenchmark';
 
-export type DriveMotion = { speedKmh: number; heading: number | null };
+export type DriveMotion = { speedKmh: number | null; heading: number | null };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
 
 export function clearDrivePingInterval(
@@ -79,6 +79,7 @@ export function useDriveDiscoverySession(input: {
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
   const [lastMotion, setLastMotion] = useState<DriveMotion | null>(null);
+  const [movementMode, setMovementMode] = useState<'walking' | 'vehicle'>('walking');
   const [deviceLocation, setDeviceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [aheadRefreshLoading, setAheadRefreshLoading] = useState(false);
   const [aheadRefreshStatus, setAheadRefreshStatus] = useState<string | null>(null);
@@ -154,6 +155,8 @@ export function useDriveDiscoverySession(input: {
         : null;
       if (profile) profileRef.current = profile;
       const { sessionId: id } = await startDriveSession({
+        mode: 'walking',
+        autoMode: true,
         themeTags: themes,
         narrationStyle: style,
         lengthSec,
@@ -165,6 +168,7 @@ export function useDriveDiscoverySession(input: {
         guestId,
       });
       setSessionId(id);
+      setMovementMode('walking');
       activeMomentIdRef.current = null;
       conversationTurnRevisionRef.current += 1;
       setConversationResult(null);
@@ -294,11 +298,9 @@ export function useDriveDiscoverySession(input: {
             : lastHeadingRef.current;
         if (heading !== null) lastHeadingRef.current = heading;
 
-        const speedMps =
-          typeof loc.coords.speed === 'number' && loc.coords.speed > 0
-            ? loc.coords.speed
-            : 0;
-        const speedKmh = speedMps * 3.6;
+        const speedKmh = typeof loc.coords.speed === 'number' &&
+          Number.isFinite(loc.coords.speed) && loc.coords.speed >= 0
+            ? loc.coords.speed * 3.6 : null;
         setLastMotion({ speedKmh, heading });
         const accuracyMeters =
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
@@ -317,6 +319,7 @@ export function useDriveDiscoverySession(input: {
           guestId
         );
         setLastResult(result);
+        if (result.mode === 'walking' || result.mode === 'vehicle') setMovementMode(result.mode);
         if (result.nextAction === 'PLAY' && result.poi) {
           activeMomentIdRef.current = result.momentId ?? null;
           setPlayingName(result.poi.name);
@@ -663,15 +666,15 @@ export function useDriveDiscoverySession(input: {
           ? loc.coords.heading
           : lastHeadingRef.current;
       const speedMps =
-        typeof loc.coords.speed === 'number' && loc.coords.speed > 0
+        typeof loc.coords.speed === 'number' && Number.isFinite(loc.coords.speed) && loc.coords.speed >= 0
           ? loc.coords.speed
-          : 0;
+          : null;
       const result = await forceAheadDiscoveryRefresh({
         sessionId,
         lat: loc.coords.latitude,
         lng: loc.coords.longitude,
         heading,
-        speed: speedMps * 3.6,
+        speed: speedMps === null ? null : speedMps * 3.6,
         timestamp: Date.now(),
         accuracyMeters:
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
@@ -713,6 +716,7 @@ export function useDriveDiscoverySession(input: {
     setMuted,
     lastResult,
     lastMotion,
+    movementMode,
     deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,
