@@ -29,16 +29,15 @@ import {
 } from '../controllers/realtimeVoice';
 
 export const sessionsRouter = Router();
-sessionsRouter.use(requireAuth);
-sessionsRouter.post('/start', startSession);
-sessionsRouter.get('/:sessionId/objects/:poiId/availability', async (req: AuthRequest, res, next) => {
+sessionsRouter.post('/start', requireAuth, startSession);
+sessionsRouter.get('/:sessionId/objects/:poiId/availability', requireAuthOrGuest, async (req: AuthRequest, res, next) => {
   try { res.json(await selectedStoryAvailability(req.params.sessionId, req.user!.userId, req.params.poiId)); }
   catch (error) {
     if (error instanceof StorySelectionError) { res.status(error.status).json({ error: error.message }); return; }
     next(error);
   }
 });
-sessionsRouter.post('/:sessionId/select', async (req: AuthRequest, res, next) => {
+sessionsRouter.post('/:sessionId/select', requireAuthOrGuest, async (req: AuthRequest, res, next) => {
   try { res.json(await selectStory(req.params.sessionId,req.user!.userId,String(req.body.poiId),req.body.level ?? 'short',req.body.language)); }
   catch (error) {
     if (error instanceof StorySelectionError) {res.status(error.status).json({error:error.message});return;}
@@ -46,6 +45,7 @@ sessionsRouter.post('/:sessionId/select', async (req: AuthRequest, res, next) =>
     res.status(503).json({error:req.body.language === 'en' ? 'Story is temporarily unavailable. Try again.' : 'Рассказ временно недоступен. Попробуйте ещё раз.'});
   }
 });
+sessionsRouter.use(requireAuth);
 sessionsRouter.put('/:sessionId/guide', async (req: AuthRequest, res, next) => {
   try {
     const session = getSession(req.params.sessionId);
