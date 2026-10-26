@@ -28,6 +28,20 @@ export function sessionDiscoveryCandidate(sessionId: string, providerId: string)
   return filterAheadCandidates([{ ...candidate, ...createCandidateGeometry(state.previousMovement, candidate), isAhead: true }]).included[0];
 }
 
+/** Explicit user selection of a session-known provider object.
+ * Intentionally bypasses *automatic* heading eligibility, not session ownership,
+ * geometry, available knowledge, or maximum search-distance bounds.
+ */
+export function sessionExplicitCandidate(sessionId: string, providerId: string): DiscoveryCandidate | undefined {
+  const state = states.get(sessionId);
+  const candidate = state?.candidates.find(c => c.providerId === providerId);
+  if (!candidate || !state?.previousMovement) return undefined;
+  const geometry = createCandidateGeometry(state.previousMovement, candidate);
+  if (!Number.isFinite(geometry.distanceMeters) ||
+      geometry.distanceMeters > aheadDiscovery.targetDistanceMaxM) return undefined;
+  return { ...candidate, ...geometry };
+}
+
 function getState(sessionId: string): AheadDiscoverySessionState {
   const existing = states.get(sessionId);
   if (existing) return existing;
