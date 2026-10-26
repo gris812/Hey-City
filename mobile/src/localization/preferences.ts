@@ -6,6 +6,10 @@ export type SupportedLocale = (typeof supportedLocales)[number];
 const supportedLocaleSet = new Set<string>(supportedLocales);
 
 export type GuidePreference = CanonicalGuideId;
+export type UnitSystem = 'metric' | 'imperial';
+export function normalizeUnitSystem(value: unknown): UnitSystem {
+  return value === 'imperial' ? 'imperial' : 'metric';
+}
 
 export type LanguagePreferences = {
   appLanguage: SupportedLocale;
@@ -14,6 +18,7 @@ export type LanguagePreferences = {
 
 export type GuestPreferences = LanguagePreferences & {
   preferredGuideId: GuidePreference;
+  unitSystem: UnitSystem;
   onboardingCompleted: boolean;
   showOnboardingAtLaunch: boolean;
   welcomeExperienceSeen: boolean;
@@ -43,6 +48,7 @@ export function createInitialGuestPreferences(systemLocale: SupportedLocale): Gu
     appLanguage: systemLocale,
     guideLanguage: systemLocale,
     preferredGuideId: 'dana',
+    unitSystem: 'metric',
     onboardingCompleted: false,
     showOnboardingAtLaunch: true,
     welcomeExperienceSeen: false,
@@ -63,6 +69,7 @@ export function sanitizeGuestPreferences(
       typeof stored.guideLanguage === 'string'
         ? normalizeLocale(stored.guideLanguage)
         : initial.guideLanguage,
+    unitSystem: normalizeUnitSystem(stored.unitSystem),
     preferredGuideId:
       typeof stored.preferredGuideId === 'string'
         ? normalizeGuidePreference(stored.preferredGuideId)
