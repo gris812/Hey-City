@@ -137,7 +137,7 @@ export function ExploreHomeView({
           style={styles.avatarButton}
           onPress={onOpenGuide}
         >
-          <Image source={guideImage} style={styles.guideAvatar} resizeMode="cover" />
+          <Image source={guideImage} style={styles.guideAvatar} resizeMode="contain" />
         </TouchableOpacity>
       </View>
 
