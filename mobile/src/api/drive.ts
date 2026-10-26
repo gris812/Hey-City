@@ -37,6 +37,28 @@ export async function startDriveSession(params: {
   });
 }
 
+/** Canonical explicit story selection; no parallel narrative endpoint. */
+export type SelectedStoryResult = {
+  poiId: string;
+  name: string;
+  momentId?: string;
+  audioUrl?: string;
+  transcriptText: string;
+  level: 'identify' | 'short' | 'long';
+  language: 'ru' | 'en';
+};
+
+export async function selectDriveStory(
+  sessionId: string, poiId: string, level: 'short' | 'long',
+  language: 'ru' | 'en', guestId?: string,
+): Promise<SelectedStoryResult> {
+  return apiFetch<SelectedStoryResult>(`/sessions/${encodeURIComponent(sessionId)}/select`, {
+    method: 'POST',
+    headers: guestHeaders(guestId),
+    body: { poiId, level, language },
+  });
+}
+
 export async function stopDriveSession(sessionId: string, guestId?: string): Promise<void> {
   await apiFetch('/drive/session/stop', {
     method: 'POST',
