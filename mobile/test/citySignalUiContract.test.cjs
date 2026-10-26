@@ -41,7 +41,7 @@ assert.match(live, /benchmarkPanelOpen/, 'M4 benchmark controls use a dedicated 
 assert.match(live, /benchmarkBackdrop/, 'M4 benchmark sheet has a focused modal surface');
 assert.match(live, /API: \{apiBase\}/, 'M4 benchmark sheet exposes the actual API target');
 assert.match(live, /Backend: \{apiCompatibilityStatus\}/, 'M4 benchmark sheet exposes backend compatibility');
-assert.match(live, /lastResult\?\.transcriptText/, 'Walking story and transcript use backend narrative text');
+assert.match(live, /presentation\.playback\?\.transcript/, 'Walking story and transcript use backend narrative text');
 assert.match(narrativeOverlay, /onSkip/, 'Walking story player exposes a real skip action');
 assert.match(exploreHome, /statusBanner/, 'Walking Mode renders a consumer-facing degraded state');
 assert.match(live, /onRetry=.*startSession/s, 'Walking degraded state retries the real discovery session');

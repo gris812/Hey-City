@@ -72,6 +72,7 @@ export interface DriveSession {
   knowledgeOffset?: number;
   pendingMode?: DiscoveryMode;
   pendingModeSamples: number;
+  lastModeObservationAt?: number;
   nextPoi?: {
     place: NearbyPlace;
     etaSec: number;
@@ -109,10 +110,19 @@ export function createSession(userId: string, params: DriveSessionParams): Drive
   return session;
 }
 
-export function updateSessionMode(session: DriveSession, speedKmh: number): DiscoveryMode {
+export function updateSessionMode(session: DriveSession, speedKmh: number, observedAt?: number): DiscoveryMode {
   const currentMode = session.params.mode ?? 'vehicle';
   if (!session.params.autoMode) return currentMode;
-  if (!Number.isFinite(speedKmh) || speedKmh < 0) return currentMode;
+  if (observedAt !== undefined) {
+    // Cached/out-of-order fixes are not a second confirmation sample.
+    if (session.lastModeObservationAt !== undefined && observedAt <= session.lastModeObservationAt) return currentMode;
+    session.lastModeObservationAt = observedAt;
+  }
+  if (!Number.isFinite(speedKmh) || speedKmh < 0) {
+    session.pendingMode = undefined;
+    session.pendingModeSamples = 0;
+    return currentMode;
+  }
 
   const candidateMode = currentMode === 'walking'
     ? (speedKmh >= discoveryConfig.vehicleMinSpeedKmh ? 'vehicle' : 'walking')
@@ -234,12 +244,12 @@ export async function pingSession(
   }
 
   const now = timestamp || Date.now();
-  const activeMode = updateSessionMode(session, speedKmh);
+  const activeMode = updateSessionMode(session, speedKmh, now);
   const movement = createMovementContext({
     latitude: lat,
     longitude: lng,
     headingDegrees: typeof heading === 'number' && Number.isFinite(heading) ? heading : null,
-    speedKmh,
+    speedKmh: speedKmh < 0 ? null : speedKmh,
     accuracyMeters,
     timestampMs: now,
   });

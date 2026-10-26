@@ -174,6 +174,7 @@ export function LiveScreen() {
     setMuted,
     lastResult,
     lastMotion,
+    movementMode,
     deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,
@@ -274,8 +275,7 @@ export function LiveScreen() {
     distanceMeters: aheadTarget.distanceMeters,
     isAhead: aheadTarget.isAhead,
     selected: true,
-    isNarrating:
-      presentation.playbackState === 'playing' || presentation.playbackState === 'paused',
+    isNarrating: presentation.playback?.poiId === aheadTarget.providerId && presentation.playbackState === 'playing',
   } : undefined;
   const selectedExplorePlace = [exploreActiveTarget, ...exploreNearbyPlaces].find(
     (place): place is ExploreNearbyPlace => Boolean(place && place.id === selectedExplorePlaceId)
@@ -285,10 +285,13 @@ export function LiveScreen() {
     presentation.activeTarget &&
     (presentation.playbackState === 'playing' ||
       presentation.playbackState === 'paused' ||
-      presentation.playbackState === 'loading')
+      presentation.playbackState === 'loading' ||
+      presentation.playbackState === 'preparing' ||
+      presentation.playbackState === 'text_only' ||
+      presentation.playbackState === 'error')
   );
   const backendWalkingStoryText =
-    lastResult?.transcriptText ?? lastResult?.textPreview ?? t('walking.storyLoading');
+    presentation.playback?.transcript ?? t('walking.storyLoading');
   const foregroundPhase = selectLiveForegroundPhase({
     mode,
     journeyState: tourState.journeyState,
@@ -315,7 +318,7 @@ export function LiveScreen() {
     primaryStatusLabel: sessionError
       ? t('common.error')
       : sessionId
-        ? t('walking.modeStatus')
+        ? t(movementMode === 'vehicle' ? 'vehicle.modeStatus' : 'walking.modeStatus')
         : t('app.loading'),
     secondaryActionLabel: t('walking.chooseWalk'),
   });
@@ -400,6 +403,7 @@ export function LiveScreen() {
   }, [identity.status, mode, sessionId, startSession]);
 
   const startTour = () => {
+    if (movementMode === 'vehicle') return;
     setMode('guided_tour');
     setLiveOverlay(null);
     startGuidedTourDemo();
@@ -412,6 +416,7 @@ export function LiveScreen() {
     ]);
   };
   const selectGuide = async (guideId: GuidePreference) => {
+    if (movementMode === 'vehicle') return;
     await updatePreferences({ preferredGuideId: guideId });
     setSelectedInterests([...guideProfiles[guideId].interests.slice(0, 2)]);
   };
@@ -675,6 +680,7 @@ export function LiveScreen() {
           onOpenMenu={() => navigation.navigate('Settings' as never)}
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
+          vehicleMode={movementMode === 'vehicle'}
           onSelectPlace={(place) => setSelectedExplorePlaceId(place.id)}
           voiceState={realtimeVoiceState}
           voiceLabel={preferences.appLanguage === 'ru'
@@ -703,15 +709,15 @@ export function LiveScreen() {
           {backendWalkingStoryVisible && presentation.activeTarget ? (
             <NarrativeOverlay
               title={presentation.activeTarget.name}
-              guideName={t(`guide.${preferences.preferredGuideId}`)}
-              guideImage={guideImages[preferences.preferredGuideId]}
+              guideName={t(`guide.${presentation.activeGuideId}`)}
+              guideImage={guideImages[presentation.activeGuideId]}
               text={backendWalkingStoryText}
-              playbackState={presentation.playbackState === 'paused' ? 'paused' : 'playing'}
+              playbackState={presentation.playbackState}
               progress={presentation.audioProgress}
               continueLabel={t('walking.finishStory')}
               onPause={pausePlayback}
               onResume={resumePlayback}
-              onContinue={() => void finishStory('ended')}
+              onContinue={() => void finishStory('skipped')}
               onSkip={() => void finishStory('skipped')}
               onTranscript={openTranscript}
             />
@@ -985,7 +991,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {lastMotion.speedKmh.toFixed(1)} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
+                  Speed {lastMotion.speedKmh?.toFixed(1) ?? '—'} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
@@ -1254,7 +1260,7 @@ export function LiveScreen() {
           t('walking.storyTitle')
         }
         body={
-          lastResult?.transcriptText ??
+          presentation.playback?.transcript ??
           lastResult?.textPreview ??
           activeNarrative?.arrivalText ??
           exploreNarrative.narrative?.arrivalText ??

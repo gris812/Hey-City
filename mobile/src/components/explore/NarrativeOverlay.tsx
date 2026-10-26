@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PlaybackState } from '../../presentation';
 import {
   Image,
   type ImageSourcePropType,
@@ -16,7 +17,7 @@ export type NarrativeOverlayProps = {
   guideName: string;
   guideImage?: ImageSourcePropType;
   text: string;
-  playbackState: 'idle' | 'playing' | 'paused' | 'completed';
+  playbackState: PlaybackState;
   progress?: number;
   autoContinueRemainingMs?: number;
   onPause: () => void;
@@ -56,7 +57,7 @@ export function NarrativeOverlay({
               style={[
                 styles.compactWaveBar,
                 { height },
-                (paused || completed) && styles.waveBarInactive,
+                playbackState !== 'playing' && styles.waveBarInactive,
               ]}
             />
           ))}
@@ -65,7 +66,9 @@ export function NarrativeOverlay({
           {guideImage ? <Image source={guideImage} style={styles.guideAvatar} /> : null}
           <View style={styles.headerCopy}>
             <Text style={styles.guide}>
-              {t('walking.guideSpeaking').replace('{guide}', guideName)}
+              {playbackState === 'playing'
+                ? t('walking.guideSpeaking').replace('{guide}', guideName)
+                : t(`playback.${playbackState}`)}
             </Text>
             <Text style={styles.title} numberOfLines={2}>{title}</Text>
           </View>
@@ -88,7 +91,7 @@ export function NarrativeOverlay({
         )}
 
         <View style={styles.controls}>
-          {!completed && (
+          {(playbackState === 'playing' || paused) && (
             <TouchableOpacity
               accessibilityRole="button"
               style={styles.playbackButton}

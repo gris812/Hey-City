@@ -32,6 +32,7 @@ export type ExploreActiveTarget = ExploreNearbyPlace & {
 };
 
 export type ExploreHomeViewProps = {
+  vehicleMode?: boolean;
   height: number;
   topInset: number;
   region: Region;
@@ -54,6 +55,7 @@ export type ExploreHomeViewProps = {
 
 export function ExploreHomeView({
   height,
+  vehicleMode = false,
   topInset,
   region,
   markers,
@@ -73,7 +75,7 @@ export function ExploreHomeView({
   children,
 }: ExploreHomeViewProps) {
   const { locale, t } = useAppTranslation();
-  const visibleNearbyPlaces = nearbyPlaces
+  const visibleNearbyPlaces = (vehicleMode ? [] : nearbyPlaces)
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
   const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
@@ -135,7 +137,8 @@ export function ExploreHomeView({
           accessibilityRole="button"
           accessibilityLabel={t('walking.openGuide')}
           style={styles.avatarButton}
-          onPress={onOpenGuide}
+          onPress={vehicleMode ? undefined : onOpenGuide}
+          disabled={vehicleMode}
         >
           <Image source={guideImage} style={styles.guideAvatar} resizeMode="contain" />
         </TouchableOpacity>
@@ -145,7 +148,8 @@ export function ExploreHomeView({
         accessibilityRole="button"
         accessibilityLabel={t('walking.searchPlaceholder')}
         style={[styles.searchBar, { top: searchTop }]}
-        onPress={onChooseGuidedWalk}
+        onPress={vehicleMode ? undefined : onChooseGuidedWalk}
+        disabled={vehicleMode}
         activeOpacity={0.92}
       >
         <View style={styles.searchIcon}>
@@ -282,7 +286,8 @@ export function ExploreHomeView({
           <TouchableOpacity
             accessibilityRole="button"
             style={styles.guidedButton}
-            onPress={onChooseGuidedWalk}
+            onPress={vehicleMode ? undefined : onChooseGuidedWalk}
+        disabled={vehicleMode}
           >
             <Text style={styles.guidedButtonText}>{t('walking.chooseWalk')}</Text>
           </TouchableOpacity>

@@ -141,12 +141,14 @@ export async function generateNarrationFromPlan(
       audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts', media.progressiveSpeech);
       const completion = pendingSpeech.get(audioUrl.split('/').pop()!)?.completion;
       if (completion) {
-        void completion.then(url => cacheSet(audioKey, url, cacheTtl.ttsAudioDays * 86400)).catch(() => {});
+        void completion.then(url => cacheSet(audioKey, url, cacheTtl.ttsAudioDays * 86400)).catch(() => {
+          console.warn(JSON.stringify({ event: 'story_speech_stream_failed' }));
+        });
       } else {
         await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 86400);
       }
     } catch (error) {
-      console.warn('TTS provider failed; returning text-only narration', error);
+      console.warn(JSON.stringify({ event: 'story_tts_failed', fallback: 'text_only' }));
       audioUrl = '';
       audioCached = false;
     }

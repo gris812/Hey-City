@@ -31,6 +31,10 @@ import {
   mapDriveSessionToPresentation,
   type PlaybackState,
 } from '../../presentation';
+import { fromBackendGuideId } from '../../localization/guideIds';
+import { resolveVoiceSampleUrl } from '../guides/voiceSampleUrl';
+import { gpsSpeedKmh } from './motion';
+import type { StoryPlaybackIdentity } from '../../presentation/livePresentation';
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
 import { clearRuntimeInterval } from './runtimeControllerContracts';
 import { ConversationPlayback, isCurrentConversationTurn } from './conversationPlayback';
@@ -49,7 +53,7 @@ import type {
   M4NativeBenchmarkRecorder,
 } from './realtimeVoiceBenchmark';
 
-export type DriveMotion = { speedKmh: number; heading: number | null };
+export type DriveMotion = { speedKmh: number | null; heading: number | null };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
 
 export function clearDrivePingInterval(
@@ -77,6 +81,9 @@ export function useDriveDiscoverySession(input: {
   const [muted, setMuted] = useState(false);
   const [lastResult, setLastResult] = useState<PingResult | null>(null);
   const [playingName, setPlayingName] = useState<string | null>(null);
+  const [playback, setPlayback] = useState<StoryPlaybackIdentity | undefined>();
+  const [audioProgress, setAudioProgress] = useState<number | undefined>();
+  const [movementMode, setMovementMode] = useState<'walking' | 'vehicle' | undefined>();
   const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
   const [lastMotion, setLastMotion] = useState<DriveMotion | null>(null);
   const [deviceLocation, setDeviceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -93,6 +100,9 @@ export function useDriveDiscoverySession(input: {
   const [realtimeBenchmarkScenario, setRealtimeBenchmarkScenario] = useState<M4BenchmarkScenario>('B1');
   const [realtimeBenchmarkExportStatus, setRealtimeBenchmarkExportStatus] = useState<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const startingRef = useRef(false);
+  const requestRevisionRef = useRef(0);
   const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
@@ -108,6 +118,8 @@ export function useDriveDiscoverySession(input: {
   const guestId = identity.status === 'guest' ? identity.guestId : undefined;
 
   const startSession = useCallback(async () => {
+    if (startingRef.current || activeSessionIdRef.current) return;
+    startingRef.current = true;
     setSessionError(null);
 
     try {
@@ -154,6 +166,8 @@ export function useDriveDiscoverySession(input: {
         : null;
       if (profile) profileRef.current = profile;
       const { sessionId: id } = await startDriveSession({
+        mode: 'walking',
+        autoMode: true,
         themeTags: themes,
         narrationStyle: style,
         lengthSec,
@@ -164,7 +178,11 @@ export function useDriveDiscoverySession(input: {
         autoplay,
         guestId,
       });
+      activeSessionIdRef.current = id;
+      ++requestRevisionRef.current;
       setSessionId(id);
+      setMovementMode('walking');
+      setPlayback(undefined);
       activeMomentIdRef.current = null;
       conversationTurnRevisionRef.current += 1;
       setConversationResult(null);
@@ -174,7 +192,9 @@ export function useDriveDiscoverySession(input: {
       setLocalPlaybackState('idle');
     } catch (e) {
       setSessionError((e as Error).message);
-      console.error(e);
+      console.warn('heycity_session_start_failed');
+    } finally {
+      startingRef.current = false;
     }
   }, [autoplay, guestId, guideId, guideLanguage, identity, leadTimeMin, lengthSec, style, themes]);
 
@@ -182,63 +202,71 @@ export function useDriveDiscoverySession(input: {
     pendingResumeRef.current = null;
     const conversationSound = conversationSoundRef.current;
     conversationSoundRef.current = null;
-    if (conversationSound) await conversationSound.unloadAsync().catch(() => {});
-    await conversationPlaybackRef.current.clear().catch(() => {});
+    if (conversationSound) await conversationSound.unloadAsync().catch(() => console.warn('native_audio_unload_failed'));
+    await conversationPlaybackRef.current.clear().catch(() => console.warn('native_audio_unload_failed'));
     storySoundRef.current = null;
   }, []);
 
+  const reportPlaybackError = useCallback((code: string) => {
+    // Deliberately exclude raw exception messages, URLs, GPS and transcript text.
+    console.warn(JSON.stringify({ event: 'native_story_error', code }));
+    setSessionError(guideLanguage === 'ru'
+      ? 'Не удалось воспроизвести рассказ. Попробуйте ещё раз или пропустите его.'
+      : 'Story audio could not play. Try again or skip this story.');
+  }, [guideLanguage]);
+
   const stopSession = useCallback(async () => {
-    if (!sessionId) return;
-    const voice = realtimeVoiceRef.current;
-    realtimeVoiceRef.current = null;
-    if (voice) await voice.dispose().catch(() => {});
-    try {
-      await stopDriveSession(sessionId, guestId);
-    } catch (_) {}
-    setSessionId(null);
+    const id = activeSessionIdRef.current;
+    if (!id) return;
+    activeSessionIdRef.current = null;
+    ++requestRevisionRef.current;
     activeMomentIdRef.current = null;
     conversationTurnRevisionRef.current += 1;
-    void clearConversationPlayback();
-    setDriveDiscoveryOn(false);
     clearDrivePingInterval(pingIntervalRef);
+    setSessionId(null);
+    setDriveDiscoveryOn(false);
     setLastResult(null);
     setPlayingName(null);
+    setPlayback(undefined);
+    setMovementMode(undefined);
     setLocalPlaybackState('idle');
-    setSessionError(null);
-  }, [clearConversationPlayback, guestId, sessionId]);
+    const voice = realtimeVoiceRef.current;
+    realtimeVoiceRef.current = null;
+    if (voice) await voice.dispose().catch(() => reportPlaybackError('voice_dispose_failed'));
+    await clearConversationPlayback().catch(() => reportPlaybackError('audio_unload_failed'));
+    await stopDriveSession(id, guestId).catch(() => reportPlaybackError('session_stop_failed'));
+  }, [clearConversationPlayback, guestId, reportPlaybackError]);
 
-  const loadStoryPlayback = useCallback(async (momentId: string, audioUrl: string) => {
-    if (activeMomentIdRef.current === momentId && storySoundRef.current) return;
-    await conversationPlaybackRef.current.clear().catch(() => {});
-    storySoundRef.current = null;
-    try {
-      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: true },
-        (status) => {
-          if (status.isLoaded) {
-            setLocalPlaybackState(status.isPlaying ? 'playing' : 'paused');
-            if (status.didJustFinish && activeMomentIdRef.current === momentId && sessionId) {
-              void finishDriveStory(sessionId, 'ended', guestId, momentId).catch(() => {});
-              activeMomentIdRef.current = null;
-              setPlayingName(null);
-              setLocalPlaybackState('completed');
-            }
-          }
-        },
-      );
-      if (activeMomentIdRef.current !== momentId) {
-        await sound.unloadAsync();
-        return;
-      }
-      storySoundRef.current = sound;
-      conversationPlaybackRef.current.attach(momentId, audioUrl, sound);
-    } catch (error) {
-      setSessionError((error as Error).message);
-      setLocalPlaybackState('error');
-    }
-  }, [guestId, sessionId]);
+  const loadStoryPlayback = useCallback(async (story: StoryPlaybackIdentity, audioUrl?: string) => {
+    if (activeSessionIdRef.current !== story.sessionId || activeMomentIdRef.current === story.momentId) return;
+    activeMomentIdRef.current = story.momentId;
+    setPlayback(story);
+    setLocalPlaybackState(audioUrl ? 'loading' : 'text_only');
+    setAudioProgress(undefined);
+    setPlayingName(story.target.name);
+    await conversationPlaybackRef.current.loadStory(story, audioUrl ? resolveVoiceSampleUrl(audioUrl, config.apiBase) : undefined, {
+      create: async (url, listener) => {
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+        const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: false }, listener);
+        return sound;
+      },
+      onState: (state, current, progress) => {
+        if (activeSessionIdRef.current !== story.sessionId || activeMomentIdRef.current !== story.momentId) return;
+        setPlayback(current);
+        setLocalPlaybackState(state);
+        setAudioProgress(progress);
+      },
+      onEnded: (ended) => {
+        if (activeSessionIdRef.current !== ended.sessionId || activeMomentIdRef.current !== ended.momentId) return;
+        activeMomentIdRef.current = null;
+        void finishDriveStory(ended.sessionId, 'ended', guestId, ended.momentId)
+          .catch(() => reportPlaybackError('completion_report_failed'));
+      },
+      onError: code => {
+        if (activeSessionIdRef.current === story.sessionId && activeMomentIdRef.current === story.momentId) reportPlaybackError(code);
+      },
+    });
+  }, [guestId, reportPlaybackError]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -279,67 +307,54 @@ export function useDriveDiscoverySession(input: {
   }, [locationSettingsRequired, sessionId, startSession]);
 
   useEffect(() => {
-    if (!sessionId || muted) return;
-
+    if (!sessionId) return;
+    let disposed = false;
+    let inFlight = false;
     const runPing = async () => {
+      if (inFlight || disposed || activeSessionIdRef.current !== sessionId) return;
+      inFlight = true;
+      const revision = requestRevisionRef.current;
       try {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (disposed || activeSessionIdRef.current !== sessionId) return;
         setDeviceLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-        const rawHeading = loc.coords.heading;
-        const heading =
-          typeof rawHeading === 'number' && rawHeading >= 0
-            ? rawHeading
-            : lastHeadingRef.current;
-        if (heading !== null) lastHeadingRef.current = heading;
-
-        const speedMps =
-          typeof loc.coords.speed === 'number' && loc.coords.speed > 0
-            ? loc.coords.speed
-            : 0;
-        const speedKmh = speedMps * 3.6;
+        const heading = typeof loc.coords.heading === 'number' && loc.coords.heading >= 0 ? loc.coords.heading : null;
+        const speedKmh = gpsSpeedKmh(loc.coords.speed);
         setLastMotion({ speedKmh, heading });
-        const accuracyMeters =
-          typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
-            ? loc.coords.accuracy
-            : undefined;
-
-        const result = await pingDriveSession(
-          sessionId,
-          loc.coords.latitude,
-          loc.coords.longitude,
-          heading,
-          speedKmh,
-          Date.now(),
-          accuracyMeters,
-          false,
-          guestId
-        );
+        const accuracy = typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0 ? loc.coords.accuracy : undefined;
+        const result = await pingDriveSession(sessionId, loc.coords.latitude, loc.coords.longitude,
+          heading, speedKmh, loc.timestamp, accuracy, false, guestId);
+        if (disposed || activeSessionIdRef.current !== sessionId) return;
+        if (result.mode) setMovementMode(result.mode);
+        // Discovery can advance while the current audio identity remains intact.
         setLastResult(result);
-        if (result.nextAction === 'PLAY' && result.poi) {
-          activeMomentIdRef.current = result.momentId ?? null;
-          setPlayingName(result.poi.name);
-          setLocalPlaybackState((current) => (current === 'paused' ? current : 'playing'));
-          if (result.momentId && result.audioUrl) void loadStoryPlayback(result.momentId, result.audioUrl);
-        } else if (result.decision?.type !== 'hold' || result.decision.reason !== 'already_listening') {
-          setPlayingName(null);
-          setLocalPlaybackState((current) => (current === 'paused' ? current : 'idle'));
+        if (!muted && revision === requestRevisionRef.current && result.nextAction === 'PLAY' && result.poi && result.momentId) {
+          void loadStoryPlayback({ sessionId, momentId: result.momentId, poiId: result.poi.place_id,
+            guideId: fromBackendGuideId(result.narrativePlan?.guideId),
+            target: { id: result.poi.place_id, name: result.poi.name,
+              latitude: result.poi.geometry.location.lat, longitude: result.poi.geometry.location.lng },
+            transcript: result.transcriptText ?? result.textPreview }, result.audioUrl);
         }
-      } catch (_) {}
+      } catch {
+        if (!disposed && activeSessionIdRef.current === sessionId) {
+          console.warn(JSON.stringify({ event: 'native_discovery_ping_failed' }));
+          setSessionError(guideLanguage === 'ru' ? 'Не удалось обновить места рядом. Проверьте соединение.' : 'Could not update nearby places. Check your connection.');
+        }
+      } finally { inFlight = false; }
     };
-
-    runPing();
-    const id = setInterval(runPing, config.pingIntervalSec * 1000);
-    pingIntervalRef.current = id;
-    return () => clearDrivePingInterval(pingIntervalRef);
-  }, [guestId, loadStoryPlayback, muted, sessionId]);
+    void runPing();
+    pingIntervalRef.current = setInterval(runPing, config.pingIntervalSec * 1000);
+    return () => { disposed = true; clearDrivePingInterval(pingIntervalRef); };
+  }, [guestId, guideLanguage, loadStoryPlayback, muted, sessionId]);
 
   useEffect(() => () => {
+    activeSessionIdRef.current = null;
+    ++requestRevisionRef.current;
+    activeMomentIdRef.current = null;
     clearDrivePingInterval(pingIntervalRef);
-    void realtimeVoiceRef.current?.dispose().catch(() => {});
+    void realtimeVoiceRef.current?.dispose().catch(() => console.warn('native_voice_dispose_failed'));
     realtimeVoiceRef.current = null;
-    void benchmarkNoiseSoundRef.current?.unloadAsync().catch(() => {});
+    void benchmarkNoiseSoundRef.current?.unloadAsync().catch(() => console.warn('native_noise_unload_failed'));
     benchmarkNoiseSoundRef.current = null;
     void clearConversationPlayback();
   }, [clearConversationPlayback]);
@@ -351,56 +366,38 @@ export function useDriveDiscoverySession(input: {
   };
 
   const finishStory = async (reason: StoryFinishReason) => {
-    if (!sessionId || !activeMomentIdRef.current) return;
-    setSessionError(null);
-    try {
-      const result = await finishDriveStory(sessionId, reason, guestId, activeMomentIdRef.current);
-      if (result.stale) return;
-      activeMomentIdRef.current = null;
-      setPlayingName(null);
-      setLocalPlaybackState(reason === 'paused' ? 'paused' : 'completed');
-      setLastResult({
-        nextAction: 'NONE',
-        decision: {
-          type: 'hold',
-          reason: result.activeStoryWasPlaying ? 'cooldown_active' : 'no_candidate',
-        },
-      });
-    } catch (e) {
-      setSessionError((e as Error).message);
-      console.error(e);
-    }
+    const id = activeSessionIdRef.current;
+    const momentId = activeMomentIdRef.current;
+    if (!id || !momentId) return;
+    if (reason === 'paused') { await conversationPlaybackRef.current.pause(); return; }
+    // Closing/skipping a story is not proof that it was heard to completion.
+    activeMomentIdRef.current = null;
+    ++requestRevisionRef.current;
+    await conversationPlaybackRef.current.clear().catch(() => reportPlaybackError('audio_unload_failed'));
+    setLocalPlaybackState('idle');
+    setPlayback(undefined);
+    setPlayingName(null);
+    await finishDriveStory(id, 'skipped', guestId, momentId).catch(() => reportPlaybackError('skip_report_failed'));
   };
 
-  const pausePlayback = () => {
-    if (localPlaybackState === 'playing' || localPlaybackState === 'loading') {
-      setLocalPlaybackState('paused');
-      void storySoundRef.current?.pauseAsync().catch(() => {});
-    }
-  };
-
-  const resumePlayback = () => {
-    if (localPlaybackState === 'paused') {
-      setLocalPlaybackState(playingName ? 'playing' : 'idle');
-      void storySoundRef.current?.playAsync().catch(() => {});
-    }
-  };
+  const pausePlayback = () => { void conversationPlaybackRef.current.pause(); };
+  const resumePlayback = () => { void conversationPlaybackRef.current.resume(); };
 
   const applyResumeDirective = useCallback(async (directive: ResumeDirective): Promise<void> => {
     if (directive.action === 'resume_existing') {
       if (!sessionId) return;
       const confirmed = await resumeConversationRequest(sessionId, directive.momentId, guestId).catch(() => null);
       if (confirmed?.resume?.action !== 'resume_existing' || confirmed.resume.momentId !== directive.momentId) return;
-      const resumed = await conversationPlaybackRef.current.resumeOriginal(confirmed.resume.momentId);
-      if (resumed) setLocalPlaybackState('playing');
+      await conversationPlaybackRef.current.resumeOriginal(confirmed.resume.momentId);
       return;
     }
     if (directive.action === 'abandon_previous') {
       // Do not call the legacy finish endpoint: a partial story is not completed.
       activeMomentIdRef.current = null;
       setPlayingName(null);
+      setPlayback(undefined);
       setLocalPlaybackState('idle');
-      await conversationPlaybackRef.current.clear().catch(() => {});
+      await conversationPlaybackRef.current.clear().catch(() => console.warn('native_audio_unload_failed'));
       storySoundRef.current = null;
     }
   }, [guestId, sessionId]);
@@ -426,7 +423,7 @@ export function useDriveDiscoverySession(input: {
     pendingResumeRef.current = directive;
     const oldSound = conversationSoundRef.current;
     conversationSoundRef.current = null;
-    if (oldSound) await oldSound.unloadAsync().catch(() => {});
+    if (oldSound) await oldSound.unloadAsync().catch(() => console.warn('native_audio_unload_failed'));
     try {
       const { sound } = await Audio.Sound.createAsync({ uri: audioUrl }, { shouldPlay: true }, (status) => {
         if (status.isLoaded && status.didJustFinish) {
@@ -548,7 +545,7 @@ export function useDriveDiscoverySession(input: {
                 });
                 const previous = conversationSoundRef.current;
                 conversationSoundRef.current = sound;
-                if (previous) await previous.unloadAsync().catch(() => {});
+                if (previous) await previous.unloadAsync().catch(() => console.warn('native_audio_unload_failed'));
               } catch {
                 resolve();
               }
@@ -607,7 +604,7 @@ export function useDriveDiscoverySession(input: {
     if (voice) await voice.dispose().catch(() => {});
     const benchmarkNoise = benchmarkNoiseSoundRef.current;
     benchmarkNoiseSoundRef.current = null;
-    if (benchmarkNoise) await benchmarkNoise.unloadAsync().catch(() => {});
+    if (benchmarkNoise) await benchmarkNoise.unloadAsync().catch(() => console.warn('native_audio_unload_failed'));
     realtimeBenchmarkRecorderRef.current?.finishTrial({ notes: 'provider_changed' });
     setRealtimeVoiceState('closed');
     setRealtimeBenchmarkProvider(provider);
@@ -630,13 +627,13 @@ export function useDriveDiscoverySession(input: {
   const playRealtimeBenchmarkNoise = useCallback(async (): Promise<void> => {
     const previous = benchmarkNoiseSoundRef.current;
     benchmarkNoiseSoundRef.current = null;
-    if (previous) await previous.unloadAsync().catch(() => {});
+    if (previous) await previous.unloadAsync().catch(() => console.warn('native_audio_unload_failed'));
     const { sound } = await Audio.Sound.createAsync(
       require('../../../assets/m4-road-noise-v1.wav'),
       { shouldPlay: true, volume: 0.35 },
       status => {
         if (status.isLoaded && didFinish(status)) {
-          void sound.unloadAsync().catch(() => {});
+          void sound.unloadAsync().catch(() => console.warn('native_audio_unload_failed'));
           if (benchmarkNoiseSoundRef.current === sound) benchmarkNoiseSoundRef.current = null;
         }
       },
@@ -671,8 +668,8 @@ export function useDriveDiscoverySession(input: {
         lat: loc.coords.latitude,
         lng: loc.coords.longitude,
         heading,
-        speed: speedMps * 3.6,
-        timestamp: Date.now(),
+        speed: gpsSpeedKmh(loc.coords.speed),
+        timestamp: loc.timestamp,
         accuracyMeters:
           typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0
             ? loc.coords.accuracy
@@ -694,6 +691,9 @@ export function useDriveDiscoverySession(input: {
   const presentation = mapDriveSessionToPresentation(lastResult, {
     sessionActive: Boolean(sessionId),
     playbackState: localPlaybackState,
+    playback,
+    movementMode,
+    audioProgress,
   });
 
   return {
@@ -713,6 +713,7 @@ export function useDriveDiscoverySession(input: {
     setMuted,
     lastResult,
     lastMotion,
+    movementMode,
     deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,

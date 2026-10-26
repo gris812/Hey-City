@@ -67,7 +67,7 @@ const playingAgain = mapDriveSessionToPresentation(playResult, {
 
 assertDeepEqual(playingAgain, playing, 'same input maps deterministically');
 assertEqual(playing.discoveryPhase, 'target_active', 'PLAY result activates target phase');
-assertEqual(playing.playbackState, 'playing', 'PLAY result maps to playing');
+assertEqual(playing.playbackState, 'idle', 'PLAY is not proof of native playback');
 assertEqual(playing.presentationMode, 'map', 'current backend contract stays map-first');
 assertEqual(playing.activeGuideId, 'arthur', 'guide id comes from backend plan');
 assertEqual(playing.activeTarget?.name, 'Federal Hall', 'active target comes from backend POI');
