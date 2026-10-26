@@ -286,10 +286,12 @@ export function LiveScreen() {
     presentation.activeTarget &&
     (presentation.playbackState === 'playing' ||
       presentation.playbackState === 'paused' ||
-      presentation.playbackState === 'loading')
+      presentation.playbackState === 'loading' ||
+      presentation.playbackState === 'text-only' ||
+      presentation.playbackState === 'error')
   );
   const backendWalkingStoryText =
-    lastResult?.transcriptText ?? lastResult?.textPreview ?? t('walking.storyLoading');
+    presentation.playbackMoment?.transcriptText ?? t('walking.storyLoading');
   const foregroundPhase = selectLiveForegroundPhase({
     mode,
     journeyState: tourState.journeyState,
@@ -704,15 +706,15 @@ export function LiveScreen() {
           {backendWalkingStoryVisible && presentation.activeTarget ? (
             <NarrativeOverlay
               title={presentation.activeTarget.name}
-              guideName={t(`guide.${preferences.preferredGuideId}`)}
-              guideImage={guideImages[preferences.preferredGuideId]}
+              guideName={t(`guide.${presentation.activeGuideId}`)}
+              guideImage={guideImages[presentation.activeGuideId]}
               text={backendWalkingStoryText}
-              playbackState={presentation.playbackState === 'paused' ? 'paused' : presentation.playbackState === 'playing' ? 'playing' : 'loading'}
+              playbackState={presentation.playbackState}
               progress={presentation.audioProgress}
               continueLabel={t('walking.finishStory')}
               onPause={pausePlayback}
               onResume={resumePlayback}
-              onContinue={() => void finishStory('ended')}
+              onContinue={() => void finishStory('skipped')}
               onSkip={() => void finishStory('skipped')}
               onTranscript={openTranscript}
             />
