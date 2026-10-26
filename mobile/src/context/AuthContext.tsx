@@ -37,6 +37,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const GUEST_ID_KEY = 'guest_id';
 const APP_LANGUAGE_KEY = 'pref_app_language';
 const GUIDE_LANGUAGE_KEY = 'pref_guide_language';
+const UNIT_SYSTEM_KEY = 'pref_unit_system';
 const PREFERRED_GUIDE_KEY = 'pref_guide_id';
 const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
 const SHOW_ONBOARDING_AT_LAUNCH_KEY = 'show_onboarding_at_launch';
@@ -53,10 +54,11 @@ async function getOrCreateGuestId(): Promise<string> {
 
 async function readPreferences(): Promise<GuestPreferences> {
   const systemLocale = getSystemLocale();
-  const [appLanguage, guideLanguage, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch, welcomeExperienceSeen] =
+  const [appLanguage, guideLanguage, unitSystem, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch, welcomeExperienceSeen] =
     await Promise.all([
       SecureStore.getItemAsync(APP_LANGUAGE_KEY),
       SecureStore.getItemAsync(GUIDE_LANGUAGE_KEY),
+      SecureStore.getItemAsync(UNIT_SYSTEM_KEY),
       SecureStore.getItemAsync(PREFERRED_GUIDE_KEY),
       SecureStore.getItemAsync(ONBOARDING_COMPLETED_KEY),
       SecureStore.getItemAsync(SHOW_ONBOARDING_AT_LAUNCH_KEY),
@@ -65,7 +67,7 @@ async function readPreferences(): Promise<GuestPreferences> {
 
   const hasStoredPreferences =
     appLanguage !== null ||
-    guideLanguage !== null ||
+    guideLanguage !== null || unitSystem !== null ||
     preferredGuideId !== null ||
     onboardingCompleted !== null ||
     showOnboardingAtLaunch !== null ||
@@ -81,6 +83,7 @@ async function readPreferences(): Promise<GuestPreferences> {
     {
       appLanguage,
       guideLanguage,
+      unitSystem,
       preferredGuideId,
       onboardingCompleted: onboardingCompleted === 'true',
       showOnboardingAtLaunch:
@@ -96,6 +99,7 @@ async function persistPreferences(preferences: GuestPreferences): Promise<void> 
   await Promise.all([
     SecureStore.setItemAsync(APP_LANGUAGE_KEY, preferences.appLanguage),
     SecureStore.setItemAsync(GUIDE_LANGUAGE_KEY, preferences.guideLanguage),
+    SecureStore.setItemAsync(UNIT_SYSTEM_KEY, preferences.unitSystem),
     SecureStore.setItemAsync(PREFERRED_GUIDE_KEY, preferences.preferredGuideId),
     SecureStore.setItemAsync(
       ONBOARDING_COMPLETED_KEY,
