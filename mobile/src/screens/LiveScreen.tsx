@@ -662,6 +662,8 @@ export function LiveScreen() {
           topInset={insets.top}
           region={exploreRegion}
           measurementSystem={preferences.measurementSystem}
+          courseDegrees={lastMotion?.heading}
+          courseSpeedKmh={lastMotion?.speedKmh}
           markers={aheadCandidates.slice(0, 8).map((candidate) => ({
             id: candidate.providerId,
             coordinate: {
