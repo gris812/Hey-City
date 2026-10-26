@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   type ImageSourcePropType,
@@ -15,6 +15,7 @@ import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
 import { formatDistance } from '../../localization/measurement';
 import type { UnitSystem } from '../../localization/preferences';
+import { orientationHeading, trustedCourse, type MapOrientation } from '../../presentation/cameraControls';
 
 export type ExploreHomeMarker = {
   id: string;
@@ -43,6 +44,9 @@ export type ExploreHomeViewProps = {
   guideImage: ImageSourcePropType;
   viewModel: ExploreHomeViewModel;
   unitSystem: UnitSystem;
+  movementHeading?: number | null;
+  movementSpeedKmh?: number | null;
+  movementObservedAtMs?: number | null;
   onOpenMenu: () => void;
   onOpenGuide: () => void;
   onChooseGuidedWalk: () => void;
@@ -65,6 +69,9 @@ export function ExploreHomeView({
   guideImage,
   viewModel,
   unitSystem,
+  movementHeading,
+  movementSpeedKmh,
+  movementObservedAtMs,
   onOpenMenu,
   onOpenGuide,
   onChooseGuidedWalk,
@@ -82,10 +89,22 @@ export function ExploreHomeView({
     .slice(0, 4);
   const { controlTop, searchTop, statusTop } = exploreTopLayout(topInset, spacing.md);
   const mapRef = useRef<MapView | null>(null);
+  const [orientation, setOrientation] = useState<MapOrientation>('north-up');
+  const [following, setFollowing] = useState(true);
+  const lastCameraHeadingRef = useRef(0);
+  const reliableCourse = trustedCourse(
+    movementHeading, movementSpeedKmh, movementObservedAtMs ?? null, Date.now()
+  );
 
   useEffect(() => {
-    mapRef.current?.animateToRegion(region, 450);
-  }, [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta]);
+    const heading = orientationHeading(orientation, reliableCourse, lastCameraHeadingRef.current);
+    lastCameraHeadingRef.current = heading;
+    // Heading and center are independent: a pan suspends following but not compass.
+    mapRef.current?.animateCamera({
+      heading,
+      ...(following ? { center: { latitude: region.latitude, longitude: region.longitude } } : {}),
+    }, { duration: 450 });
+  }, [following, orientation, reliableCourse, region.latitude, region.longitude]);
 
   return (
     <View style={[styles.stage, { height }]}>
@@ -96,6 +115,7 @@ export function ExploreHomeView({
         showsUserLocation
         showsMyLocationButton={false}
         showsCompass={false}
+        onPanDrag={() => setFollowing(false)}
         toolbarEnabled={false}
       >
         {markers.map((marker) => (
@@ -143,6 +163,28 @@ export function ExploreHomeView({
         >
           <Image source={guideImage} style={styles.guideAvatar} resizeMode="contain" />
         </TouchableOpacity>
+      </View>
+
+      <View style={[styles.cameraControls, { top: searchTop + 76 }]}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={orientation === 'north-up' ? t('walking.courseUp') : t('walking.northUp')}
+          style={styles.cameraButton}
+          onPress={() => setOrientation(o => o === 'north-up' ? 'course-up' : 'north-up')}
+        >
+          <Text style={styles.cameraButtonText}>{orientation === 'north-up' ? 'N' : '▲'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={t('walking.followUser')}
+          accessibilityState={{ selected: following }}
+          style={[styles.cameraButton, following && styles.cameraButtonActive]}
+          onPress={() => setFollowing(true)}
+        >
+          <Text style={styles.cameraButtonText}>◎</Text>
+        </TouchableOpacity>
+        {orientation === 'course-up' && reliableCourse === null &&
+          <Text style={styles.courseUnavailable}>{t('walking.courseUnavailable')}</Text>}
       </View>
 
       <TouchableOpacity
@@ -418,6 +460,11 @@ const styles = StyleSheet.create({
     ...shadows.subtle,
   },
   guideAvatar: { width: '100%', height: '100%' },
+  cameraControls: { position: 'absolute', right: spacing.md, zIndex: 28, alignItems: 'center', gap: spacing.sm },
+  cameraButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.subtle },
+  cameraButtonActive: { borderColor: colors.primary },
+  cameraButtonText: { fontSize: 20, fontWeight: '700', color: colors.primary },
+  courseUnavailable: { maxWidth: 110, textAlign: 'center', fontSize: 10, backgroundColor: colors.surface, color: colors.textMuted },
   searchBar: {
     position: 'absolute',
     left: spacing.md,
