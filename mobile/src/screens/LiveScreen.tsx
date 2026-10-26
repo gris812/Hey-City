@@ -990,7 +990,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {(lastMotion.speedKmh === null ? 'unknown' : formatSpeed(lastMotion.speedKmh, preferences.unitSystem))} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
+                  Speed {(lastMotion.speedKmh === null ? 'unknown' : formatSpeed(lastMotion.speedKmh, preferences.unitSystem))} · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
@@ -1014,7 +1014,7 @@ export function LiveScreen() {
                     Movement: {lastResult.aheadDiscovery.movement.latitude.toFixed(5)}, {lastResult.aheadDiscovery.movement.longitude.toFixed(5)}
                   </Text>
                   <Text style={styles.aheadDebugText}>
-                    Speed: {((lastResult.aheadDiscovery.movement.speedMps ?? 0) * 2.23694).toFixed(1)} mph · Heading: {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}° · GPS ±{Math.round(lastResult.aheadDiscovery.movement.accuracyMeters)} m
+                    Speed: {formatSpeed(lastResult.aheadDiscovery.movement.speedMps === null ? null : lastResult.aheadDiscovery.movement.speedMps * 3.6, preferences.unitSystem)} · Heading: {lastResult.aheadDiscovery.movement.headingDegrees ?? 'missing'}° · GPS ±{Math.round(lastResult.aheadDiscovery.movement.accuracyMeters)} m
                   </Text>
                   <Text style={styles.aheadDebugText}>
                     Provider: {lastResult.aheadDiscovery.provider} · interval {lastResult.aheadDiscovery.providerRefresh.configuredIntervalMinutes} min · next {lastResult.aheadDiscovery.providerRefresh.nextRefreshAt ?? 'not scheduled'}
@@ -1272,6 +1272,7 @@ export function LiveScreen() {
         visible={Boolean(selectedExplorePlace)}
         bottomInset={insets.bottom}
         place={selectedExplorePlace}
+        unitSystem={preferences.unitSystem}
         guideName={t(`guide.${preferences.preferredGuideId}`)}
         guideImage={guideImages[preferences.preferredGuideId]}
         hasActiveStory={Boolean(
