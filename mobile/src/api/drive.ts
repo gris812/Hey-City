@@ -22,6 +22,8 @@ export async function startDriveSession(params: {
   guideId?: CanonicalGuideId;
   language?: string;
   autoplay?: boolean;
+  mode?: 'walking' | 'vehicle';
+  autoMode?: boolean;
   guestId?: string;
 }): Promise<{ sessionId: string }> {
   const { guideId, guestId, ...body } = params;
