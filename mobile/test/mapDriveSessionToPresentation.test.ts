@@ -67,11 +67,36 @@ const playingAgain = mapDriveSessionToPresentation(playResult, {
 
 assertDeepEqual(playingAgain, playing, 'same input maps deterministically');
 assertEqual(playing.discoveryPhase, 'target_active', 'PLAY result activates target phase');
-assertEqual(playing.playbackState, 'playing', 'PLAY result maps to playing');
+assertEqual(playing.playbackState, 'idle', 'PLAY without native confirmation is not playing');
 assertEqual(playing.presentationMode, 'map', 'current backend contract stays map-first');
 assertEqual(playing.activeGuideId, 'arthur', 'guide id comes from backend plan');
 assertEqual(playing.activeTarget?.name, 'Federal Hall', 'active target comes from backend POI');
 assertEqual(playing.activeTarget?.latitude, 40.707, 'target latitude is preserved');
+
+
+const confirmedMoment = {
+  sessionId: 'session-1', momentId: 'moment-b', poiId: 'poi-B',
+  guideId: 'dana' as const, name: 'Story B', transcriptText: 'B is the actual audio.',
+};
+const differentDiscovery = mapDriveSessionToPresentation({
+  ...playResult,
+  nextAction: 'NONE',
+  aheadDiscovery: undefined,
+}, { sessionActive: true, playbackState: 'playing', playbackMoment: confirmedMoment });
+assertEqual(differentDiscovery.activeTarget?.id, 'poi-B', 'playback B owns active story even when discovery A remains');
+assertEqual(differentDiscovery.playbackMoment?.momentId, 'moment-b', 'moment ownership preserved');
+assertEqual(differentDiscovery.activeGuideId, 'dana', 'active guide belongs to playback B');
+assertEqual(differentDiscovery.playbackState, 'playing', 'actual playback status accepted');
+assertEqual(differentDiscovery.transcriptPreview, 'B is the actual audio.', 'transcript belongs to B');
+
+const preparing = mapDriveSessionToPresentation(playResult, {
+  sessionActive: true, playbackState: 'loading', playbackMoment: confirmedMoment,
+});
+assertEqual(preparing.playbackState, 'loading', 'PLAY only starts loading until native status');
+const textOnly = mapDriveSessionToPresentation(playResult, {
+  sessionActive: true, playbackState: 'text-only', playbackMoment: confirmedMoment,
+});
+assertEqual(textOnly.playbackState, 'text-only', 'no audio cannot become playing');
 
 const legacyGuide = mapDriveSessionToPresentation(
   {
