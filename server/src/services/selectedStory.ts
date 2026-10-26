@@ -1,5 +1,5 @@
 import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from './driveSession';
-import { sessionDiscoveryCandidate } from './aheadDiscovery';
+import { sessionExplicitCandidate } from './aheadDiscovery';
 import { discoveryEvidence } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
@@ -16,11 +16,41 @@ export class StorySelectionError extends Error {
 
 const categories: Record<string, [string,string]> = {city:['город','city'],museum:['музей','museum'],park:['парк','park'],national_park:['национальный парк','national park'],historical_landmark:['историческое место','historic landmark'],cultural_landmark:['достопримечательность','landmark'],monument:['памятник','monument'],university:['университет','university'],region:['регион','region']};
 
+/** A short-lived replay guard lives inside the session process, not JourneyState. */
+type SelectedResult = Awaited<ReturnType<typeof generateSelectedStory>>;
+const pendingSelections = new Map<string, { key: string; promise: Promise<SelectedResult> }>();
+const latestSelections = new Map<string, { key: string; value: SelectedResult }>();
+
+export async function selectStory(id: string, userId: string, poiId: string, level: string, language?: string): Promise<SelectedResult> {
+  const session = getSession(id);
+  if (!session || session.userId !== userId) throw new StorySelectionError(404, 'Session not found');
+  const key = JSON.stringify([poiId, level, language ?? session.params.language, session.params.voiceId]);
+  const pending = pendingSelections.get(id);
+  if (pending?.key === key) return pending.promise;
+  const prior = latestSelections.get(id);
+  if (prior?.key === key && prior.value.momentId &&
+      session.journeyState.getActiveMoment()?.momentId === prior.value.momentId) return prior.value;
+  const promise = generateSelectedStory(id, userId, poiId, level, language);
+  pendingSelections.set(id, { key, promise });
+  try {
+    const value = await promise;
+    if (getSession(id) === session) {
+      latestSelections.delete(id);
+      latestSelections.set(id, { key, value });
+      // Bound ephemeral completed-selection storage independently of user count.
+      while (latestSelections.size > 80) latestSelections.delete(latestSelections.keys().next().value!);
+    }
+    return value;
+  } finally {
+    if (pendingSelections.get(id)?.promise === promise) pendingSelections.delete(id);
+  }
+}
+
 /** Latest explicit choice supersedes previous work; discovery never waits for this pipeline. */
-export async function selectStory(id: string, userId: string, poiId: string, level: string, language?: string) {
+async function generateSelectedStory(id: string, userId: string, poiId: string, level: string, language?: string) {
   const session = getSession(id);
   if (!session || session.userId !== userId) throw new StorySelectionError(404,'Session not found');
-  const candidate = sessionDiscoveryCandidate(id,poiId);
+  const candidate = sessionExplicitCandidate(id,poiId);
   if (!candidate) throw new StorySelectionError(404,'Object is no longer available');
   if (!['identify','short','long'].includes(level)) throw new StorySelectionError(400,'Invalid story level');
   if (language !== undefined && !['ru','en'].includes(language)) throw new StorySelectionError(400,'Invalid language');
@@ -50,7 +80,10 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
     let planned: ReturnType<typeof prepareNarrative> | undefined;
     if (level === 'identify') {
       const category = (categories[candidate.targetType] ?? ['место','place'])[params.language === 'ru' ? 0 : 1];
-      const text = params.language === 'ru' ? `${candidate.name} — ${category} рядом с вами.` : `${candidate.name}, a ${category} near you.`;
+      const far = candidate.distanceMeters > 1500;
+      const text = params.language === 'ru'
+        ? `${candidate.name} — ${category} ${far ? 'в районе вашего маршрута' : 'рядом с вами'}.`
+        : `${candidate.name}, a ${category} ${far ? 'in the area along your route' : 'near you'}.`;
       result = await generateIdentification(text,params.voiceId,params.language,userId);
       // Availability is resolved separately so identifying a place never waits for knowledge lookup.
     } else {
@@ -64,6 +97,9 @@ export async function selectStory(id: string, userId: string, poiId: string, lev
       journey?.selectCallback({ entityId: poiId, topicKeys });
       planned = prepareNarrative({poiId,placeName:candidate.name,mode:params.mode ?? 'walking',guideId:params.voiceId,themeTags:params.themeTags,targetDurationSec:duration}, evidence,
         { level: level as 'short' | 'long', language: params.language, continuation: session.storyContinuation, journey: journey?.getSnapshot() });
+      if (candidate.distanceMeters > 1609.344) {
+        planned.plan.mustAvoid.push('Do not describe this selected distant location as right here, just ahead, or directly in front of the traveler.');
+      }
       result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal});
     }
     check();
