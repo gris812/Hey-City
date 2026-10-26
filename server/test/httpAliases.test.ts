@@ -92,7 +92,7 @@ async function run(): Promise<void> {
       lng: -74.0104,
       heading: 180,
       speed: 35,
-      timestamp: 10_000,
+      timestamp: Date.now(),
     });
   assert.equal(first.nextAction, 'PLAY');
   assert.equal(first.decision?.type, 'trigger_story');
@@ -111,7 +111,7 @@ async function run(): Promise<void> {
       lng: -74.0105,
       heading: 90,
       speed: 35,
-      timestamp: 20_000,
+      timestamp: Date.now(),
     });
   assert.equal(second.nextAction, 'NONE');
   assert.equal(second.decision?.type, 'hold');
@@ -137,7 +137,7 @@ async function run(): Promise<void> {
       lng: -74.0105,
       heading: 90,
       speed: 35,
-      timestamp: 30_000,
+      timestamp: Date.now(),
     });
   assert.equal(afterStoryEnd.nextAction, 'NONE');
   assert.equal(afterStoryEnd.decision?.type, 'hold');
