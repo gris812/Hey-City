@@ -14,6 +14,8 @@ function guestHeaders(guestId?: string): Record<string, string> | undefined {
 }
 
 export async function startDriveSession(params: {
+  mode?: 'walking' | 'vehicle';
+  autoMode?: boolean;
   themeTags?: string[];
   narrationStyle?: string;
   lengthSec?: number;
@@ -61,7 +63,7 @@ export async function pingDriveSession(
   lat: number,
   lng: number,
   heading: number | null,
-  speed: number,
+  speed: number | null,
   timestamp: number,
   accuracyMeters?: number,
   forceAheadRefresh = false,
@@ -79,7 +81,7 @@ export async function forceAheadDiscoveryRefresh(params: {
   lat: number;
   lng: number;
   heading: number | null;
-  speed: number;
+  speed: number | null;
   timestamp: number;
   accuracyMeters?: number;
   guestId?: string;

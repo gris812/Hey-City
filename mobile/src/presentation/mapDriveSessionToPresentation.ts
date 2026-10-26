@@ -7,12 +7,15 @@ import type {
   LivePresentationState,
   PlaybackState,
   PresentationMode,
+  StoryPlaybackIdentity,
 } from './livePresentation';
 
 export type LocalPresentationSessionState = {
   sessionActive: boolean;
   playbackState: PlaybackState;
   audioProgress?: number;
+  playback?: StoryPlaybackIdentity;
+  movementMode?: 'walking' | 'vehicle';
 };
 
 const TRANSCRIPT_PREVIEW_LIMIT = 180;
@@ -21,17 +24,19 @@ export function mapDriveSessionToPresentation(
   result: PingResult | null,
   localState: LocalPresentationSessionState
 ): LivePresentationState {
-  const activeTarget = getActiveTarget(result);
+  const activeTarget = localState.sessionActive ? localState.playback?.target ?? getActiveTarget(result) : undefined;
   const playbackState = getPlaybackState(result, localState);
   const discoveryPhase = getDiscoveryPhase(result, localState.sessionActive);
 
   return {
     discoveryPhase,
+    movementMode: localState.movementMode,
+    playback: localState.sessionActive ? localState.playback : undefined,
     playbackState,
     activeTarget,
-    activeGuideId: getGuideId(result),
+    activeGuideId: localState.playback?.guideId ?? getGuideId(result),
     presentationMode: getPresentationMode(discoveryPhase, playbackState),
-    transcriptPreview: getTranscriptPreview(result),
+    transcriptPreview: localState.playback ? getTranscriptPreview({ nextAction: 'NONE', transcriptText: localState.playback.transcript }) : getTranscriptPreview(result),
     audioProgress: localState.audioProgress,
     holdReason: result?.decision?.type === 'hold' ? result.decision.reason : undefined,
   };
@@ -54,12 +59,8 @@ function getPlaybackState(
   localState: LocalPresentationSessionState
 ): PlaybackState {
   if (!localState.sessionActive) return 'idle';
-  if (localState.playbackState === 'error') return 'error';
-  if (localState.playbackState === 'loading') return 'loading';
-  if (localState.playbackState === 'paused') return 'paused';
-  if (localState.playbackState === 'completed') return 'completed';
-  if (result?.nextAction === 'PLAY') return 'playing';
-  return localState.playbackState === 'playing' ? 'playing' : 'idle';
+  // Server PLAY is a command. Audible start is confirmed only by native media status.
+  return localState.playbackState;
 }
 
 function getPresentationMode(

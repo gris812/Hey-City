@@ -7,6 +7,8 @@ export type DiscoveryPhase =
 
 export type PlaybackState =
   | 'idle'
+  | 'preparing'
+  | 'text_only'
   | 'loading'
   | 'playing'
   | 'paused'
@@ -25,7 +27,19 @@ export type DiscoveryTargetSummary = {
   longitude?: number;
 };
 
+/** Native playback identity is local media state, not a second JourneyState. */
+export type StoryPlaybackIdentity = {
+  sessionId: string;
+  momentId: string;
+  poiId: string;
+  guideId: GuideId;
+  target: DiscoveryTargetSummary;
+  transcript?: string;
+};
+
 export type LivePresentationState = {
+  movementMode?: 'walking' | 'vehicle';
+  playback?: StoryPlaybackIdentity;
   discoveryPhase: DiscoveryPhase;
   playbackState: PlaybackState;
   activeTarget?: DiscoveryTargetSummary;

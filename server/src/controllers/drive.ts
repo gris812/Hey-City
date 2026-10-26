@@ -1,3 +1,4 @@
+import { discoveryConfig } from '../config';
 import type { StoryFinishReason } from '@heycity/shared';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
@@ -99,8 +100,8 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
   }
 
   const headingDeg = typeof heading === 'number' ? heading : null;
-  const speedKmh = typeof speed === 'number' ? speed : 0;
   const ts = typeof timestamp === 'number' ? timestamp : Date.now();
+  const speedKmh = observedSpeedKmh(speed, ts);
   const accuracy = typeof accuracyMeters === 'number' ? accuracyMeters : undefined;
 
   const result = await pingSession(
@@ -143,10 +144,11 @@ export async function forceAheadDiscoveryRefresh(req: AuthRequest, res: Response
     lat,
     lng,
     typeof heading === 'number' ? heading : null,
-    typeof speed === 'number' ? speed : 0,
+    observedSpeedKmh(speed, typeof timestamp === 'number' ? timestamp : Date.now()),
     typeof timestamp === 'number' ? timestamp : Date.now(),
     typeof accuracyMeters === 'number' ? accuracyMeters : undefined,
-    true
+    true,
+    true // Refresh is discovery-only; never generate an unconsumed PLAY response.
   );
   res.json({ aheadDiscovery: result.aheadDiscovery });
 }
@@ -231,4 +233,11 @@ export async function getPoiCandidates(req: AuthRequest, res: Response): Promise
     console.error('getPoiCandidates', e, headingDeg);
     res.status(500).json({ error: 'Local POI seed unavailable' });
   }
+}
+
+/** Unknown/stale speed must not count as a confirmed stop. Uses the existing GPS age limit. */
+export function observedSpeedKmh(speed: unknown, timestamp: number, now = Date.now()): number {
+  return typeof speed === 'number' && Number.isFinite(speed) && speed >= 0 &&
+    Number.isFinite(timestamp) && timestamp <= now && now - timestamp <= discoveryConfig.gpsStaleSeconds * 1000
+    ? speed : -1;
 }
