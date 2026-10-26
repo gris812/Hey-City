@@ -103,3 +103,6 @@ assert.match(guideProfile, /borderRadius: radius\.sm/, 'Full guide profile avoid
 assert.doesNotMatch(guideProfile, /backgroundColor: 'rgba\(0,0,0/, 'Full guide profile does not cover the portrait with a dark overlay');
 
 console.log('citySignalUiContract tests passed');
+
+assert.match(settings, /const guideImages = \{ \.\.\.guideSelectionImages, dana: guideAvatarImages\.dana \}/, 'Dana Settings card uses the approved face portrait, independent of full profile');
+assert.match(exploreHome, /source=\{guideImage\} style=\{styles\.guideAvatar\} resizeMode="contain"/, 'Primary map avatar keeps the complete head in its existing round frame');
