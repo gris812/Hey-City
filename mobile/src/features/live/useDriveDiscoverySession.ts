@@ -6,6 +6,7 @@ import {
   finishDriveStory,
   forceAheadDiscoveryRefresh,
   pingDriveSession,
+  selectDriveStory,
   startDriveSession,
   stopDriveSession,
   type PingResult,
@@ -80,6 +81,8 @@ export function useDriveDiscoverySession(input: {
   const [playingName, setPlayingName] = useState<string | null>(null);
   const [activeAudio, setActiveAudio] = useState<{ momentId: string; poiId: string; name: string; guideId?: string } | null>(null);
   const completedMomentRef = useRef<string | null>(null);
+  const explicitRequestRef = useRef<{ poiId: string; level: 'short' | 'long'; revision: number } | null>(null);
+  const explicitRevisionRef = useRef(0);
   const [localPlaybackState, setLocalPlaybackState] = useState<PlaybackState>('idle');
   const [lastMotion, setLastMotion] = useState<DriveMotion | null>(null);
   const [deviceLocation, setDeviceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -209,6 +212,8 @@ export function useDriveDiscoverySession(input: {
     setDriveDiscoveryOn(false);
     clearDrivePingInterval(pingIntervalRef);
     pingRevisionRef.current += 1;
+    explicitRevisionRef.current += 1;
+    explicitRequestRef.current = null;
     setMovementMode('walking');
     setLastResult(null);
     setPlayingName(null);
@@ -265,6 +270,47 @@ export function useDriveDiscoverySession(input: {
       setLocalPlaybackState('error');
     }
   }, [guestId, sessionId]);
+
+  const tellStoryNow = useCallback(async (poiId: string, level: 'short' | 'long' = 'short') => {
+    if (!sessionId || !poiId) return;
+    if (explicitRequestRef.current?.poiId === poiId &&
+        explicitRequestRef.current.level === level) return;
+    if (activeAudio?.poiId === poiId && localPlaybackState === 'playing') return;
+
+    const revision = ++explicitRevisionRef.current;
+    explicitRequestRef.current = { poiId, level, revision };
+    activeMomentIdRef.current = null;
+    setActiveAudio(null);
+    setPlayingName(null);
+    setLocalPlaybackState('loading');
+    setSessionError(null);
+    await conversationPlaybackRef.current.clear().catch(() => {});
+    storySoundRef.current = null;
+    if (revision !== explicitRevisionRef.current) return;
+
+    try {
+      const response = await selectDriveStory(sessionId, poiId, level, guideLanguage, guestId);
+      if (revision !== explicitRevisionRef.current) return;
+      if (!response.audioUrl || !response.momentId) {
+        setLocalPlaybackState(response.transcriptText ? 'text-only' : 'error');
+        setSessionError(response.transcriptText ? null : 'A verified story is not available as audio.');
+        return;
+      }
+      completedMomentRef.current = null;
+      activeMomentIdRef.current = response.momentId;
+      setLocalPlaybackState('loading');
+      await loadStoryPlayback(response.momentId, response.audioUrl, response.poiId, response.name, guideId);
+    } catch (error) {
+      if (revision !== explicitRevisionRef.current) return;
+      setLocalPlaybackState('error');
+      setSessionError((error as Error).message.includes('verified information')
+        ? 'There is not enough verified information for a story.'
+        : 'This story could not be started. Try again.');
+    } finally {
+      if (explicitRequestRef.current?.revision === revision) explicitRequestRef.current = null;
+    }
+  }, [activeAudio?.poiId, guestId, guideId, guideLanguage, loadStoryPlayback,
+      localPlaybackState, sessionId]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -765,6 +811,7 @@ export function useDriveDiscoverySession(input: {
     presentation,
     startSession,
     stopSession,
+    tellStoryNow,
     toggleTheme,
     finishStory,
     pausePlayback,
