@@ -7,6 +7,7 @@ import {
   forceAheadDiscoveryRefresh,
   pingDriveSession,
   startDriveSession,
+  selectDriveStory,
   stopDriveSession,
   type PingResult,
   type StoryFinishReason,
@@ -102,6 +103,10 @@ export function useDriveDiscoverySession(input: {
   const playbackGenerationRef = useRef(0);
   const completedMomentIdsRef = useRef(new Set<string>());
   const pingInFlightRef = useRef(false);
+  const selectionRevisionRef = useRef(0);
+  const selectionInFlightRef = useRef<{ key: string; promise: Promise<boolean> } | null>(null);
+  const sessionRef = useRef<string | null>(null);
+  const [selectionPending, setSelectionPending] = useState(false);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
   const storySoundRef = useRef<Audio.Sound | null>(null);
@@ -175,6 +180,8 @@ export function useDriveDiscoverySession(input: {
         guestId,
       });
       setSessionId(id);
+      sessionRef.current = id;
+      selectionRevisionRef.current += 1;
       setMovementMode('walking');
       activeMomentIdRef.current = null;
       playbackMomentRef.current = null;
@@ -210,6 +217,10 @@ export function useDriveDiscoverySession(input: {
     try {
       await stopDriveSession(sessionId, guestId);
     } catch (_) {}
+    sessionRef.current = null;
+    selectionRevisionRef.current += 1;
+    selectionInFlightRef.current = null;
+    setSelectionPending(false);
     setSessionId(null);
     activeMomentIdRef.current = null;
     playbackMomentRef.current = null;
@@ -279,6 +290,63 @@ export function useDriveDiscoverySession(input: {
   }, [guestId]);
 
 
+  const selectKnownStory = useCallback(
+    (poiId: string, level: 'short' | 'long' = 'short'): Promise<boolean> => {
+      const currentSessionId = sessionRef.current;
+      if (!currentSessionId || !poiId) return Promise.resolve(false);
+      const key = `${currentSessionId}:${poiId}:${level}:${guideLanguage}`;
+      if (selectionInFlightRef.current?.key === key) return selectionInFlightRef.current.promise;
+      const revision = ++selectionRevisionRef.current;
+      setSelectionPending(true);
+      setSessionError(null);
+      // Explicit selection supersedes the previous native audio immediately.
+      playbackGenerationRef.current += 1;
+      activeMomentIdRef.current = null;
+      playbackMomentRef.current = null;
+      setPlaybackMoment(null);
+      setPlayingName(null);
+      setLocalPlaybackState('idle');
+      const task = (async () => {
+        try {
+          await clearConversationPlayback();
+          if (sessionRef.current !== currentSessionId || selectionRevisionRef.current !== revision) return false;
+          const story = await selectDriveStory(currentSessionId, poiId, level, guideLanguage, guestId);
+          if (sessionRef.current !== currentSessionId || selectionRevisionRef.current !== revision) return false;
+          if (!story.momentId) {
+            setSessionError('Selected story did not return a playback identity.');
+            return false;
+          }
+          const moment: PlaybackMoment = {
+            sessionId: currentSessionId, momentId: story.momentId,
+            poiId: story.poiId, guideId, name: story.name,
+            transcriptText: story.transcriptText,
+          };
+          activeMomentIdRef.current = moment.momentId;
+          playbackMomentRef.current = moment;
+          setPlaybackMoment(moment);
+          setPlayingName(moment.name);
+          setLocalPlaybackState(story.audioUrl ? 'loading' : 'text-only');
+          if (story.audioUrl) void loadStoryPlayback(moment, story.audioUrl);
+          return true;
+        } catch (error) {
+          if (sessionRef.current === currentSessionId && selectionRevisionRef.current === revision) {
+            setSessionError((error as Error).message || 'Selected story is unavailable.');
+            setLocalPlaybackState('error');
+          }
+          return false;
+        } finally {
+          if (selectionRevisionRef.current === revision) setSelectionPending(false);
+        }
+      })();
+      selectionInFlightRef.current = { key, promise: task };
+      void task.then(() => {
+        if (selectionInFlightRef.current?.promise === task) selectionInFlightRef.current = null;
+      });
+      return task;
+    },
+    [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback],
+  );
+
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
       profileRef.current = null;
@@ -323,6 +391,7 @@ export function useDriveDiscoverySession(input: {
     const runPing = async () => {
       if (pingInFlightRef.current) return;
       pingInFlightRef.current = true;
+      const revisionAtStart = selectionRevisionRef.current;
       try {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -360,6 +429,8 @@ export function useDriveDiscoverySession(input: {
           false,
           guestId
         );
+        // Responses from pings preceding an explicit selection are stale.
+        if (selectionRevisionRef.current !== revisionAtStart || sessionRef.current !== sessionId) return;
         setLastResult(result);
         if (result.mode === 'walking' || result.mode === 'vehicle') setMovementMode(result.mode);
         // PLAY is a server instruction to begin loading, not proof of audible playback.
@@ -788,6 +859,8 @@ export function useDriveDiscoverySession(input: {
     pausePlayback,
     resumePlayback,
     forceAheadRefresh,
+    selectKnownStory,
+    selectionPending,
     beginConversation,
     sendConversationTurn,
     resumeConversation,
