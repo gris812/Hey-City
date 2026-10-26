@@ -174,6 +174,7 @@ export function LiveScreen() {
     setMuted,
     lastResult,
     lastMotion,
+    movementMode,
     deviceLocation,
     aheadRefreshLoading,
     aheadRefreshStatus,
@@ -315,7 +316,7 @@ export function LiveScreen() {
     primaryStatusLabel: sessionError
       ? t('common.error')
       : sessionId
-        ? t('walking.modeStatus')
+        ? t(movementMode === 'vehicle' ? 'vehicle.modeStatus' : 'walking.modeStatus')
         : t('app.loading'),
     secondaryActionLabel: t('walking.chooseWalk'),
   });
@@ -985,7 +986,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {lastMotion.speedKmh.toFixed(1)} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
+                  Speed {(lastMotion.speedKmh === null ? 'unknown' : lastMotion.speedKmh.toFixed(1))} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
