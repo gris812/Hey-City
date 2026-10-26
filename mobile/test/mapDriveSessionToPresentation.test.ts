@@ -67,11 +67,20 @@ const playingAgain = mapDriveSessionToPresentation(playResult, {
 
 assertDeepEqual(playingAgain, playing, 'same input maps deterministically');
 assertEqual(playing.discoveryPhase, 'target_active', 'PLAY result activates target phase');
-assertEqual(playing.playbackState, 'playing', 'PLAY result maps to playing');
+assertEqual(playing.playbackState, 'idle', 'server PLAY does not prove native audio playback');
 assertEqual(playing.presentationMode, 'map', 'current backend contract stays map-first');
 assertEqual(playing.activeGuideId, 'arthur', 'guide id comes from backend plan');
 assertEqual(playing.activeTarget?.name, 'Federal Hall', 'active target comes from backend POI');
 assertEqual(playing.activeTarget?.latitude, 40.707, 'target latitude is preserved');
+
+const ownedAudio = mapDriveSessionToPresentation(
+  { ...playResult, nextAction: 'NONE', poi: undefined },
+  { sessionActive: true, playbackState: 'playing',
+    activeAudio: { momentId: 'moment-b', poiId: 'poi-b', name: 'Story B', guideId: 'dana' } }
+);
+assertEqual(ownedAudio.playbackState, 'playing', 'native playback status is authoritative');
+assertEqual(ownedAudio.activeTarget?.id, 'poi-b', 'audio moment B must not inherit discovery POI A');
+assertEqual(ownedAudio.activeGuideId, 'dana', 'audio guide ownership is preserved');
 
 const legacyGuide = mapDriveSessionToPresentation(
   {
