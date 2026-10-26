@@ -193,6 +193,23 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.units')}</Text>
+          <View style={styles.chipRow}>
+            {(['metric', 'imperial'] as const).map(unitSystem => (
+              <TouchableOpacity
+                key={unitSystem}
+                accessibilityRole="button"
+                accessibilityState={{ selected: preferences.unitSystem === unitSystem }}
+                style={[styles.chip, preferences.unitSystem === unitSystem && styles.chipActive]}
+                onPress={() => void updatePreferences({ unitSystem })}
+              >
+                <Text style={styles.chipText}>{t(unitSystem === 'metric' ? 'settings.metric' : 'settings.imperial')}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('settings.audioText')}</Text>
           <Text style={styles.hint}>{t('settings.audioHint')}</Text>
           <View style={styles.row}>
