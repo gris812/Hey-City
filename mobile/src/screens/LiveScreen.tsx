@@ -187,6 +187,8 @@ export function LiveScreen() {
     pausePlayback,
     resumePlayback,
     forceAheadRefresh,
+    selectKnownStory,
+    selectionPending,
     realtimeVoiceState,
     activateRealtimeVoice,
     closeRealtimeVoiceSession,
@@ -1278,6 +1280,15 @@ export function LiveScreen() {
         unitSystem={preferences.unitSystem}
         guideName={t(`guide.${preferences.preferredGuideId}`)}
         guideImage={guideImages[preferences.preferredGuideId]}
+        selectionPending={selectionPending}
+        selectionError={sessionError}
+        vehicleMode={movementMode === 'vehicle'}
+        onTellStory={(level) => {
+          if (!selectedExplorePlace || !sessionId) return;
+          void selectKnownStory(selectedExplorePlace.id, level).then(ok => {
+            if (ok) setSelectedExplorePlaceId(null);
+          });
+        }}
         hasActiveStory={Boolean(
           selectedExplorePlace &&
           presentation.activeTarget?.id === selectedExplorePlace.id &&
