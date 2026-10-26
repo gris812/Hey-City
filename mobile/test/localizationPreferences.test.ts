@@ -1,6 +1,7 @@
 import {
   createInitialGuestPreferences,
   normalizeGuidePreference,
+  normalizeMeasurementSystem,
   normalizeLocale,
   sanitizeGuestPreferences,
 } from '../src/localization/preferences';
@@ -25,6 +26,7 @@ const persisted = sanitizeGuestPreferences(
     appLanguage: 'en',
     guideLanguage: 'ru',
     preferredGuideId: 'arthur',
+    measurementSystem: 'imperial',
     onboardingCompleted: true,
   },
   'ru'
@@ -32,6 +34,9 @@ const persisted = sanitizeGuestPreferences(
 assertEqual(persisted.appLanguage, 'en', 'persisted app language is not overwritten');
 assertEqual(persisted.guideLanguage, 'ru', 'persisted guide language remains independent');
 assertEqual(persisted.preferredGuideId, 'arthur', 'preferred guide persists');
+assertEqual(persisted.measurementSystem, 'imperial', 'unit preference survives storage and language change');
+assertEqual(normalizeMeasurementSystem('broken'), 'metric', 'invalid units default to metric');
+assertEqual(firstRun.measurementSystem, 'metric', 'new guest defaults to metric independent of language');
 assertEqual(persisted.onboardingCompleted, true, 'onboarding completion persists');
 assertEqual(persisted.welcomeExperienceSeen, false, 'older installations migrate to the new Welcome experience');
 assertEqual(
