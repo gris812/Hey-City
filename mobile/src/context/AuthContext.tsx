@@ -38,6 +38,7 @@ const GUEST_ID_KEY = 'guest_id';
 const APP_LANGUAGE_KEY = 'pref_app_language';
 const GUIDE_LANGUAGE_KEY = 'pref_guide_language';
 const PREFERRED_GUIDE_KEY = 'pref_guide_id';
+const MEASUREMENT_SYSTEM_KEY = 'pref_measurement_system';
 const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
 const SHOW_ONBOARDING_AT_LAUNCH_KEY = 'show_onboarding_at_launch';
 const WELCOME_EXPERIENCE_SEEN_KEY = 'welcome_experience_v1_seen';
@@ -53,11 +54,12 @@ async function getOrCreateGuestId(): Promise<string> {
 
 async function readPreferences(): Promise<GuestPreferences> {
   const systemLocale = getSystemLocale();
-  const [appLanguage, guideLanguage, preferredGuideId, onboardingCompleted, showOnboardingAtLaunch, welcomeExperienceSeen] =
+  const [appLanguage, guideLanguage, preferredGuideId, measurementSystem, onboardingCompleted, showOnboardingAtLaunch, welcomeExperienceSeen] =
     await Promise.all([
       SecureStore.getItemAsync(APP_LANGUAGE_KEY),
       SecureStore.getItemAsync(GUIDE_LANGUAGE_KEY),
       SecureStore.getItemAsync(PREFERRED_GUIDE_KEY),
+      SecureStore.getItemAsync(MEASUREMENT_SYSTEM_KEY),
       SecureStore.getItemAsync(ONBOARDING_COMPLETED_KEY),
       SecureStore.getItemAsync(SHOW_ONBOARDING_AT_LAUNCH_KEY),
       SecureStore.getItemAsync(WELCOME_EXPERIENCE_SEEN_KEY),
@@ -67,6 +69,7 @@ async function readPreferences(): Promise<GuestPreferences> {
     appLanguage !== null ||
     guideLanguage !== null ||
     preferredGuideId !== null ||
+    measurementSystem !== null ||
     onboardingCompleted !== null ||
     showOnboardingAtLaunch !== null ||
     welcomeExperienceSeen !== null;
@@ -82,6 +85,7 @@ async function readPreferences(): Promise<GuestPreferences> {
       appLanguage,
       guideLanguage,
       preferredGuideId,
+      measurementSystem,
       onboardingCompleted: onboardingCompleted === 'true',
       showOnboardingAtLaunch:
         showOnboardingAtLaunch === null ? null : showOnboardingAtLaunch === 'true',
@@ -97,6 +101,7 @@ async function persistPreferences(preferences: GuestPreferences): Promise<void> 
     SecureStore.setItemAsync(APP_LANGUAGE_KEY, preferences.appLanguage),
     SecureStore.setItemAsync(GUIDE_LANGUAGE_KEY, preferences.guideLanguage),
     SecureStore.setItemAsync(PREFERRED_GUIDE_KEY, preferences.preferredGuideId),
+    SecureStore.setItemAsync(MEASUREMENT_SYSTEM_KEY, preferences.measurementSystem),
     SecureStore.setItemAsync(
       ONBOARDING_COMPLETED_KEY,
       preferences.onboardingCompleted ? 'true' : 'false'
