@@ -13,6 +13,7 @@ export type LocalPresentationSessionState = {
   sessionActive: boolean;
   playbackState: PlaybackState;
   audioProgress?: number;
+  activeAudio?: { momentId: string; poiId: string; name: string; guideId?: string } | null;
 };
 
 const TRANSCRIPT_PREVIEW_LIMIT = 180;
@@ -21,7 +22,12 @@ export function mapDriveSessionToPresentation(
   result: PingResult | null,
   localState: LocalPresentationSessionState
 ): LivePresentationState {
-  const activeTarget = getActiveTarget(result);
+  const ownsAudibleMoment = Boolean(localState.activeAudio &&
+    (localState.playbackState === 'playing' || localState.playbackState === 'paused' ||
+     localState.playbackState === 'loading'));
+  const activeTarget = ownsAudibleMoment && localState.activeAudio
+    ? { id: localState.activeAudio.poiId, name: localState.activeAudio.name }
+    : getActiveTarget(result);
   const playbackState = getPlaybackState(result, localState);
   const discoveryPhase = getDiscoveryPhase(result, localState.sessionActive);
 
@@ -29,7 +35,7 @@ export function mapDriveSessionToPresentation(
     discoveryPhase,
     playbackState,
     activeTarget,
-    activeGuideId: getGuideId(result),
+    activeGuideId: fromBackendGuideId(ownsAudibleMoment ? localState.activeAudio?.guideId?.toLowerCase() : result?.narrativePlan?.guideId?.toLowerCase()),
     presentationMode: getPresentationMode(discoveryPhase, playbackState),
     transcriptPreview: getTranscriptPreview(result),
     audioProgress: localState.audioProgress,
