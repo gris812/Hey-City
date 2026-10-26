@@ -112,7 +112,8 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
     ts,
     accuracy,
     forceAheadRefresh === true,
-    req.body.discoveryOnly === true
+    req.body.discoveryOnly === true,
+    typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
   );
 
   res.json(result);
@@ -146,7 +147,9 @@ export async function forceAheadDiscoveryRefresh(req: AuthRequest, res: Response
     typeof speed === 'number' ? speed : 0,
     typeof timestamp === 'number' ? timestamp : Date.now(),
     typeof accuracyMeters === 'number' ? accuracyMeters : undefined,
-    true
+    true,
+    false,
+    typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
   );
   res.json({ aheadDiscovery: result.aheadDiscovery });
 }
