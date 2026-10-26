@@ -99,7 +99,9 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
   }
 
   const headingDeg = typeof heading === 'number' ? heading : null;
-  const speedKmh = typeof speed === 'number' ? speed : 0;
+  // Unknown/invalid speed must not be treated as a confirmed stop by auto-mode.
+  const speedKmh = typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
+    ? speed : Number.NaN;
   const ts = typeof timestamp === 'number' ? timestamp : Date.now();
   const accuracy = typeof accuracyMeters === 'number' ? accuracyMeters : undefined;
 
