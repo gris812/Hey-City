@@ -275,8 +275,8 @@ export function LiveScreen() {
     distanceMeters: aheadTarget.distanceMeters,
     isAhead: aheadTarget.isAhead,
     selected: true,
-    isNarrating:
-      presentation.playbackState === 'playing' || presentation.playbackState === 'paused',
+    isNarrating: presentation.playbackMoment?.poiId === aheadTarget.providerId &&
+      (presentation.playbackState === 'playing' || presentation.playbackState === 'paused'),
   } : undefined;
   const selectedExplorePlace = [exploreActiveTarget, ...exploreNearbyPlaces].find(
     (place): place is ExploreNearbyPlace => Boolean(place && place.id === selectedExplorePlaceId)
@@ -707,7 +707,7 @@ export function LiveScreen() {
               guideName={t(`guide.${preferences.preferredGuideId}`)}
               guideImage={guideImages[preferences.preferredGuideId]}
               text={backendWalkingStoryText}
-              playbackState={presentation.playbackState === 'paused' ? 'paused' : 'playing'}
+              playbackState={presentation.playbackState === 'paused' ? 'paused' : presentation.playbackState === 'playing' ? 'playing' : 'loading'}
               progress={presentation.audioProgress}
               continueLabel={t('walking.finishStory')}
               onPause={pausePlayback}
