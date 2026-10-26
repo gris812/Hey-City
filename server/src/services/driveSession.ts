@@ -226,7 +226,8 @@ export async function pingSession(
   timestamp: number,
   accuracyMeters?: number,
   forceAheadRefresh = false,
-  discoveryOnly = false
+  discoveryOnly = false,
+  speedKnown = true
 ): Promise<PingResult> {
   const session = sessions.get(sessionId);
   if (!session) {
@@ -234,7 +235,8 @@ export async function pingSession(
   }
 
   const now = timestamp || Date.now();
-  const activeMode = updateSessionMode(session, speedKmh);
+  // Unknown speed is not proof of a stop; preserve the current confirmed mode.
+  const activeMode = updateSessionMode(session, speedKnown ? speedKmh : Number.NaN);
   const movement = createMovementContext({
     latitude: lat,
     longitude: lng,
