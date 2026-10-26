@@ -162,6 +162,8 @@ export function useDriveDiscoverySession(input: {
         guideId,
         language: guideLanguage,
         autoplay,
+        mode: 'walking',
+        autoMode: true,
         guestId,
       });
       setSessionId(id);
