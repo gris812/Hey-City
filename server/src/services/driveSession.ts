@@ -235,11 +235,14 @@ export async function pingSession(
 
   const now = timestamp || Date.now();
   const activeMode = updateSessionMode(session, speedKmh);
+  // Geometry/discovery needs a finite speed; movement classifier above sees
+  // the original unknown value and therefore does not change mode.
+  const discoverySpeedKmh = Number.isFinite(speedKmh) && speedKmh >= 0 ? speedKmh : 0;
   const movement = createMovementContext({
     latitude: lat,
     longitude: lng,
     headingDegrees: typeof heading === 'number' && Number.isFinite(heading) ? heading : null,
-    speedKmh,
+    speedKmh: discoverySpeedKmh,
     accuracyMeters,
     timestampMs: now,
   });
@@ -252,7 +255,7 @@ export async function pingSession(
   if (sessions.get(sessionId) !== session) return {nextAction:'NONE'};
   const at = new Date(now).toISOString();
   session.journeyState.updateMovement({mode: activeMode, latitude: lat, longitude: lng,
-    headingDegrees: heading ?? undefined, speedKmh, observedAt: at});
+    headingDegrees: heading ?? undefined, speedKmh: discoverySpeedKmh, observedAt: at});
   const areaCandidates = aheadDiscovery.topCandidates
     .filter(candidate => ['city', 'town', 'locality', 'region'].includes(candidate.targetType) &&
       candidate.distanceMeters <= discoverySettings.cityContextRadiusMeters)
