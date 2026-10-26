@@ -28,6 +28,7 @@ import {
 import { colors, radius, spacing, typography } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useAppTranslation } from '../localization';
+import { formatDistance, formatSpeed } from '../localization/measurement';
 import type { TranslationKey } from '../localization/translations';
 import type { GuidePreference, SupportedLocale } from '../localization/preferences';
 import { NarrativeOverlay } from '../components/explore/NarrativeOverlay';
@@ -346,7 +347,7 @@ export function LiveScreen() {
     typeof tourState.distanceToCurrentTargetMeters === 'number'
       ? tourState.distanceToCurrentTargetMeters <= 95
         ? t('tour.aboutOneMinAway')
-        : `${Math.round(tourState.distanceToCurrentTargetMeters)} m`
+        : formatDistance(tourState.distanceToCurrentTargetMeters, preferences.measurementSystem)
       : undefined;
   const targetForArrival = narrativeTarget ?? currentTarget;
   const targetCategoryLabel = targetForArrival
@@ -660,6 +661,7 @@ export function LiveScreen() {
           height={Math.max(520, windowHeight - tabBarHeight)}
           topInset={insets.top}
           region={exploreRegion}
+          measurementSystem={preferences.measurementSystem}
           markers={aheadCandidates.slice(0, 8).map((candidate) => ({
             id: candidate.providerId,
             coordinate: {
@@ -987,7 +989,7 @@ export function LiveScreen() {
               )}
               {lastMotion && (
                 <Text style={styles.motionLabel}>
-                  Speed {lastMotion.speedKmh.toFixed(1)} km/h · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
+                  Speed {formatSpeed(lastMotion.speedKmh, preferences.measurementSystem)} · Heading {lastMotion.heading === null ? 'missing' : `${Math.round(lastMotion.heading)}°`}
                 </Text>
               )}
               {lastResult?.circuitLimited && (
@@ -1268,6 +1270,7 @@ export function LiveScreen() {
       <DiscoveryPlaceSheet
         visible={Boolean(selectedExplorePlace)}
         bottomInset={insets.bottom}
+        measurementSystem={preferences.measurementSystem}
         place={selectedExplorePlace}
         guideName={t(`guide.${preferences.preferredGuideId}`)}
         guideImage={guideImages[preferences.preferredGuideId]}
