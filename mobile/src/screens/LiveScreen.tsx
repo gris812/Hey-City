@@ -184,6 +184,7 @@ export function LiveScreen() {
     presentation,
     startSession,
     stopSession,
+    tellStoryNow,
     toggleTheme,
     finishStory,
     pausePlayback,
@@ -1309,6 +1310,10 @@ export function LiveScreen() {
         onClose={() => setSelectedExplorePlaceId(null)}
         onOpenMaps={(place) => void openPlaceInMaps(place)}
         onOpenStory={() => setSelectedExplorePlaceId(null)}
+        onTellNow={(place, level) => {
+          setSelectedExplorePlaceId(null);
+          void tellStoryNow(place.id, level);
+        }}
       />
 
       <Modal visible={sharePreviewOpen} animationType="slide">
