@@ -8,6 +8,7 @@ export type DiscoveryPhase =
 export type PlaybackState =
   | 'idle'
   | 'loading'
+  | 'text-only'
   | 'playing'
   | 'paused'
   | 'completed'
@@ -25,7 +26,11 @@ export type DiscoveryTargetSummary = {
   longitude?: number;
 };
 
+export type PlaybackMoment = { sessionId: string; momentId: string; poiId: string; guideId: GuideId; name: string; transcriptText?: string; latitude?: number; longitude?: number };
+
 export type LivePresentationState = {
+  playbackMoment?: PlaybackMoment;
+  discoveryTarget?: DiscoveryTargetSummary;
   discoveryPhase: DiscoveryPhase;
   playbackState: PlaybackState;
   activeTarget?: DiscoveryTargetSummary;
