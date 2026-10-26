@@ -13,18 +13,20 @@ import MapView, { Marker } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import {
-  formatDistance,
   formatTargetType,
   getTargetAccent,
   getTargetGlyph,
   type ExploreNearbyPlace,
 } from './ExploreHomeView';
+import { formatDistance } from '../../localization/measurement';
+import type { UnitSystem } from '../../localization/preferences';
 
 export type DiscoveryPlaceSheetProps = {
   visible: boolean;
   bottomInset: number;
   place?: ExploreNearbyPlace;
   guideName: string;
+  unitSystem: UnitSystem;
   guideImage: ImageSourcePropType;
   hasActiveStory: boolean;
   onClose: () => void;
@@ -37,6 +39,7 @@ export function DiscoveryPlaceSheet({
   bottomInset,
   place,
   guideName,
+  unitSystem,
   guideImage,
   hasActiveStory,
   onClose,
@@ -98,7 +101,7 @@ export function DiscoveryPlaceSheet({
             <View style={styles.metaRow}>
               <Text style={styles.categoryLabel}>{formatTargetType(place.targetType, locale)}</Text>
               <View style={styles.distancePill}>
-                <Text style={styles.distanceText}>{formatDistance(place.distanceMeters)}</Text>
+                <Text style={styles.distanceText}>{formatDistance(place.distanceMeters, unitSystem)}</Text>
               </View>
             </View>
 
