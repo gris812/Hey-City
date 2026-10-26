@@ -102,7 +102,7 @@ export function useDriveDiscoverySession(input: {
   const pingRevisionRef = useRef(0);
   const activeMomentIdRef = useRef<string | null>(null);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
-  const lastHeadingRef = useRef<number | null>(null);
+  const lastHeadingRef = useRef<{ value: number; observedAt: number } | null>(null);
   const storySoundRef = useRef<Audio.Sound | null>(null);
   const conversationSoundRef = useRef<Audio.Sound | null>(null);
   const benchmarkNoiseSoundRef = useRef<Audio.Sound | null>(null);
@@ -361,11 +361,13 @@ export function useDriveDiscoverySession(input: {
         });
         setDeviceLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
         const rawHeading = loc.coords.heading;
-        const heading =
-          typeof rawHeading === 'number' && rawHeading >= 0
-            ? rawHeading
-            : lastHeadingRef.current;
-        if (heading !== null) lastHeadingRef.current = heading;
+        const headingValid = typeof rawHeading === 'number' &&
+          Number.isFinite(rawHeading) && rawHeading >= 0;
+        if (headingValid) lastHeadingRef.current = { value: rawHeading, observedAt: Date.now() };
+        const heading = headingValid
+          ? rawHeading
+          : (lastHeadingRef.current && Date.now() - lastHeadingRef.current.observedAt <= 20_000
+            ? lastHeadingRef.current.value : null);
 
         // Missing/invalid GPS speed is unknown, not a reliable stop.
         const speedMps = typeof loc.coords.speed === 'number' &&
@@ -751,9 +753,11 @@ export function useDriveDiscoverySession(input: {
         accuracy: Location.Accuracy.Balanced,
       });
       const heading =
-        typeof loc.coords.heading === 'number' && loc.coords.heading >= 0
+        typeof loc.coords.heading === 'number' && Number.isFinite(loc.coords.heading) &&
+          loc.coords.heading >= 0
           ? loc.coords.heading
-          : lastHeadingRef.current;
+          : (lastHeadingRef.current && Date.now() - lastHeadingRef.current.observedAt <= 20_000
+            ? lastHeadingRef.current.value : null);
       const speedMps =
         typeof loc.coords.speed === 'number' && loc.coords.speed > 0
           ? loc.coords.speed
