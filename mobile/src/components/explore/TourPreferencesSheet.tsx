@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
 import type { GuidePreference, SupportedLocale } from '../../localization/preferences';
+import { useAppTranslation } from '../../localization';
+import type { TranslationKey } from '../../localization/translations';
 
 export type GuideProfileSummary = {
   role: string;
@@ -69,11 +71,23 @@ export function TourPreferencesSheet({
   onStartWalk,
   onMoreSettings,
 }: TourPreferencesSheetProps) {
+  const { t } = useAppTranslation();
+  const interestKey: Record<string, TranslationKey> = {
+    History: 'guide.interest.history',
+    Architecture: 'guide.interest.architecture',
+    'Hidden Gems': 'guide.interest.hiddenGems',
+    'Local Life': 'guide.interest.localLife',
+    'Food & Drink': 'tourPreferences.foodDrink',
+    'Art & Culture': 'tourPreferences.artCulture',
+    Atmosphere: 'guide.interest.atmosphere',
+    Context: 'guide.interest.context',
+  };
+  const interestLabel = (id: string) => interestKey[id] ? t(interestKey[id]) : id;
   return (
     <Modal visible={visible} animationType="slide">
       <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingTop: topInset + spacing.lg }]}>
-        <Text style={styles.title}>Start your walk</Text>
-        <Text style={styles.subtitle}>Choose your guide, interests and language. Defaults work if you skip this.</Text>
+        <Text style={styles.title}>{t('tourPreferences.title')}</Text>
+        <Text style={styles.subtitle}>{t('tourPreferences.subtitle')}</Text>
 
         <View style={styles.guideRow}>
           {guideIds.map((guideId) => {
@@ -86,7 +100,7 @@ export function TourPreferencesSheet({
                 accessibilityRole="button"
                 onPress={() => onOpenGuidePreview(guideId)}
               >
-                <Image source={guideImages[guideId]} style={styles.guideImage} resizeMode="cover" />
+                <Image source={guideImages[guideId]} style={styles.guideImage} resizeMode="contain" />
                 <Text style={styles.guideName}>{getGuideName(guideId)}</Text>
                 <Text style={styles.guideRole}>{guideProfiles[guideId].role}</Text>
                 {selected && <Text style={styles.check}>✓</Text>}
@@ -102,7 +116,7 @@ export function TourPreferencesSheet({
           })}
         </View>
 
-        <Text style={styles.sectionHeading}>Interests - choose up to 3</Text>
+        <Text style={styles.sectionHeading}>{t('tourPreferences.interests')}</Text>
         <View style={styles.chipRow}>
           {interestOptions.map((interest) => {
             const selected = selectedInterests.includes(interest);
@@ -110,27 +124,27 @@ export function TourPreferencesSheet({
               <TouchableOpacity
                 key={interest}
                 style={[styles.chip, selected && styles.chipActive]}
-                accessibilityLabel={`${selected ? 'Remove' : 'Select'} ${interest}`}
+                accessibilityLabel={`${t(selected ? 'tourPreferences.remove' : 'tourPreferences.select')} ${interestLabel(interest)}`}
                 onPress={() => onToggleInterest(interest)}
               >
-                <Text style={[styles.chipText, selected && styles.chipTextActive]}>{interest}</Text>
+                <Text style={[styles.chipText, selected && styles.chipTextActive]}>{interestLabel(interest)}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
         {!selectedInterests.length && (
           <Text style={styles.preferenceHint}>
-            No interests selected. We will use {getGuideName(selectedGuideId)}'s recommended mix.
+            {t('tourPreferences.fallback').replace('{guide}', getGuideName(selectedGuideId))}
           </Text>
         )}
 
-        <Text style={styles.sectionHeading}>Language</Text>
+        <Text style={styles.sectionHeading}>{t('settings.language')}</Text>
         <View style={styles.languageRow}>
           {(['en', 'ru'] as SupportedLocale[]).map((locale) => (
             <TouchableOpacity
               key={locale}
               style={[styles.languageButton, selectedLanguage === locale && styles.languageButtonActive]}
-              accessibilityLabel={`Select ${getLanguageName(locale)}`}
+              accessibilityLabel={`${t('tourPreferences.select')} ${getLanguageName(locale)}`}
               onPress={() => onSelectLanguage(locale)}
             >
               <Text style={[styles.languageButtonText, selectedLanguage === locale && styles.languageButtonTextActive]}>

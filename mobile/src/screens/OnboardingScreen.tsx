@@ -84,7 +84,7 @@ export function OnboardingScreen() {
                 ]}
                 onPress={() => void setPreferredGuide(guide)}
               >
-                <Image source={guideImages[guide]} style={styles.guideImage} resizeMode="cover" />
+                <Image source={guideImages[guide]} style={styles.guideImage} resizeMode="contain" />
                 <View style={styles.guideNameOverlay}>
                   <Text style={styles.guideName}>{t(`guide.${guide}`)}</Text>
                 </View>

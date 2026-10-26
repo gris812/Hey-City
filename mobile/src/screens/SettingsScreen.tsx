@@ -27,14 +27,14 @@ import { colors, radius, spacing, typography } from '../theme';
 import { LocationSimulationPanel } from '../dev/locationSimulation';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
 import { useGuideVoicePreview } from '../features/guides/useGuideVoicePreview';
-import { guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
+import { guideAvatarImages, guideFullProfileImages, guideSelectionImages } from '../presentation/guideAssets';
 
 const guideOptions: Array<{ id: GuidePreference }> = [
   { id: 'dana' },
   { id: 'arthur' },
 ];
 
-const guideImages = guideSelectionImages;
+const guideImages = { ...guideSelectionImages, dana: guideAvatarImages.dana };
 
 export function SettingsScreen() {
   const { identity, logout, preferences, updatePreferences } = useAuth();
@@ -77,15 +77,15 @@ export function SettingsScreen() {
   const fullGuideProfiles = {
     dana: {
       image: guideFullProfileImages.dana,
-      imageResizeMode: 'cover' as const,
+      imageResizeMode: 'contain' as const,
       name: t('guide.dana'),
       role: t('guide.danaRole'),
       body: t('guide.danaFullCopy'),
       interests: [t('guide.interest.hiddenGems'), t('guide.interest.localLife'), t('guide.interest.atmosphere')],
-      quote: 'Look up — this corner is easy to miss.',
+      quote: t('guide.danaQuote'),
       chooseLabel: t('guide.chooseDana'),
       voiceGreeting:
-        preferences.appLanguage === 'ru'
+        preferences.guideLanguage === 'ru'
           ? 'Привет! Я Dana. Я помогу замечать характер города, его людей и детали, мимо которых легко пройти.'
           : 'Hi, I’m Dana. I’ll help you notice the city’s character, its people, and the details that are easy to miss.',
     },
@@ -96,10 +96,10 @@ export function SettingsScreen() {
       role: t('guide.arthurRole'),
       body: t('guide.arthurFullCopy'),
       interests: [t('guide.interest.history'), t('guide.interest.architecture'), t('guide.interest.context')],
-      quote: 'This building connects finance and civic history.',
+      quote: t('guide.arthurQuote'),
       chooseLabel: t('guide.chooseArthur'),
       voiceGreeting:
-        preferences.appLanguage === 'ru'
+        preferences.guideLanguage === 'ru'
           ? 'Здравствуйте. Я Arthur. Вместе мы разберёмся, как история, архитектура и решения людей сформировали город вокруг нас.'
           : 'Hello. I’m Arthur. Together we’ll see how history, architecture, and human decisions shaped the city around us.',
     },
@@ -122,7 +122,7 @@ export function SettingsScreen() {
         <Text style={styles.title}>{t('settings.title')}</Text>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
           {identity.status === 'authenticated' ? (
             <TouchableOpacity style={styles.accountButton} onPress={() => logout()}>
               <Text style={styles.accountButtonText}>{t('settings.signOut')}</Text>
@@ -135,7 +135,7 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Guide & Interests</Text>
+          <Text style={styles.sectionTitle}>{t('settings.guideInterests')}</Text>
           <View style={styles.avatarRow}>
             {guideOptions.map((guide) => {
               const active = preferences.preferredGuideId === guide.id;
@@ -151,7 +151,7 @@ export function SettingsScreen() {
                   accessibilityLabel={`${t('guide.viewFullProfile')}: ${t(`guide.${guide.id}`)}`}
                   activeOpacity={0.85}
                 >
-                  <Image source={guideImages[guide.id]} style={styles.avatarImage} resizeMode="cover" />
+                  <Image source={guideImages[guide.id]} style={styles.avatarImage} resizeMode="contain" />
                   <View style={styles.avatarNameOverlay}>
                     <Text style={styles.avatarName}>{t(`guide.${guide.id}`)}</Text>
                   </View>
@@ -162,7 +162,7 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Language</Text>
+          <Text style={styles.sectionTitle}>{t('settings.language')}</Text>
           <Text style={styles.hint}>{t('onboarding.appLanguage')}</Text>
           <View style={styles.chipRow}>
             {supportedLocales.map((locale) => (
@@ -170,7 +170,7 @@ export function SettingsScreen() {
                 key={locale}
                 style={[styles.chip, preferences.appLanguage === locale && styles.chipActive]}
                 onPress={() => void updatePreferences({ appLanguage: locale as SupportedLocale })}
-                accessibilityLabel={`Select app language ${t(`language.${locale}`)}`}
+                accessibilityLabel={`${t('onboarding.appLanguage')}: ${t(`language.${locale}`)}`}
               >
                 <Text style={styles.chipText}>{t(`language.${locale}`)}</Text>
               </TouchableOpacity>
@@ -184,7 +184,7 @@ export function SettingsScreen() {
                 key={locale}
                 style={[styles.chip, preferences.guideLanguage === locale && styles.chipActive]}
                 onPress={() => void updatePreferences({ guideLanguage: locale as SupportedLocale })}
-                accessibilityLabel={`Select guide language ${t(`language.${locale}`)}`}
+                accessibilityLabel={`${t('onboarding.guideLanguage')}: ${t(`language.${locale}`)}`}
               >
                 <Text style={styles.chipText}>{t(`language.${locale}`)}</Text>
               </TouchableOpacity>
@@ -193,16 +193,16 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Audio & Text</Text>
-          <Text style={styles.hint}>Voice, speed and text size controls will use the active guide language.</Text>
+          <Text style={styles.sectionTitle}>{t('settings.audioText')}</Text>
+          <Text style={styles.hint}>{t('settings.audioHint')}</Text>
           <View style={styles.row}>
-            <Text style={styles.label}>Autoplay stories</Text>
+            <Text style={styles.label}>{t('settings.autoplayStories')}</Text>
             <Switch value disabled />
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>App Launch</Text>
+          <Text style={styles.sectionTitle}>{t('settings.appLaunch')}</Text>
           <View style={styles.row}>
             <Text style={styles.label}>{t('settings.onboardingAtLaunch')}</Text>
             <Switch
@@ -215,7 +215,7 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>History & Privacy</Text>
+          <Text style={styles.sectionTitle}>{t('settings.historyPrivacy')}</Text>
           <View style={styles.row}>
             <Text style={styles.label}>{t('settings.saveHistory')}</Text>
             <Switch value={historyEnabled} onValueChange={handleHistoryToggle} disabled={loading} />
@@ -224,7 +224,7 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About Hey City</Text>
+          <Text style={styles.sectionTitle}>{t('settings.about')}</Text>
           <Text style={styles.hint}>Version 1.0.0</Text>
         </View>
 

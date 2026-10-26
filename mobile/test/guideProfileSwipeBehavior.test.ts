@@ -7,7 +7,8 @@ import {
 assert.equal(shouldCaptureGuideSwipe(70, 10), true, 'horizontal gesture is captured');
 assert.equal(shouldCaptureGuideSwipe(-70, 10), true, 'horizontal gesture in either direction is captured');
 assert.equal(shouldCaptureGuideSwipe(12, 80), false, 'vertical ScrollView gesture is not captured');
-assert.equal(shouldCaptureGuideSwipe(18, 2), false, 'small movement remains available to buttons/taps');
+assert.equal(shouldCaptureGuideSwipe(12, 2), false, 'small movement remains available to buttons/taps');
+assert.equal(shouldCaptureGuideSwipe(20, 70), false, 'diagonal scroll does not steal vertical gesture');
 
 assert.equal(resolveGuideSwipe('dana', -70, 8), 'arthur', 'left swipe Dana -> Arthur');
 assert.equal(resolveGuideSwipe('arthur', 70, 8), 'dana', 'right swipe Arthur -> Dana');
