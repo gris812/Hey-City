@@ -23,8 +23,10 @@ elif name=='docker':
     elif args[0]=='info': print('[["driver-type","fixture-store"]]')
     elif args[:2]==['image','inspect']:
         ref=args[-1]; field=args[args.index('--format')+1]
-        print((new if ref==image else old) if field=='{{.Id}}' else ('a'*40 if ref==image else 'b'*40))
-    elif args[0]=='tag': s['rollbackTag']=args[-1]; write()
+        print((old if ref==old else new) if field=='{{.Id}}' else ('a'*40 if ref==image else 'b'*40))
+    elif args[0]=='tag':
+        assert args[1]==old, 'Rollback must capture the actual running image, not its mutable tag'
+        s['rollbackTag']=args[-1]; write()
     elif args[0]=='inspect':
         field=args[args.index('--format')+1]
         print({'{{.Config.Image}}':image if s['current']=='new' else 'old-image','{{.Image}}':new if s['current']=='new' else old,'{{.RestartCount}}':'0','{{.State.Running}}:{{.RestartCount}}':'true:0'}[field])

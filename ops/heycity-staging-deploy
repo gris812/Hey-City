@@ -69,8 +69,8 @@ compose_cmd=(docker compose --project-name heycity-staging --env-file "$envfile"
 previous_cid=$(docker ps -q --filter label=com.docker.compose.project=heycity-staging --filter label=com.docker.compose.service=api)
 [[ "$previous_cid" =~ ^[a-f0-9]+$ ]] || { echo 'A single running staging API is required for rollback' >&2; exit 78; }
 previous_ref=$(docker inspect --format '{{.Config.Image}}' "$previous_cid")
-previous_id=$(docker image inspect --format '{{.Id}}' "$previous_ref")
-previous_sha=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$previous_ref")
+previous_id=$(docker inspect --format '{{.Image}}' "$previous_cid")
+previous_sha=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$previous_id")
 rollback_tag="heycity-staging-rollback:$(date -u +%Y%m%d%H%M%S)"
 docker tag "$previous_id" "$rollback_tag"
 previous_health=$(curl -fsS --max-time 8 http://127.0.0.1:4110/health)
