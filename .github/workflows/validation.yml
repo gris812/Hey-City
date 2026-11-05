@@ -56,6 +56,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Release tooling behavioral tests
+        run: python3 -m unittest discover -s ops/test -v
+
       - name: Typecheck all workspaces
         run: npm run typecheck
 
@@ -95,6 +98,7 @@ jobs:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           docker save "heycity-staging-api:git-$SOURCE_SHA" | gzip > staging-image/api.tar.gz
+          python3 ops/image_identity.py staging-image/api.tar.gz --sha "$SOURCE_SHA" > staging-image/identity.json
           (cd staging-image && sha256sum api.tar.gz > SHA256SUMS)
 
       - name: Upload reviewed staging image
