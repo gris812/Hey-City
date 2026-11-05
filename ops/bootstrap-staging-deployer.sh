@@ -52,6 +52,8 @@ chown root:root /home/heycity-staging-ci/.ssh/authorized_keys
 chmod 0644 /home/heycity-staging-ci/.ssh/authorized_keys
 install -o root -g root -m 0755 "$here/heycity-staging-ssh" /usr/local/bin/heycity-staging-ssh
 install -o root -g root -m 0700 "$here/heycity-staging-deploy" /usr/local/sbin/heycity-staging-deploy
+install -d -o root -g root -m 0755 /usr/local/lib/heycity
+install -o root -g root -m 0644 "$here/image_identity.py" /usr/local/lib/heycity/image_identity.py
 install -d -o root -g root -m 0700 /opt/HeyCity-staging
 install -o root -g root -m 0644 "$compose_source" /opt/HeyCity-staging/docker-compose.staging.yml
 if [[ -n "$envsource" ]]; then

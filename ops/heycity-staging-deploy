@@ -2,7 +2,7 @@
 # Root-owned staging-only image receiver. Must NEVER be editable by the SSH account.
 set -euo pipefail
 umask 077
-if [[ "$(id -u)" != 0 || $# != 1 || ! "$1" =~ ^[a-f0-9]{40}$ ]]; then
+if [[ "$(id -u)" != 0 || $# -lt 1 || $# -gt 2 || ! "$1" =~ ^[a-f0-9]{40}$ ]]; then
   echo 'Invalid staging deployment invocation' >&2
   exit 64
 fi
@@ -10,6 +10,8 @@ fi
 exec 9>/run/lock/heycity-staging-deploy.lock
 flock -n 9 || { echo 'Another staging deploy is active' >&2; exit 75; }
 sha="$1"
+mode="${2:-deploy}"
+[[ "$mode" == deploy || "$mode" == diagnose ]] || exit 64
 image="heycity-staging-api:git-$sha"
 base=/opt/HeyCity-staging
 compose="$base/docker-compose.staging.yml"
@@ -33,6 +35,9 @@ if [[ -z "$available" || "$available" -lt 250 || ( "$running" -eq 0 && "$availab
   echo 'Host memory gate failed; staging not started' >&2; exit 75
 fi
 
+free_kb=$(df -Pk "$base" | awk 'NR==2 {print $4}')
+[[ "$free_kb" -ge 3145728 ]] || { echo 'Need 3GiB disk headroom for verified image transfer' >&2; exit 75; }
+production_health=$(curl -fsS --max-time 8 https://api.heycity.stolbergco.com/health)
 archive=$(mktemp /tmp/heycity-staging-image.XXXXXXXX.tar)
 trap 'rm -f "$archive"' EXIT
 if ! timeout 240 head -c 1073741825 > "$archive"; then
@@ -41,52 +46,74 @@ fi
 if [[ ! -s "$archive" || $(stat -c '%s' "$archive") -gt 1073741824 ]]; then
   echo 'Image archive exceeds 1GiB or is empty' >&2; exit 75
 fi
-python3 - "$archive" "$image" <<'PY'
-import json, sys, tarfile
-path, expected = sys.argv[1:]
-try:
-    with tarfile.open(path, 'r:') as tar:
-        f = tar.extractfile('manifest.json')
-        entries = json.load(f) if f else []
-    if len(entries) != 1 or entries[0].get('RepoTags') != [expected]:
-        raise ValueError('unexpected image tag')
-except Exception:
-    print('Image manifest validation failed', file=sys.stderr)
-    sys.exit(78)
-PY
+# Root-owned verifier is installed with this receiver, never taken from the incoming image.
+verifier=/usr/local/lib/heycity/image_identity.py
+[[ -f "$verifier" && -O "$verifier" ]] || { echo 'Install root-owned identity verifier first' >&2; exit 78; }
+python3 "$verifier" "$archive" --sha "$sha" > "$archive.identity.json"
+loaded=$(mktemp /tmp/heycity-loaded.XXXXXXXX.tar)
+trap 'rm -f "$archive" "$archive.identity.json" "$loaded" "$loaded.identity.json"' EXIT
+if [[ "$mode" == deploy ]]; then docker load -i "$archive" >/dev/null; fi
+docker save -o "$loaded" "$image"
+python3 "$verifier" "$archive" --sha "$sha" --compare "$loaded" > "$loaded.identity.json"
+# These engine fields contain no runtime environment or credentials.
+docker version --format '{{json .Server.Version}}'
+docker info --format '{{json .DriverStatus}}'
+cat "$loaded.identity.json"
+image_id=$(docker image inspect --format '{{.Id}}' "$image")
+printf 'loaded_engine_id=%s\n' "$image_id"
+[[ "$mode" == deploy ]] || exit 0
 
-docker load -i "$archive" >/dev/null
-revision=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")
-arch=$(docker image inspect --format '{{.Architecture}}' "$image")
-os=$(docker image inspect --format '{{.Os}}' "$image")
-if [[ "$revision" != "$sha" || "$arch" != amd64 || "$os" != linux ]]; then
-  echo 'Image revision or platform mismatch' >&2; exit 78
-fi
-
-# Only root-owned staging files. The environment overrides the image selector.
-export STAGING_API_IMAGE="$image"
+free_kb=$(df -Pk "$base" | awk 'NR==2 {print $4}')
+[[ "$free_kb" -ge 1048576 ]] || { echo 'Disk headroom gate failed' >&2; exit 75; }
 compose_cmd=(docker compose --project-name heycity-staging --env-file "$envfile" -f "$compose")
+previous_cid=$(docker ps -q --filter label=com.docker.compose.project=heycity-staging --filter label=com.docker.compose.service=api)
+[[ "$previous_cid" =~ ^[a-f0-9]+$ ]] || { echo 'A single running staging API is required for rollback' >&2; exit 78; }
+previous_ref=$(docker inspect --format '{{.Config.Image}}' "$previous_cid")
+previous_id=$(docker image inspect --format '{{.Id}}' "$previous_ref")
+previous_sha=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$previous_ref")
+rollback_tag="heycity-staging-rollback:$(date -u +%Y%m%d%H%M%S)"
+docker tag "$previous_id" "$rollback_tag"
+previous_health=$(curl -fsS --max-time 8 http://127.0.0.1:4110/health)
+changed=0
+rollback() {
+  status=$?
+  if [[ "$status" != 0 && "$changed" == 1 ]]; then
+    export STAGING_API_IMAGE="$rollback_tag"
+    if "${compose_cmd[@]}" up -d --no-build --pull never --no-deps api >/dev/null; then
+      restored=0
+      for attempt in $(seq 1 24); do
+        if [[ "$(curl -fsS --max-time 5 http://127.0.0.1:4110/health 2>/dev/null || true)" == "$previous_health" ]]; then restored=1; break; fi
+        sleep 2
+      done
+      printf 'rollback_image_id=%s rollback_health_verified=%s\n' "$previous_id" "$restored" >&2
+    else echo 'ROLLBACK FAILED: administrator required' >&2; fi
+  fi
+  rm -f "$archive" "$archive.identity.json" "$loaded" "$loaded.identity.json"
+  exit "$status"
+}
+trap rollback EXIT
+export STAGING_API_IMAGE="$image"
 "${compose_cmd[@]}" config --quiet
-if ! "${compose_cmd[@]}" up -d --no-build --pull never >/dev/null; then
-  echo 'Staging Compose startup failed; stopping staging only' >&2
-  "${compose_cmd[@]}" stop >/dev/null || true
-  exit 75
-fi
+changed=1
+"${compose_cmd[@]}" up -d --no-build --pull never --no-deps api >/dev/null
 ok=0
-for try in $(seq 1 24); do
-  if curl -fsS --max-time 5 http://127.0.0.1:4110/health >/dev/null 2>&1; then ok=1; break; fi
-  sleep 5
+for attempt in $(seq 1 24); do
+  if curl -fsS --max-time 5 http://127.0.0.1:4110/health | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ok" and d["environment"]=="staging" and d["buildSha"]==sys.argv[1]; assert "core_v2_m3_conversation" in d["capabilities"]' "$sha" 2>/dev/null; then ok=1; break; fi
+  sleep 2
 done
-if [[ "$ok" != 1 ]]; then
-  echo 'Staging health failed; stopping staging only' >&2
-  "${compose_cmd[@]}" stop >/dev/null || true
-  exit 75
-fi
-if ! curl -fsS --max-time 8 http://127.0.0.1:4100/health >/dev/null; then
-  echo 'Production API health changed; stopping staging only' >&2
-  "${compose_cmd[@]}" stop >/dev/null || true
-  exit 75
-fi
-printf 'staging_sha=%s\n' "$sha"
-printf 'staging_image_id=%s\n' "$(docker image inspect --format '{{.Id}}' "$image")"
-echo 'staging_health=ok production_health=ok'
+[[ "$ok" == 1 ]]
+cid=$(docker ps -q --filter label=com.docker.compose.project=heycity-staging --filter label=com.docker.compose.service=api)
+running_id=$(docker inspect --format '{{.Image}}' "$cid")
+python3 - "$loaded.identity.json" "$image_id" "$running_id" <<'VERIFY'
+import json,sys
+proof=json.load(open(sys.argv[1])); allowed={sys.argv[2],proof['configDigest'],*(x['digest'] for x in proof['loadedDescriptors'])}
+assert sys.argv[3] in allowed, 'Running container identity differs from verified image'
+VERIFY
+restart_count=$(docker inspect --format '{{.RestartCount}}' "$cid")
+sleep 5
+[[ "$(docker inspect --format '{{.State.Running}}:{{.RestartCount}}' "$cid")" == "true:$restart_count" ]]
+curl -fsS --max-time 12 https://staging-api.heycity.stolbergco.com/health | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["environment"]=="staging" and d["buildSha"]==sys.argv[1]' "$sha"
+curl -fsS --max-time 8 http://127.0.0.1:4100/health >/dev/null
+[[ "$(curl -fsS --max-time 12 https://api.heycity.stolbergco.com/health)" == "$production_health" ]]
+printf 'staging_sha=%s staging_image_id=%s previous_image_id=%s previous_sha=%s rollback_tag=%s\n' "$sha" "$image_id" "$previous_id" "$previous_sha" "$rollback_tag"
+changed=0
