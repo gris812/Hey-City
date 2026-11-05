@@ -6,7 +6,12 @@ on:
         description: 'Reviewed 40-character Git commit SHA (must equal staging approval variable)'
         required: true
         type: string
+      artifact_run_id:
+        description: 'Successful validation run containing the reviewed artifact (never rebuild here)'
+        required: true
+        type: string
 permissions:
+  actions: read
   contents: read
   checks: read
 concurrency:
@@ -49,18 +54,50 @@ jobs:
             --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' \
             | grep -qxE '[1-9][0-9]*'
 
-      - name: Build SHA-labeled API image (without SSH secrets)
-        shell: bash
+      - name: Checkout reviewed release tooling
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ vars.RELEASE_TOOLING_SHA }}
+          path: release-tools
+          persist-credentials: false
+
+      - name: Validate artifact provenance and successful run
         env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN: ${{ inputs.artifact_run_id }}
           SHA: ${{ steps.approved.outputs.sha }}
+          CONFIG_DIGEST: ${{ vars.STAGING_APPROVED_CONFIG_DIGEST }}
+          TOOLING_SHA: ${{ vars.RELEASE_TOOLING_SHA }}
         run: |
           set -euo pipefail
-          docker build --label "org.opencontainers.image.revision=$SHA" \
-            -f server/Dockerfile -t "heycity-staging-api:git-$SHA" .
-          docker image inspect "heycity-staging-api:git-$SHA" \
-            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
-            | grep -Fx "$SHA"
-          docker save -o "$RUNNER_TEMP/heycity-staging-image.tar" "heycity-staging-api:git-$SHA"
+          [[ "$ARTIFACT_RUN" =~ ^[0-9]+$ ]]
+          [[ "$TOOLING_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$CONFIG_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN" > "$RUNNER_TEMP/run.json"
+          python3 - "$RUNNER_TEMP/run.json" "$SHA" <<'PYCODE'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          assert r['head_sha']==sys.argv[2] and r['conclusion']=='success'
+          assert r['path']=='.github/workflows/validation.yml' and r['event']=='pull_request'
+          assert r['head_repository']['full_name']=='gris812/Hey-City'
+          PYCODE
+          gh run download "$ARTIFACT_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name "staging-api-$SHA" --dir "$RUNNER_TEMP/reviewed-image"
+          cd "$RUNNER_TEMP/reviewed-image"
+          python3 - "$SHA" <<'PYCODE'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          line=Path('SHA256SUMS').read_text().strip()
+          assert re.fullmatch('[a-f0-9]{64}  api.tar.gz',line)
+          h=hashlib.sha256()
+          with open('api.tar.gz','rb') as f:
+              while b:=f.read(1048576): h.update(b)
+          assert h.hexdigest()==line.split()[0]
+          assert json.load(open('provenance.json'))['sourceSha']==sys.argv[1]
+          PYCODE
+          python3 "$GITHUB_WORKSPACE/release-tools/ops/image_identity.py" api.tar.gz \
+            --sha "$SHA" --config-digest "$CONFIG_DIGEST"
+          gzip -dc api.tar.gz > "$RUNNER_TEMP/heycity-staging-image.tar"
 
       - name: Transfer image via restricted staging SSH identity
         shell: bash
@@ -90,11 +127,14 @@ jobs:
             < "$RUNNER_TEMP/heycity-staging-image.tar"
 
       - name: Public staging and unchanged production HTTPS smoke tests
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
           curl -fsS --retry 5 --retry-delay 3 --max-time 12 \
-            https://staging-api.heycity.stolbergco.com/health >/dev/null
+            https://staging-api.heycity.stolbergco.com/health | \
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["environment"]=="staging" and d["buildSha"]==sys.argv[1]' "$SHA"
           curl -fsS --max-time 12 \
             https://api.heycity.stolbergco.com/health >/dev/null
           echo 'staging_https=ok production_https=ok'

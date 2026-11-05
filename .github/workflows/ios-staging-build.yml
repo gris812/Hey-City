@@ -1,0 +1,78 @@
+name: Hey City standalone iPhone staging build
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Reviewed source SHA matching the deployed staging API
+        required: true
+        type: string
+permissions:
+  contents: read
+  checks: read
+concurrency:
+  group: heycity-ios-staging
+  cancel-in-progress: false
+jobs:
+  ios:
+    if: github.ref == 'refs/heads/main' && github.repository == 'gris812/Hey-City'
+    runs-on: ubuntu-latest
+    environment: ios-staging
+    timeout-minutes: 90
+    steps:
+      - name: Require authorized source and existing cloud signing
+        env:
+          SHA: ${{ inputs.commit_sha }}
+          APPROVED_SHA: ${{ vars.STAGING_APPROVED_SHA }}
+          AUTHORIZED: ${{ vars.EAS_CLOUD_BUILD_AUTHORIZED }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[a-f0-9]{40}$ && "$SHA" == "$APPROVED_SHA" && "$AUTHORIZED" == true ]]
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' | grep -qxE '[1-9][0-9]*'
+          curl -fsS --max-time 15 https://staging-api.heycity.stolbergco.com/health | \
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["buildSha"]==sys.argv[1] and d["environment"]=="staging"' "$SHA"
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.commit_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: 16.28.0
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Submit standalone build using preconfigured credentials only
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_GIT_SHA: ${{ inputs.commit_sha }}
+          EXPO_PUBLIC_API_URL: https://staging-api.heycity.stolbergco.com
+          EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED: 'false'
+          HEY_CITY_FIELD_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          # Only public release metadata is overlaid; application source remains at approved SHA.
+          python3 - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          p=Path('eas.json'); d=json.loads(p.read_text()); profile=d['build']['preview']
+          assert profile['distribution']=='internal' and profile['developmentClient'] is False
+          profile.setdefault('env',{}).update({k:os.environ[k] for k in ['EXPO_PUBLIC_GIT_SHA','EXPO_PUBLIC_API_URL','EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED','HEY_CITY_FIELD_BUILD_NUMBER']})
+          profile.setdefault('ios',{})['buildConfiguration']='Release'
+          p.write_text(json.dumps(d,indent=2)+'\n')
+          PYCODE
+          eas build --platform ios --profile preview --non-interactive --freeze-credentials --wait --json > "$RUNNER_TEMP/ios-build.json"
+          python3 - "$RUNNER_TEMP/ios-build.json" >> "$GITHUB_STEP_SUMMARY" <<'PYCODE'
+          import json,sys,os
+          builds=json.load(open(sys.argv[1]))
+          assert isinstance(builds,list) and len(builds)==1
+          b=builds[0]; assert b['status']=='FINISHED' and b['gitCommitHash']==os.environ['EXPO_PUBLIC_GIT_SHA']
+          print('iPhone build completed. Source: '+b['gitCommitHash'])
+          print('EAS build ID: '+b['id'])
+          link=b.get('buildDetailsPageUrl','')
+          if link.startswith('https://expo.dev/'): print('Build dashboard: '+link)
+          print('Open the existing Expo project dashboard to install this build on a registered device. Physical installation is not verified by CI.')
+          PYCODE
