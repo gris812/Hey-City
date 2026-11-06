@@ -75,3 +75,30 @@ heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *
 ```
 
 The bootstrap template now installs these directives. If the account was already installed from an earlier revision, an administrator must update **only** this staging sudoers file and run `visudo -cf /etc/sudoers.d/heycity-staging-ci` before the first archive transfer. Root ownership and `0440` permissions must remain. No global `Defaults` change, no production sudo changes. Verify SSH is still forced-command-only and the user is not in the Docker group.
+
+
+## Release identity and iOS cloud preview (pending validation)
+
+This section describes the next Draft rollout. It is **not evidence of a successful deploy or a signed iOS build**.
+
+### Staging backend
+- Use the existing manual `.github/workflows/staging-deploy.yml` on the default branch. Keep the environment approval variable `STAGING_APPROVED_SHA`, dedicated forced-command SSH identity, successful CI check, and production health gates. Never substitute the production SSH key.
+- The root-owned receiver `ops/heycity-staging-deploy` now calculates the Docker image ID from the tar manifest's config bytes and compares it against the exact ID Docker reports **after** import. Matching source revision labels are not enough. Mismatches fail closed before Compose startup.
+- Installing the updated receiver on the VPS is an **admin-only, reviewed deployment**. A change in GitHub does not update `/usr/local/sbin/heycity-staging-deploy` automatically. Retain the existing receiver and a recovery path until the new one is tested.
+- At the 2026-11-01 field checkpoint, the CI artifact's config image ID was `sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b`, but the VPS image tag resolved to `sha256:c757151f1692ad455250796f54beecfa58cf9f0ce3b5098b93c1d67a0b362ac5`. Root cause **not proven**. Do not run the new server until the mismatch is resolved and production remains healthy.
+- The hosted staging-deploy workflow currently rebuilds from an approved SHA rather than pulling the exact CI-produced image. Treat that as a separate build with its own provenance; do not claim byte identity with the CI artifact. Before accepting a future release pipeline, decide whether to retain this reviewed-source policy or enforce exact-artifact promotion.
+
+### iOS standalone preview
+- After the `.github/workflows/ios-preview.yml` workflow reaches the default branch through separately authorized activation, configure GitHub environment `ios-preview`, variable `IOS_PREVIEW_APPROVED_SHA`, and environment secret `EXPO_TOKEN`.
+- Prepare signing/provisioning, iPhone registration, correct Expo project, and sensitive `EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY` in the EAS `preview` environment outside the repository. Build requires functioning Apple developer signing. Do not add server provider secrets to mobile environment.
+- Dispatch **Hey City iOS preview (manual)** with the same reviewed SHA. It verifies CI, builds with the existing `mobile/eas.json` preview profile, and reports the EAS build/install URL. EAS manages auto-increment of iOS build numbers.
+- Verify actual installed build/source identity through EAS metadata and Settings before claiming device acceptance. A Mac, Xcode or physical iPhone is not available to this workflow; installation and outdoor driving tests remain manual.
+- A cloud iOS build is optional until signing and required account access are confirmed. The current Mac fallback remains `bash ops/build-ios-field-release.sh FULL_SHA [UDID]` with its local native iOS project.
+
+### Owner operation
+1. Approve an exact reviewed SHA in the staging environment, then manually dispatch the isolated staging workflow on `main`.
+2. Require staging API image ID, runtime revision, HTTPS health and unchanged production health evidence before requesting iOS cloud build.
+3. Approve the same SHA in `ios-preview`, dispatch iOS preview, and install from the resulting EAS link.
+4. If a verification gate fails, stop; do not re-tag an image, loosen signing checks, or bypass approval.
+
+No app feature changes, M4 provider choice, production rollout or Draft PR merge is implied by this procedure.
