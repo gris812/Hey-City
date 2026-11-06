@@ -1,14 +1,14 @@
 # Hey City staging automation — installation and activation
 
-Status: **prepared, not deployed**. This document and the staging-only server scripts are in Draft PR #19. The manual activation workflow is isolated in Draft PR #20. The canonical application/Compose/TLS setup is in the adjacent ops/STAGING_DEPLOYMENT.md.
+Status: **PR #31 under validation; operational acceptance blocked**. PR #20 is merged and the existing manual staging workflow is on `main`; installation/current VPS state must still be inspected. This file is the canonical automation/setup procedure. Application/Compose/TLS, identity diagnosis and rollback are in adjacent `ops/STAGING_DEPLOYMENT.md`.
 
 ## Architecture
 
 The current `heycity-deploy` is Docker-enabled: membership in Docker effectively grants root-level access to ALL containers on this VPS. Reusing that login or the production GitHub SSH secrets for staging is prohibited.
 
-The automation instead uses a new locked-password account `heycity-staging-ci`, with **no Docker group and no unrestricted sudo**. Its root-owned `authorized_keys` forces `ops/heycity-staging-ssh`, accepting only `deploy <40-hex Git SHA>`. A sudoers rule allows only the root-owned `/usr/local/sbin/heycity-staging-deploy` helper. The helper validates the incoming Docker image archive and Git revision label and updates **only** `heycity-staging`, using a root-owned staging Compose manifest and separate root-owned environment file.
+The automation instead uses a new locked-password account `heycity-staging-ci`, with **no Docker group and no unrestricted sudo**. Its root-owned `authorized_keys` forces `ops/heycity-staging-ssh`, accepting only `deploy <40-hex Git SHA>` or read-only `diagnose <40-hex Git SHA>`. A sudoers rule allows only the root-owned `/usr/local/sbin/heycity-staging-deploy` helper. The helper validates the incoming Docker image archive and Git revision label and updates **only** `heycity-staging`, using a root-owned staging Compose manifest and separate root-owned environment file.
 
-The Actions workflow is `workflow_dispatch` **only**, executable exclusively from `main`. It requires the requested SHA to equal the separately approved GitHub **staging environment variable** `STAGING_APPROVED_SHA`, and requires a successful `validate` check on that SHA. It builds on GitHub-hosted runners without server keys, then transmits the image using separate staging SSH secrets. It has no PR event and no production deploy step.
+The Actions workflow is `workflow_dispatch` **only**, executable exclusively from `main`. It requires the requested SHA to equal the separately approved GitHub **staging environment variable** `STAGING_APPROVED_SHA`, and requires a successful `validate` check on that SHA. It builds linux/amd64 on a GitHub runner from the approved source, validates archive config/layers, then transmits those same bytes using separate staging SSH secrets. This is a fresh reviewed-source build with its own provenance, not a claim of identity with an expired historical CI artifact. It has no PR event and no production deploy step.
 
 This does not provide complete VPS isolation: all projects share the host, Docker daemon and memory. Keep resource caps; do not grant the staging account Docker access.
 
@@ -77,28 +77,39 @@ heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *
 The bootstrap template now installs these directives. If the account was already installed from an earlier revision, an administrator must update **only** this staging sudoers file and run `visudo -cf /etc/sudoers.d/heycity-staging-ci` before the first archive transfer. Root ownership and `0440` permissions must remain. No global `Defaults` change, no production sudo changes. Verify SSH is still forced-command-only and the user is not in the Docker group.
 
 
-## Release identity and iOS cloud preview (pending validation)
+## Release operation — PR #31
 
-This section describes the next Draft rollout. It is **not evidence of a successful deploy or a signed iOS build**.
+PR #31 depends directly on PR #28 (`bb6a9ad539c7fb6db433671c602a51e63c45d9e5`). Keep the complete product chain Draft. The CLI checks that the selected open same-repository PR contains its current base SHA and has successful exact-head validation. An owner still reviews/authorizes the full release SHA; a green check is not release approval.
 
-### Staging backend
-- Use the existing manual `.github/workflows/staging-deploy.yml` on the default branch. Keep the environment approval variable `STAGING_APPROVED_SHA`, dedicated forced-command SSH identity, successful CI check, and production health gates. Never substitute the production SSH key.
-- The root-owned receiver `ops/heycity-staging-deploy` now calculates the Docker image ID from the tar manifest's config bytes and compares it against the exact ID Docker reports **after** import. Matching source revision labels are not enough. Mismatches fail closed before Compose startup.
-- Installing the updated receiver on the VPS is an **admin-only, reviewed deployment**. A change in GitHub does not update `/usr/local/sbin/heycity-staging-deploy` automatically. Retain the existing receiver and a recovery path until the new one is tested.
-- At the 2026-11-01 field checkpoint, the CI artifact's config image ID was `sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b`, but the VPS image tag resolved to `sha256:c757151f1692ad455250796f54beecfa58cf9f0ce3b5098b93c1d67a0b362ac5`. Root cause **not proven**. Do not run the new server until the mismatch is resolved and production remains healthy.
-- The hosted staging-deploy workflow currently rebuilds from an approved SHA rather than pulling the exact CI-produced image. Treat that as a separate build with its own provenance; do not claim byte identity with the CI artifact. Before accepting a future release pipeline, decide whether to retain this reviewed-source policy or enforce exact-artifact promotion.
+### One-time activation and access
 
-### iOS standalone preview
-- After the `.github/workflows/ios-preview.yml` workflow reaches the default branch through separately authorized activation, configure GitHub environment `ios-preview`, variable `IOS_PREVIEW_APPROVED_SHA`, and environment secret `EXPO_TOKEN`.
-- Prepare signing/provisioning, iPhone registration, correct Expo project, and sensitive `EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY` in the EAS `preview` environment outside the repository. Build requires functioning Apple developer signing. Do not add server provider secrets to mobile environment.
-- Dispatch **Hey City iOS preview (manual)** with the same reviewed SHA. It verifies CI, builds with the existing `mobile/eas.json` preview profile, and reports the EAS build/install URL. EAS manages auto-increment of iOS build numbers.
-- Verify actual installed build/source identity through EAS metadata and Settings before claiming device acceptance. A Mac, Xcode or physical iPhone is not available to this workflow; installation and outdoor driving tests remain manual.
-- A cloud iOS build is optional until signing and required account access are confirmed. The current Mac fallback remains `bash ops/build-ios-field-release.sh FULL_SHA [UDID]` with its local native iOS project.
+- **Not performed:** separately authorize publishing only the reviewed staging/iOS/workflow-validation files on `main`. This does not merge the application Draft chain. Do not dispatch the old staging workflow for release acceptance: it omits the build SHA argument and verifies only a label/status. Changes under `ops/`/`mobile/` on `main` could trigger the existing production workflow; do not copy them there as an activation shortcut.
+- Pin `RELEASE_TOOLING_SHA` to the reviewed full PR #31 commit in both protected `staging` and `ios-preview` Environments. The workflow moves its separate tools checkout out of the application source archive. Maintain main-only branch restriction and required reviewer where supported. Use the four existing STAGING_SSH_* secrets only, dedicated account, host-key verification and forced command. No root/production key in Actions.
+- An authorized VPS administrator must install the reviewed root-owned receiver, forced-command script and `/usr/local/lib/heycity/image_identity.py`. Existing bootstrap refuses overwriting accounts/configuration; upgrade only these code files, preserving sudoers, Compose and mode-600 staging env. Validate with `bash -n`/`visudo -cf`; do not replace DB/media/configuration. Root installation rights do not pass to CI.
+- Set `STAGING_APPROVED_SHA` and `IOS_PREVIEW_APPROVED_SHA` to the same reviewed application SHA. Set `EAS_CLOUD_BUILD_AUTHORIZED=true` only after cloud-build/account access is authorized. Put EXPO_TOKEN directly in protected `ios-preview` secret, never chat/source/logs. The current connector cannot dispatch workflows or configure Environments; an authenticated GitHub CLI or explicit UI authorization is needed. Direct SSH from this runtime remains unavailable; current production/staging health has not been established.
+- EAS project remains `554718b7-7f37-4cbb-89d0-cec6fe193fb5`, bundle `com.sunshine.aiguide`. Use existing paid Apple Developer membership, registered iPhone UDID, valid ad-hoc profile and remote signing. Personal Team alone does not supply this cloud distribution path. Do not buy membership/build plans or change accounts automatically. Configure restricted public iOS Maps key in Expo `preview` environment; no backend provider credentials.
+- Smallest signing setup if not already complete: from `mobile/`, an authorized Expo/Apple owner runs `npx eas-cli@16.28.0 build --platform ios --profile preview` once to initialize remote credentials/device provisioning. This submits a cloud build; local Xcode compilation is not required. If remote build numbering must continue an existing series, seed it once with `eas build:version:set`. Workflow uses remote `appVersionSource` plus preview `autoIncrement`, and `--freeze-credentials`; it cannot repair missing signing interactively.
 
-### Owner operation
-1. Approve an exact reviewed SHA in the staging environment, then manually dispatch the isolated staging workflow on `main`.
-2. Require staging API image ID, runtime revision, HTTPS health and unchanged production health evidence before requesting iOS cloud build.
-3. Approve the same SHA in `ios-preview`, dispatch iOS preview, and install from the resulting EAS link.
-4. If a verification gate fails, stop; do not re-tag an image, loosen signing checks, or bypass approval.
+### Owner command
 
-No app feature changes, M4 provider choice, production rollout or Draft PR merge is implied by this procedure.
+Request: **“Release Hey City staging from PR #N.”** An operator with reviewed tooling and an existing authenticated `gh` runs:
+
+```bash
+python3 ops/prepare-release.py N
+# After exact SHA/Environment authorization, use the emitted commands:
+gh workflow run staging-deploy.yml --repo gris812/Hey-City --ref main -f commit_sha=FULL_SHA
+# Wait for success, actual image/config receipt and matching HTTPS source first:
+gh workflow run ios-preview.yml --repo gris812/Hey-City --ref main -f commit_sha=FULL_SHA
+```
+
+Staging builds from the approved source; records TAR checksum, config digest, source and platform; validates the fresh post-load export; updates only `api --no-deps`; and reports actual running ID plus rollback tag. It requires healthy existing PostgreSQL and available memory/disk. Public HTTPS revision/capability and production health checks are in the receiver's rollback boundary. Retrying checks all gates again, never creates a second API service, and retains the current running image as the next rollback target. See `STAGING_DEPLOYMENT.md` for failure behavior and known limitations.
+
+The iOS workflow checks matching staging SHA before submission, uses pinned EAS CLI 16.28.0, bundled Release/internal profile and remote signing. It overlays only public staging/SHA metadata and preview version configuration; production profile/assets/identity are preserved. `ops/ios_preview.py` requires exactly one FINISHED iOS result with the approved gitCommitHash, native build number and an install/dashboard URL. Failed/canceled/timed-out cloud builds are not success. If reporting fails after build submission, inspect the existing EAS build ID before retrying; do not create duplicate builds blindly. Physical installation is manual.
+
+### Artifact storage and acceptance
+
+PR/push CI builds images for validation but uploads no large artifacts. Explicit validation dispatch can retain one compressed image for **one day**, with upload compression disabled; this is an optional recovery export, not a dependency of staging deployment. Each export is approximately 224 MB in the last measured run, so two retained copies nearly exhaust a 0.5 GB allowance. Do not delete historical artifacts automatically or raise paid storage limits. Normal staging releases stream from ephemeral runner storage and retain the previous image on VPS; no routine Mac transfer or registry service is introduced.
+
+The CI suite checks archive/source/platform/layer rejection, malformed input and cleanup, engine-ID differences with exact content proof, diagnosis without mutation, API-only updates and health-failure rollback. EAS tests reject stale/unfinished/multiple results and unsafe links. These automated results do not establish VPS deployment/rollback, signing, install or physical acceptance.
+
+Final release report: PR/full source SHA and dependency; CI/run; archive/config/engine/running IDs; previous image/rollback tag; HTTPS/capability and production pre/post status; EAS build ID/native version/install link; automated vs physical evidence; remaining gates. **Do not create/install Hey City Release skill until operational backend and iOS pipeline acceptance passes.**

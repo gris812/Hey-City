@@ -46,6 +46,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -60,6 +61,7 @@ jobs:
         run: |
           for script in ops/heycity-staging-deploy ops/heycity-staging-ssh ops/build-ios-field-release.sh; do bash -n "$script"; done
           python3 -m json.tool mobile/eas.json >/dev/null
+          python3 -m unittest discover -s ops/test -v
 
       - name: Typecheck all workspaces
         run: npm run typecheck
@@ -85,6 +87,21 @@ jobs:
             > staging-image/provenance.json
           cat staging-image/provenance.json
 
+      - name: Verify real Docker save/load content identity (no upload)
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          first="$RUNNER_TEMP/identity-before.tar"
+          second="$RUNNER_TEMP/identity-after.tar"
+          trap 'rm -f "$first" "$second"' EXIT
+          docker save -o "$first" "heycity-staging-api:git-$SOURCE_SHA"
+          docker image inspect --format '{{.Id}}' "heycity-staging-api:git-$SOURCE_SHA"
+          docker load -i "$first" >/dev/null
+          docker save -o "$second" "heycity-staging-api:git-$SOURCE_SHA"
+          docker image inspect --format '{{.Id}}' "heycity-staging-api:git-$SOURCE_SHA"
+          python3 ops/image_identity.py "$first" --sha "$SOURCE_SHA" --compare "$second"
+
       - name: Validate staging Compose isolation syntax
         run: |
           cp ops/staging.env.example .env.staging
@@ -101,6 +118,7 @@ jobs:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           docker save "heycity-staging-api:git-$SOURCE_SHA" | gzip > staging-image/api.tar.gz
+          python3 ops/image_identity.py staging-image/api.tar.gz --sha "$SOURCE_SHA" > staging-image/identity.json
           (cd staging-image && sha256sum api.tar.gz > SHA256SUMS)
 
       - name: Upload reviewed staging image
@@ -110,6 +128,7 @@ jobs:
           name: staging-api-${{ github.event.pull_request.head.sha || github.sha }}
           path: staging-image/
           retention-days: 1
+          compression-level: 0
           if-no-files-found: error
 
   deploy:

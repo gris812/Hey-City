@@ -1,90 +1,73 @@
-name: Hey City iOS preview (manual)
-
+name: Hey City standalone iPhone staging build
 on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: 'Reviewed 40-character SHA (must match IOS_PREVIEW_APPROVED_SHA)'
+        description: Reviewed source SHA matching the deployed staging API
         required: true
         type: string
-
 permissions:
   contents: read
   checks: read
-
 concurrency:
   group: heycity-ios-preview
   cancel-in-progress: false
-
 jobs:
-  build:
+  ios:
     if: github.ref == 'refs/heads/main' && github.repository == 'gris812/Hey-City'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     environment: ios-preview
+    timeout-minutes: 90
     steps:
-      - name: Check release approval
-        id: approved
+      - name: Require authorized source and existing cloud signing
         env:
           SHA: ${{ inputs.commit_sha }}
           APPROVED_SHA: ${{ vars.IOS_PREVIEW_APPROVED_SHA }}
-        shell: bash
+          TOOLING_SHA: ${{ vars.RELEASE_TOOLING_SHA }}
+          AUTHORIZED: ${{ vars.EAS_CLOUD_BUILD_AUTHORIZED }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Full lowercase commit SHA required' >&2; exit 1; }
-          [[ "$SHA" == "$APPROVED_SHA" ]] || { echo 'Review approval SHA does not match' >&2; exit 1; }
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-
+          [[ "$TOOLING_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$SHA" =~ ^[a-f0-9]{40}$ && "$SHA" == "$APPROVED_SHA" && "$AUTHORIZED" == true ]]
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' | grep -qxE '[1-9][0-9]*'
+          curl -fsS --max-time 15 https://staging-api.heycity.stolbergco.com/health | \
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["buildSha"]==sys.argv[1] and d["environment"]=="staging"' "$SHA"
       - uses: actions/checkout@v5
         with:
-          ref: ${{ steps.approved.outputs.sha }}
+          ref: ${{ inputs.commit_sha }}
           persist-credentials: false
-
-      - name: Verify source and successful CI
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ vars.RELEASE_TOOLING_SHA }}
+          path: release-tools
+          persist-credentials: false
+      - name: Keep pinned tooling outside the native source archive
         env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ steps.approved.outputs.sha }}
+          SHA: ${{ inputs.commit_sha }}
+          TOOLING_SHA: ${{ vars.RELEASE_TOOLING_SHA }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SHA"
-          gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
-            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' \
-            | grep -qxE '[1-9][0-9]*'
-
+          [[ "$(git rev-parse HEAD)" == "$SHA" && "$(git -C release-tools rev-parse HEAD)" == "$TOOLING_SHA" ]]
+          mv release-tools "$RUNNER_TEMP/release-tools"
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check Expo access
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: 16.28.0
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Submit standalone build using preconfigured credentials only
         working-directory: mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_GIT_SHA: ${{ inputs.commit_sha }}
+          EXPO_PUBLIC_API_URL: https://staging-api.heycity.stolbergco.com
+          EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED: 'false'
         run: |
           set -euo pipefail
-          test -n "$EXPO_TOKEN" || { echo 'ios-preview EXPO_TOKEN is missing' >&2; exit 1; }
-          npx --yes eas-cli@latest whoami
-
-      - name: Build signed standalone preview in EAS cloud
-        working-directory: mobile
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPECTED_SHA: ${{ steps.approved.outputs.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          # EAS preview is configured for staging HTTPS, internal distribution
-          # and no development client. Requires preconfigured Apple credentials.
-          npx --yes eas-cli@latest build \
-            --platform ios --profile preview --non-interactive --wait --json \
-            > "$RUNNER_TEMP/ios-preview-result.json"
-          jq -e 'if type == "array" then .[0].status == "finished" else .status == "finished" end' \
-            "$RUNNER_TEMP/ios-preview-result.json" >/dev/null
-          jq -r 'if type == "array" then .[0] else . end | "EAS build: \(.id)\nInstall: \(.artifacts.buildUrl // .artifacts.applicationArchiveUrl // "See Expo dashboard")"' \
-            "$RUNNER_TEMP/ios-preview-result.json" >> "$GITHUB_STEP_SUMMARY"
-          echo "Approved source: $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo 'Physical iPhone installation and field acceptance remain manual.' >> "$GITHUB_STEP_SUMMARY"
+          python3 "$RUNNER_TEMP/release-tools/ops/ios_preview.py" configure eas.json --sha "$EXPO_PUBLIC_GIT_SHA"
+          eas build --platform ios --profile preview --non-interactive --freeze-credentials --wait --json > "$RUNNER_TEMP/ios-build.json"
+          python3 "$RUNNER_TEMP/release-tools/ops/ios_preview.py" report "$RUNNER_TEMP/ios-build.json" --sha "$EXPO_PUBLIC_GIT_SHA" >> "$GITHUB_STEP_SUMMARY"
