@@ -52,7 +52,7 @@ class ReceiverTests(unittest.TestCase):
             receiver=d/'receiver';receiver.write_text(script)
             with approved.open('rb') as stdin:
                 r=subprocess.run(['bash',str(receiver),SHA,mode],stdin=stdin,text=True,capture_output=True,timeout=30,env={**os.environ,'PATH':str(bindir)+':'+os.environ['PATH'],'MOCK_STATE':str(state),'MOCK_ARCHIVE':str(loaded),'MOCK_SHA':SHA})
-            result=json.loads(state.read_text()); self.assertEqual(list(d.glob('heycity-*')), [], 'Temporary image/proof leaked')
+            result=json.loads(state.read_text()); self.assertEqual(list(base.glob('.incoming.*'))+list(base.glob('.loaded.*')), [], 'Temporary image/proof leaked')
             return r,result
     def test_deploy_verified_image_only(self):
         r,s=self.run_receiver();self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(s['ups'],['new']);self.assertEqual(s['current'],'new')

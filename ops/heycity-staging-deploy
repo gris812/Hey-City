@@ -45,7 +45,7 @@ if [[ "$mode" == deploy ]]; then
   }
 fi
 production_health=$(curl -fsS --max-time 8 https://api.heycity.stolbergco.com/health)
-archive=$(mktemp /tmp/heycity-staging-image.XXXXXXXX.tar)
+archive=$(mktemp "$base/.incoming.XXXXXXXX.tar")
 loaded=''
 trap 'rm -f "$archive" "$archive.identity.json" ${loaded:+"$loaded"} ${loaded:+"$loaded.identity.json"}' EXIT
 if ! timeout 240 head -c 1073741825 > "$archive"; then
@@ -58,7 +58,7 @@ fi
 verifier=/usr/local/lib/heycity/image_identity.py
 [[ -f "$verifier" && -O "$verifier" ]] || { echo 'Install root-owned identity verifier first' >&2; exit 78; }
 python3 "$verifier" "$archive" --sha "$sha" > "$archive.identity.json"
-loaded=$(mktemp /tmp/heycity-loaded.XXXXXXXX.tar)
+loaded=$(mktemp "$base/.loaded.XXXXXXXX.tar")
 trap 'rm -f "$archive" "$archive.identity.json" "$loaded" "$loaded.identity.json"' EXIT
 if [[ "$mode" == deploy ]]; then docker load -i "$archive" >/dev/null; fi
 docker save -o "$loaded" "$image"
