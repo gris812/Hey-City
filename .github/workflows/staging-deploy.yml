@@ -6,6 +6,16 @@ on:
         description: 'Reviewed 40-character Git commit SHA (must equal staging approval variable)'
         required: true
         type: string
+      operation:
+        description: Deploy approved source, or inspect existing image without changing services
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, inspect]
+      expected_config_digest:
+        description: Independently verified config digest; required for inspect only
+        required: false
+        type: string
 permissions:
   contents: read
   checks: read
@@ -24,11 +34,15 @@ jobs:
         shell: bash
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIG_DIGEST: ${{ inputs.expected_config_digest }}
           APPROVED_SHA: ${{ vars.STAGING_APPROVED_SHA }}
         run: |
           set -euo pipefail
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected a full lowercase Git SHA' >&2; exit 1; }
           [[ "$APPROVED_SHA" == "$REQUESTED_SHA" ]] || { echo 'Requested revision is not approved in staging environment' >&2; exit 1; }
+          [[ "$OPERATION" == deploy || "$OPERATION" == inspect ]]
+          if [[ "$OPERATION" == inspect ]]; then [[ "$CONFIG_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; fi
           echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Checkout approved revision
@@ -50,6 +64,7 @@ jobs:
             | grep -qxE '[1-9][0-9]*'
 
       - name: Checkout reviewed release tooling
+        if: inputs.operation == 'deploy'
         uses: actions/checkout@v5
         with:
           ref: ${{ vars.RELEASE_TOOLING_SHA }}
@@ -57,6 +72,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate tooling pin
+        if: inputs.operation == 'deploy'
         env:
           TOOLING_SHA: ${{ vars.RELEASE_TOOLING_SHA }}
         run: |
@@ -66,6 +82,7 @@ jobs:
           mv release-tools "$RUNNER_TEMP/release-tools"
 
       - name: Build SHA-labeled API image (without SSH secrets)
+        if: inputs.operation == 'deploy'
         shell: bash
         env:
           SHA: ${{ steps.approved.outputs.sha }}
@@ -91,6 +108,8 @@ jobs:
         shell: bash
         env:
           SHA: ${{ steps.approved.outputs.sha }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIG_DIGEST: ${{ inputs.expected_config_digest }}
           DEPLOY_HOST: ${{ secrets.STAGING_SSH_HOST }}
           DEPLOY_USER: ${{ secrets.STAGING_SSH_USER }}
           DEPLOY_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
@@ -108,15 +127,20 @@ jobs:
           install -d -m 700 "$RUNNER_TEMP/staging-ssh"
           printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/staging-ssh/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/staging-ssh/known_hosts"
-          ssh -T -i "$RUNNER_TEMP/staging-ssh/key" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts" \
-            -o ConnectTimeout=12 -o ConnectionAttempts=1 \
-            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $SHA" \
-            < "$RUNNER_TEMP/heycity-staging-image.tar" | tee "$RUNNER_TEMP/staging-receipt.txt"
+          ssh_cmd=(ssh -T -i "$RUNNER_TEMP/staging-ssh/key"
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts"
+            -o ConnectTimeout=12 -o ConnectionAttempts=1 "$DEPLOY_USER@$DEPLOY_HOST")
+          if [[ "$OPERATION" == inspect ]]; then
+            [[ "$CONFIG_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+            "${ssh_cmd[@]}" "inspect $SHA $CONFIG_DIGEST" < /dev/null | tee "$RUNNER_TEMP/staging-receipt.txt"
+          else
+            "${ssh_cmd[@]}" "deploy $SHA" < "$RUNNER_TEMP/heycity-staging-image.tar" | tee "$RUNNER_TEMP/staging-receipt.txt"
+          fi
           cat "$RUNNER_TEMP/staging-receipt.txt" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Public staging and unchanged production HTTPS smoke tests
+        if: inputs.operation == 'deploy'
         env:
           SHA: ${{ steps.approved.outputs.sha }}
         shell: bash

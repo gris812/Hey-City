@@ -115,14 +115,17 @@ Scope: physical iPhone, bundled production-mode JavaScript, no Metro/Mac or live
 
 Current source/provenance incident: approved application `bb6a9ad539c7fb6db433671c602a51e63c45d9e5`, CI #237, config/image digest `sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b`; loaded VPS tag reported `sha256:c757151f1692ad455250796f54beecfa58cf9f0ce3b5098b93c1d67a0b362ac5`. This remains unresolved on that VPS. Source SHA, compressed archive checksum, config digest and OCI manifest/index digest identify different objects. Containerd image stores can display manifest/index IDs rather than classic config IDs (Moby #48401); this is a candidate explanation, not proof for `c757…`.
 
-First obtain the surviving checksum-verified original archive (the original GitHub artifact expired) and a fresh `docker save` of the already loaded SHA tag. An administrator can export without restarting/building or printing runtime configuration. Record safe `docker version --format '{{json .Server.Version}}'` and `docker info --format '{{json .DriverStatus}}'`. With the reviewed root-owned receiver, `diagnose FULL_SHA` over the existing restricted SSH connection accepts original uncompressed TAR on stdin and compares the existing image without load/Compose mutation. Alternatively, compare files offline:
+Because the original config digest above was independently verified, it already cryptographically binds the complete configuration and ordered filesystem diff IDs. A new export can be verified against it **without recovering the expired original TAR**. After reviewed receiver installation, use read-only `inspect FULL_SHA sha256:EXPECTED_CONFIG` through the existing forced command / staging workflow (`operation=inspect`). It exports the already loaded SHA tag, verifies exact config and actual ordered layers, prints safe engine version/store metadata, and classifies the display ID against exported config/manifest/index digests. It performs no `docker load`, build or Compose mutation. See `STAGING_AUTOMATION.md` for the exact historical command.
+
+An administrator may instead export that image and verify the file offline:
 
 ```bash
-python3 ops/image_identity.py approved-api.tar.gz \
+python3 ops/image_identity.py loaded-image.tar \
   --sha bb6a9ad539c7fb6db433671c602a51e63c45d9e5 \
-  --config-digest sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b \
-  --compare loaded-image.tar
+  --config-digest sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b
 ```
+
+If the original archive is available, `--compare other-export.tar` remains an optional full transport/config/layer comparison; `diagnose FULL_SHA` accepts that original uncompressed TAR on stdin. Archive checksums identify the compressed transport bytes and need not equal either image digest. Do not print runtime configuration. Record `docker version --format '{{json .Server.Version}}'` and `docker info --format '{{json .DriverStatus}}'` with the digest report.
 
 The verifier hashes exact config bytes (labels/history/config included without disclosure), verifies every ordered rootfs layer's uncompressed digest, rejects unsafe/duplicate/malformed/config/platform/revision mismatches, and compares the loaded re-export. It prints only safe digest metadata. A different display ID is accepted only after this byte-level content proof, not because labels match. If the config or layers differ, stop deployment; preserve evidence and do not force-retag. If the display ID matches a re-exported manifest/index descriptor, record that correspondence with the store/version evidence. If no correspondence can be shown, report content equivalence separately from the unresolved display-ID explanation.
 

@@ -38,7 +38,7 @@ elif name=='docker':
     else: sys.exit(99)
 '''
 class ReceiverTests(unittest.TestCase):
-    def run_receiver(self, fail=False, mode='deploy', corrupt_loaded=False, different_engine_id=False, bad_input=False):
+    def run_receiver(self, fail=False, mode='deploy', corrupt_loaded=False, different_engine_id=False, bad_input=False, wrong_digest=False):
         with tempfile.TemporaryDirectory() as d:
             d=pathlib.Path(d); base=d/'staging';base.mkdir();(base/'docker-compose.staging.yml').write_text('fixture')
             env=base/'.env.staging';env.write_text('fixture');env.chmod(0o600)
@@ -50,8 +50,10 @@ class ReceiverTests(unittest.TestCase):
             for cmd in ['docker','curl','free','df','id','sleep']: (bindir/cmd).symlink_to(stub)
             script=(ROOT/'heycity-staging-deploy').read_text().replace('/opt/HeyCity-staging',str(base)).replace('/run/lock/heycity-staging-deploy.lock',str(d/'lock')).replace('/usr/local/lib/heycity/image_identity.py',str(ROOT/'image_identity.py')).replace('/tmp/heycity-',str(d/'heycity-'))
             receiver=d/'receiver';receiver.write_text(script)
+            arguments=['bash',str(receiver),SHA,mode]
+            if mode=='inspect': arguments.append('sha256:'+'0'*64 if wrong_digest else json.loads(state.read_text())['configDigest'])
             with approved.open('rb') as stdin:
-                r=subprocess.run(['bash',str(receiver),SHA,mode],stdin=stdin,text=True,capture_output=True,timeout=30,env={**os.environ,'PATH':str(bindir)+':'+os.environ['PATH'],'MOCK_STATE':str(state),'MOCK_ARCHIVE':str(loaded),'MOCK_SHA':SHA})
+                r=subprocess.run(arguments,stdin=stdin,text=True,capture_output=True,timeout=30,env={**os.environ,'PATH':str(bindir)+':'+os.environ['PATH'],'MOCK_STATE':str(state),'MOCK_ARCHIVE':str(loaded),'MOCK_SHA':SHA})
             result=json.loads(state.read_text()); self.assertEqual(list(base.glob('.incoming.*'))+list(base.glob('.loaded.*')), [], 'Temporary image/proof leaked')
             return r,result
     def test_deploy_verified_image_only(self):
@@ -66,4 +68,8 @@ class ReceiverTests(unittest.TestCase):
         r,s=self.run_receiver(different_engine_id=True);self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(s['ups'],['new'])
     def test_malformed_input_never_loads_and_cleans_up(self):
         r,s=self.run_receiver(bad_input=True);self.assertNotEqual(r.returncode,0);self.assertEqual(s['loads'],0);self.assertEqual(s['ups'],[])
+    def test_inspect_uses_trusted_config_without_original_archive(self):
+        r,s=self.run_receiver(mode='inspect',bad_input=True,different_engine_id=True);self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(s['loads'],0);self.assertEqual(s['ups'],[]);self.assertIn('engine_id_kind=',r.stdout)
+    def test_inspect_rejects_wrong_trusted_digest(self):
+        r,s=self.run_receiver(mode='inspect',wrong_digest=True);self.assertNotEqual(r.returncode,0);self.assertEqual(s['loads'],0);self.assertEqual(s['ups'],[])
 if __name__=='__main__': unittest.main()
