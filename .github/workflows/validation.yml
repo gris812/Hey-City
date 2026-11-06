@@ -56,6 +56,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate release scripts and EAS profile syntax
+        run: |
+          bash -n ops/heycity-staging-deploy ops/heycity-staging-ssh ops/build-ios-field-release.sh
+          python3 -m json.tool mobile/eas.json >/dev/null
+
       - name: Typecheck all workspaces
         run: npm run typecheck
 
