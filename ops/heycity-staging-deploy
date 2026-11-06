@@ -41,21 +41,47 @@ fi
 if [[ ! -s "$archive" || $(stat -c '%s' "$archive") -gt 1073741824 ]]; then
   echo 'Image archive exceeds 1GiB or is empty' >&2; exit 75
 fi
-python3 - "$archive" "$image" <<'PY'
-import json, sys, tarfile
-path, expected = sys.argv[1:]
+# Validate the *content* identity of the transported image before docker load.
+# A matching OCI revision label alone is not sufficient provenance evidence.
+archive_image_id=$(python3 - "$archive" "$image" "$sha" <<'PY'
+import hashlib, json, sys, tarfile
+path, expected_tag, expected_sha = sys.argv[1:]
 try:
     with tarfile.open(path, 'r:') as tar:
         f = tar.extractfile('manifest.json')
         entries = json.load(f) if f else []
-    if len(entries) != 1 or entries[0].get('RepoTags') != [expected]:
-        raise ValueError('unexpected image tag')
-except Exception:
-    print('Image manifest validation failed', file=sys.stderr)
+        if len(entries) != 1 or entries[0].get('RepoTags') != [expected_tag]:
+            raise ValueError('unexpected image tag')
+        cfg_path = entries[0]['Config']
+        if cfg_path.startswith('/') or '..' in cfg_path.split('/'):
+            raise ValueError('unsafe image config path')
+        cfg_file = tar.extractfile(cfg_path)
+        if cfg_file is None:
+            raise ValueError('missing image config')
+        cfg_bytes = cfg_file.read()
+        image_id = 'sha256:' + hashlib.sha256(cfg_bytes).hexdigest()
+        advertised = cfg_path.split('/')[-1].removesuffix('.json')
+        if advertised != image_id.removeprefix('sha256:'):
+            raise ValueError('image config digest differs from manifest')
+        cfg = json.loads(cfg_bytes)
+        if (cfg.get('os') != 'linux' or cfg.get('architecture') != 'amd64'
+                or cfg.get('config', {}).get('Labels', {}).get('org.opencontainers.image.revision') != expected_sha):
+            raise ValueError('unexpected image platform or source revision')
+        print(image_id)
+except Exception as exc:
+    print('Image archive provenance validation failed: ' + str(exc), file=sys.stderr)
     sys.exit(78)
 PY
+)
 
 docker load -i "$archive" >/dev/null
+loaded_image_id=$(docker image inspect --format '{{.Id}}' "$image")
+if [[ "$loaded_image_id" != "$archive_image_id" ]]; then
+  echo "Docker imported image identity differs from verified archive; refusing deploy" >&2
+  echo "archive_image_id=$archive_image_id" >&2
+  echo "loaded_image_id=$loaded_image_id" >&2
+  exit 78
+fi
 revision=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")
 arch=$(docker image inspect --format '{{.Architecture}}' "$image")
 os=$(docker image inspect --format '{{.Os}}' "$image")
