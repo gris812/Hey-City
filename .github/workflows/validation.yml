@@ -91,6 +91,7 @@ jobs:
         run: docker build --build-arg GOOGLE_MAPS_BROWSER_KEY=ci-placeholder -f web/Dockerfile -t heycity-web-ci .
 
       - name: Package reviewed staging image (no deploy)
+        if: github.event_name == 'workflow_dispatch'
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
@@ -98,11 +99,12 @@ jobs:
           (cd staging-image && sha256sum api.tar.gz > SHA256SUMS)
 
       - name: Upload reviewed staging image
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: staging-api-${{ github.event.pull_request.head.sha || github.sha }}
           path: staging-image/
-          retention-days: 7
+          retention-days: 1
           if-no-files-found: error
 
   deploy:
