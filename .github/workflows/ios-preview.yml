@@ -1,0 +1,90 @@
+name: Hey City iOS preview (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Reviewed 40-character SHA (must match IOS_PREVIEW_APPROVED_SHA)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: heycity-ios-preview
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && github.repository == 'gris812/Hey-City'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: ios-preview
+    steps:
+      - name: Check release approval
+        id: approved
+        env:
+          SHA: ${{ inputs.commit_sha }}
+          APPROVED_SHA: ${{ vars.IOS_PREVIEW_APPROVED_SHA }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Full lowercase commit SHA required' >&2; exit 1; }
+          [[ "$SHA" == "$APPROVED_SHA" ]] || { echo 'Review approval SHA does not match' >&2; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.approved.outputs.sha }}
+          persist-credentials: false
+
+      - name: Verify source and successful CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.approved.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SHA"
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' \
+            | grep -qxE '[1-9][0-9]*'
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Expo access
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo 'ios-preview EXPO_TOKEN is missing' >&2; exit 1; }
+          npx --yes eas-cli@latest whoami
+
+      - name: Build signed standalone preview in EAS cloud
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPECTED_SHA: ${{ steps.approved.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          # EAS preview is configured for staging HTTPS, internal distribution
+          # and no development client. Requires preconfigured Apple credentials.
+          npx --yes eas-cli@latest build \
+            --platform ios --profile preview --non-interactive --wait --json \
+            > "$RUNNER_TEMP/ios-preview-result.json"
+          jq -e 'if type == "array" then .[0].status == "finished" else .status == "finished" end' \
+            "$RUNNER_TEMP/ios-preview-result.json" >/dev/null
+          jq -r 'if type == "array" then .[0] else . end | "EAS build: \(.id)\nInstall: \(.artifacts.buildUrl // .artifacts.applicationArchiveUrl // "See Expo dashboard")"' \
+            "$RUNNER_TEMP/ios-preview-result.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Approved source: $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Physical iPhone installation and field acceptance remain manual.' >> "$GITHUB_STEP_SUMMARY"
