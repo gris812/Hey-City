@@ -15,7 +15,8 @@
       "developmentClient": false,
       "environment": "preview",
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "autoIncrement": true
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://staging-api.heycity.stolbergco.com",

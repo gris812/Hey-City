@@ -1,6 +1,6 @@
 # Hey City: staging API deployment (independent of production)
 
-Status: **deployment prepared, not executed**. This is the single operational procedure for the API-only field-test staging environment. Live M4 B1–B6 acceptance and realtime-provider selection remain open.
+Status: **staging backend deployed and verified; cloud iOS build/install pending**. This is the single operational procedure for the API-only field-test staging environment. Live M4 B1–B6 acceptance and realtime-provider selection remain open.
 
 ## Confirmed baseline, 2026-10-16
 
@@ -43,7 +43,7 @@ This does **not** make the staging host private. Code review of PR #19 establish
 
 This is a **bounded acceptance of residual cost risk**, not proof that arbitrary internet clients cannot use guest routes, and does not authorize broad public beta, production deployment, or choosing an M4 realtime provider. Revisit access isolation before adding testers, scaling traffic or keeping staging permanently available.
 
-## Hard gates before deployment
+## First-installation gates — historical baseline
 
 1. Confirm head commit, CI status, staging source choice and image provenance. PR #19 includes PR #17's pending M4 work but does not mean that M4 acceptance has passed. Do not merge either PR.
 2. Confirm `getent ahostsv4 staging-api.heycity.stolbergco.com` resolves to VPS; `ss -ltn '( sport = :4110 )'` shows no listener; `docker network ls` includes no accidental staging-to-production connection.
@@ -52,7 +52,7 @@ This is a **bounded acceptance of residual cost risk**, not proof that arbitrary
 5. Confirm a trusted server administrator can add one isolated Nginx vhost and issue one new Certbot certificate. Do not give the deployment account broad, permanent root privileges.
 6. Verify `docker image inspect "$STAGING_API_IMAGE"` and its OCI `org.opencontainers.image.revision` label match the approved source SHA.
 
-## Execution checklist (authorized staging only)
+## First-installation checklist — routine releases use STAGING_AUTOMATION.md
 
 Work from a **separate** workspace, e.g. `~/HeyCity-staging` owned by `heycity-deploy`, containing just the approved staging Compose file and `.env.staging`. Do not copy `.env.production`, the production DB, media or Docker networks.
 
@@ -111,15 +111,50 @@ Scope: physical iPhone, bundled production-mode JavaScript, no Metro/Mac or live
 - Install the resulting internal distribution build from the EAS link on the registered iPhone. Turn **off the Mac**, disconnect home Wi-Fi, and test on cellular: app launches without Metro; map renders; location permissions and live position work; guest onboarding; allowed tester sign-in; `/guides`; narration/voice-sample behavior (identify expected deterministic or unavailable live voice); interruptions; production API remains healthy; staging VPS memory and shared provider spending stay within the previously accepted limits. **Authentication nuance:** the configured `ADMIN_EMAIL` uses the staging-only `ADMIN_AUTH_CODE` from the root-owned env file rather than a Resend email OTP; never expose the code in logs/chat. A separate allowlisted non-admin email receives OTP via Resend.
 - Do **not** add `developmentClient:true` to preview, embed provider secrets, merge the stacked PR chain, update production, or claim that backend `/health` `buildSha=unknown` establishes code provenance. Use the image OCI revision label for backend verification and EAS build revision for iOS.
 
-## Acceptance and rollback
+## Image identity, acceptance and rollback — PR #31
 
-Acceptance evidence: the *actual running* API image digest and revision, staging Docker project/network/volume names, no production database/media mounts, `NODE_ENV=staging` protection, local and public HTTPS health, 403 for unallowlisted OTP, permitted tester OTP delivery, published guide media over HTTPS, no new externally bound DB ports, stable RAM under small controlled load, production API/WebApp health unchanged, and provider costs within limits. Native offline internal build and live B1–B6 are separate gates.
+**Resolved on the VPS:** [inspect run #2, attempt 2](https://github.com/gris812/Hey-City/actions/runs/42316561697) used the installed restricted receiver and verified source `bb6a9ad539c7fb6db433671c602a51e63c45d9e5`, exact historical config `sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b` and all 13 actual filesystem layers. Docker Engine is **29.1.3**, store driver `io.containerd.snapshotter.v1`. Displayed `.Id` `sha256:c757151f1692ad455250796f54beecfa58cf9f0ce3b5098b93c1d67a0b362ac5` exactly matched an exported **manifest** digest (`engine_id_kind=manifest`), not the config digest. This establishes the actual root cause: different identity objects under containerd, not evidence of modified config/layers. No retag bypass was used. Source SHA, compressed/archive checksum, config digest and manifest/index digest remain distinct concepts.
 
-Rollback on staging failure: `docker compose --project-name heycity-staging --env-file .env.staging -f docker-compose.staging.yml stop`; disable only the staging Nginx vhost, validate Nginx and reload. **Retain** staging volumes for investigation; never touch production storage, containers or DNS. A future production deployment/merge requires separate explicit approval.
+**Actual deployment:** [staging run #3](https://github.com/gris812/Hey-City/actions/runs/42322157592) built a fresh linux/amd64 image from that same approved source on a GitHub runner, compared exact config/layers before and after import, activated only staging API and passed running-image correspondence, source/capability health, public HTTPS, restart stability and unchanged production-health checks. This fresh build has its own identity; it is not claimed to be the old CI #237 archive.
+
+| Release receipt | Verified value |
+|---|---|
+| Application source | `bb6a9ad539c7fb6db433671c602a51e63c45d9e5` |
+| Config digest | `sha256:0c47fb12389ce012d72938594ec45d07d06b91062b368d0a4123dd75baa2b173` |
+| Deployed Docker image ID (index) | `sha256:c1be13c2fe32265a62ba4afd287df19fb6811129e6c7b389eba5f51659fdfc3a` |
+| Transferred uncompressed TAR SHA256 | `ff761c4ae0815949478cff281e9870140addceabd50d6bcbe1f467a1b04b509c` |
+| Retained previous image | `sha256:676876540669e76d12b0c05ba0c53f8e58152bde87270b2ac60a7ae403bf1502` / source `9c6fcfc99332de1ecb9502df1b4918fc579d8967` |
+| Rollback tag | `heycity-staging-rollback:20261107010734` |
+| Deployment preflight | 660 MiB available RAM; 52,187,832 KiB free disk; existing PostgreSQL healthy |
+| Runtime tooling / active workflows | `eb7fb8e0eb8f1b7c17d30ea460a7cc4b58eff3cb` / `97fce755c2e7d24b5b3c9acd228acae1b1b728ae` |
+
+Production Compose/credentials/database/Nginx and staging DB/media services/volumes were not managed by this API-only deployment. Production local/public health passed before/after, with unchanged public response. Automated failure/rollback regressions pass and the previous image is retained; a deliberate live failure/restore drill and sustained-load test have not been executed on this shared VPS. Signed iOS distribution and physical installation/field acceptance remain open; do not mark the complete release pipeline or its skill accepted yet.
+
+Because the original config digest above was independently verified, it already cryptographically binds the complete configuration and ordered filesystem diff IDs. A new export can be verified against it **without recovering the expired original TAR**. For the historical proof, read-only `inspect FULL_SHA sha256:EXPECTED_CONFIG` through the existing forced command / staging workflow (`operation=inspect`) was used. This operation exports the already loaded SHA tag, verifies exact config and actual ordered layers, prints safe engine version/store metadata, and classifies the display ID against exported config/manifest/index digests. It performs no `docker load`, build or Compose mutation. See `STAGING_AUTOMATION.md` for the exact historical command.
+
+For a current audit, an administrator may export the current SHA tag and verify it offline against the **new deployment #3 config** below. The historical 6b2eb1a digest applies only to the pre-deployment image:
+
+```bash
+python3 ops/image_identity.py loaded-image.tar \
+  --sha bb6a9ad539c7fb6db433671c602a51e63c45d9e5 \
+  --config-digest sha256:0c47fb12389ce012d72938594ec45d07d06b91062b368d0a4123dd75baa2b173
+```
+
+If the original archive is available, `--compare other-export.tar` remains an optional full transport/config/layer comparison; `diagnose FULL_SHA` accepts that original uncompressed TAR on stdin. Archive checksums identify the compressed transport bytes and need not equal either image digest. Do not print runtime configuration. Record `docker version --format '{{json .Server.Version}}'` and `docker info --format '{{json .DriverStatus}}'` with the digest report.
+
+The verifier hashes exact config bytes (labels/history/config included without disclosure), verifies every ordered rootfs layer's uncompressed digest, rejects unsafe/duplicate/malformed/config/platform/revision mismatches, and compares the loaded re-export. It prints only safe digest metadata. A different display ID is accepted only after this byte-level content proof, not because labels match. If the config or layers differ, stop deployment; preserve evidence and do not force-retag. If the display ID matches a re-exported manifest/index descriptor, record that correspondence with the store/version evidence. If no correspondence can be shown, report content equivalence separately from the unresolved display-ID explanation.
+
+For subsequent deployments, follow `STAGING_AUTOMATION.md`: repeat live preflight rather than relying on the receipt above. Prior `buildSha=unknown` is superseded by matching `bb6a9ad…` from deployment #3. PR #31 adds no schema change; `server/src/services/database.ts` is unchanged from historical running-source `9c6fcfc…` to its reviewed source, and the deployment #3 PostgreSQL health preflight passed. Recheck DB health on subsequent releases. Do not run destructive migrations or restore production data.
+
+The receiver records the actual previous container image ID/revision and tags that exact image for rollback before activation. It starts only staging `api` with `--no-deps --no-build --pull never`, leaving PostgreSQL/media volumes intact. Acceptance requires exact running-image correspondence, staging source/capability health locally and via HTTPS, stable running/restart count, and unchanged production health. If activation fails, restore the retained image automatically and verify both its running ID and pre-deployment health; report `rollback_health_verified=0` as an incident needing administrator action. No image pruning, database rollback, Nginx edits or production changes occur. Rollback restores application code only; it cannot undo application writes, and short smoke/restart checks do not prove sustained load stability.
+
+A successful receiver returns source/current image ID, previous ID/revision and rollback tag. Workflow summaries retain archive/config identity plus this receipt. Root-owned code installation and the actual rollback drill are operational gates, not proven by CI mocks. Retain the known-good tag until replacement acceptance; never use `down -v`, `--remove-orphans` or `docker system prune`. A later independent runner HTTPS failure after the receiver exits is reported as failure for operator investigation; never claim that post-return outage was automatically rolled back.
+
+Physical iPhone checklist after signed standalone installation: cold launch with Mac off/no Metro; cellular HTTPS; GPS/map; walking→vehicle→stop→walking; actual narration identity and audio failure/completion; explicit short story/supersede/unavailable; compass/course/north/pan/follow; metric/imperial persistence; foreground keep-awake and release on session end; Dana/Arthur portraits/swipe; admin/guest authentication and RU Settings. Manual-lock background GPS/audio is a separate test and is not certified by keep-awake. Physical tests must be recorded by the device owner.
 
 ## Native field retest release — 2026-10-26
 
-This pass changes the server contract for unknown speed, guest explicit selection and idempotency; testing the final native client against the older staging backend is insufficient. **The new staging deployment is pending** until the final reviewed source passes Node 22/Docker CI and its separate image is applied through the existing staging-only receiver. Production is unchanged.
+This pass changes the server contract for unknown speed, guest explicit selection and idempotency; testing the final native client against the older staging backend is insufficient. **Backend deployment is now complete** via staging run #3 from the reviewed source; standalone native cloud build and physical retest are still pending. Production is unchanged.
 
 CI checks out the exact PR head, embeds `GIT_SHA`/OCI revision into the API image, and publishes `staging-api-<full-head-sha>` only after all validation passes. It contains `api.tar.gz`, `SHA256SUMS` and `provenance.json` (source SHA, Docker image ID/content digest, architecture and OS). This is a verified image artifact, not a registry push or deployment. Confirm the archive checksum, linux/amd64, source label and image ID before using the existing forced `deploy <SHA>` command; decompress the gzip archive to Docker tar on stdin. Keep the previous reviewed staging image (`9c6fcfc99332de1ecb9502df1b4918fc579d8967`) available for rollback; the running image must still be confirmed immediately before replacement. Never build on the VPS. Record `/health.buildSha`, imported image ID and staging-only health after apply. On failure, restore that recorded previous image through the same staging-only procedure; retain database/media volumes.
 

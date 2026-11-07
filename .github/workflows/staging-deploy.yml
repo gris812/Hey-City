@@ -1,0 +1,154 @@
+name: Hey City staging deploy (manual, isolated)
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Reviewed 40-character Git commit SHA (must equal staging approval variable)'
+        required: true
+        type: string
+      operation:
+        description: Deploy approved source, or inspect existing image without changing services
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, inspect]
+      expected_config_digest:
+        description: Independently verified config digest; required for inspect only
+        required: false
+        type: string
+permissions:
+  contents: read
+  checks: read
+concurrency:
+  group: heycity-staging-deploy
+  cancel-in-progress: false
+jobs:
+  staging:
+    if: github.ref == 'refs/heads/main' && github.repository == 'gris812/Hey-City'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: staging
+    steps:
+      - name: Verify manually reviewed revision
+        id: approved
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIG_DIGEST: ${{ inputs.expected_config_digest }}
+          APPROVED_SHA: ${{ vars.STAGING_APPROVED_SHA }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected a full lowercase Git SHA' >&2; exit 1; }
+          [[ "$APPROVED_SHA" == "$REQUESTED_SHA" ]] || { echo 'Requested revision is not approved in staging environment' >&2; exit 1; }
+          [[ "$OPERATION" == deploy || "$OPERATION" == inspect ]]
+          if [[ "$OPERATION" == inspect ]]; then [[ "$CONFIG_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; fi
+          echo "sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout approved revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.approved.outputs.sha }}
+          persist-credentials: false
+
+      - name: Confirm exact source revision and passing CI
+        shell: bash
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SHA" ]]
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' \
+            | grep -qxE '[1-9][0-9]*'
+
+      - name: Checkout reviewed release tooling
+        if: inputs.operation == 'deploy'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ vars.RELEASE_TOOLING_SHA }}
+          path: release-tools
+          persist-credentials: false
+
+      - name: Validate tooling pin
+        if: inputs.operation == 'deploy'
+        env:
+          TOOLING_SHA: ${{ vars.RELEASE_TOOLING_SHA }}
+        run: |
+          set -euo pipefail
+          [[ "$TOOLING_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$(git -C release-tools rev-parse HEAD)" == "$TOOLING_SHA" ]]
+          mv release-tools "$RUNNER_TEMP/release-tools"
+
+      - name: Build SHA-labeled API image (without SSH secrets)
+        if: inputs.operation == 'deploy'
+        shell: bash
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --build-arg GIT_SHA="$SHA" --label "org.opencontainers.image.revision=$SHA" \
+            -f server/Dockerfile -t "heycity-staging-api:git-$SHA" .
+          docker image inspect "heycity-staging-api:git-$SHA" \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+            | grep -Fx "$SHA"
+          docker save -o "$RUNNER_TEMP/heycity-staging-image.tar" "heycity-staging-api:git-$SHA"
+          python3 "$RUNNER_TEMP/release-tools/ops/image_identity.py" "$RUNNER_TEMP/heycity-staging-image.tar" --sha "$SHA" > "$RUNNER_TEMP/identity.json"
+          sha256sum "$RUNNER_TEMP/heycity-staging-image.tar" | awk '{print "archive_sha256=" $1}' >> "$GITHUB_STEP_SUMMARY"
+          python3 - "$RUNNER_TEMP/identity.json" >> "$GITHUB_STEP_SUMMARY" <<'PYCODE'
+          import json,sys
+          p=json.load(open(sys.argv[1]))
+          print('source_sha='+p['sourceSha'])
+          print('config_digest='+p['configDigest'])
+          print('platform='+p['platform'])
+          PYCODE
+
+      - name: Transfer image via restricted staging SSH identity
+        shell: bash
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIG_DIGEST: ${{ inputs.expected_config_digest }}
+          DEPLOY_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_SSH_USER }}
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?Missing staging host secret}"
+          : "${DEPLOY_USER:?Missing staging user secret}"
+          : "${DEPLOY_KEY:?Missing staging private key}"
+          : "${DEPLOY_KNOWN_HOSTS:?Missing verified staging known_hosts}"
+          [[ "$DEPLOY_USER" == 'heycity-staging-ci' ]] || exit 1
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]] || exit 1
+          umask 077
+          trap 'rm -rf "$RUNNER_TEMP/staging-ssh"' EXIT
+          install -d -m 700 "$RUNNER_TEMP/staging-ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/staging-ssh/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/staging-ssh/known_hosts"
+          ssh_cmd=(ssh -T -i "$RUNNER_TEMP/staging-ssh/key"
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts"
+            -o ConnectTimeout=12 -o ConnectionAttempts=1 "$DEPLOY_USER@$DEPLOY_HOST")
+          if [[ "$OPERATION" == inspect ]]; then
+            [[ "$CONFIG_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+            "${ssh_cmd[@]}" "inspect $SHA $CONFIG_DIGEST" < /dev/null | tee "$RUNNER_TEMP/staging-receipt.txt"
+          else
+            "${ssh_cmd[@]}" "deploy $SHA" < "$RUNNER_TEMP/heycity-staging-image.tar" | tee "$RUNNER_TEMP/staging-receipt.txt"
+          fi
+          cat "$RUNNER_TEMP/staging-receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Public staging and unchanged production HTTPS smoke tests
+        if: inputs.operation == 'deploy'
+        env:
+          SHA: ${{ steps.approved.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 5 --retry-delay 3 --max-time 12 \
+            https://staging-api.heycity.stolbergco.com/health | \
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["environment"]=="staging" and d["buildSha"]==sys.argv[1]' "$SHA"
+          curl -fsS --max-time 12 \
+            https://api.heycity.stolbergco.com/health >/dev/null
+          echo 'staging_https=ok production_https=ok'

@@ -1,18 +1,20 @@
 # Hey City staging automation — installation and activation
 
-Status: **prepared, not deployed**. This document and the staging-only server scripts are in Draft PR #19. The manual activation workflow is isolated in Draft PR #20. The canonical application/Compose/TLS setup is in the adjacent ops/STAGING_DEPLOYMENT.md.
+Status: **backend release verified; iOS cloud acceptance pending**. Owner-authorized release workflows are active on `main` at `97fce75`; restricted receiver/tooling `eb7fb8e` is installed. Read-only inspect #2 and staging deploy #3 passed on the VPS. This file is the canonical automation/setup procedure. Application/Compose/TLS, identity diagnosis and rollback are in adjacent `ops/STAGING_DEPLOYMENT.md`.
 
 ## Architecture
 
 The current `heycity-deploy` is Docker-enabled: membership in Docker effectively grants root-level access to ALL containers on this VPS. Reusing that login or the production GitHub SSH secrets for staging is prohibited.
 
-The automation instead uses a new locked-password account `heycity-staging-ci`, with **no Docker group and no unrestricted sudo**. Its root-owned `authorized_keys` forces `ops/heycity-staging-ssh`, accepting only `deploy <40-hex Git SHA>`. A sudoers rule allows only the root-owned `/usr/local/sbin/heycity-staging-deploy` helper. The helper validates the incoming Docker image archive and Git revision label and updates **only** `heycity-staging`, using a root-owned staging Compose manifest and separate root-owned environment file.
+The automation instead uses a new locked-password account `heycity-staging-ci`, with **no Docker group and no unrestricted sudo**. Its root-owned `authorized_keys` forces `ops/heycity-staging-ssh`, accepting only `deploy <40-hex Git SHA>` or read-only `diagnose <40-hex Git SHA>` / `inspect <40-hex Git SHA> <sha256:config-digest>`. A sudoers rule allows only the root-owned `/usr/local/sbin/heycity-staging-deploy` helper. The helper validates the incoming Docker image archive and Git revision label and updates **only** `heycity-staging`, using a root-owned staging Compose manifest and separate root-owned environment file.
 
-The Actions workflow is `workflow_dispatch` **only**, executable exclusively from `main`. It requires the requested SHA to equal the separately approved GitHub **staging environment variable** `STAGING_APPROVED_SHA`, and requires a successful `validate` check on that SHA. It builds on GitHub-hosted runners without server keys, then transmits the image using separate staging SSH secrets. It has no PR event and no production deploy step.
+The Actions workflow is `workflow_dispatch` **only**, executable exclusively from `main`. It requires the requested SHA to equal the separately approved GitHub **staging environment variable** `STAGING_APPROVED_SHA`, and requires a successful `validate` check on that SHA. It builds linux/amd64 on a GitHub runner from the approved source, validates archive config/layers, then transmits those same bytes using separate staging SSH secrets. This is a fresh reviewed-source build with its own provenance, not a claim of identity with an expired historical CI artifact. It has no PR event and no production deploy step.
 
 This does not provide complete VPS isolation: all projects share the host, Docker daemon and memory. Keep resource caps; do not grant the staging account Docker access.
 
-## One-time setup (operator/admin)
+## Historical bootstrap — new VPS only (operator/admin)
+
+The existing VPS account/receiver is already installed. Routine releases use **Release operation — PR #31** below; this bootstrap block is only for a new host. The one-time receiver upgrade was completed and does not need repeating for each release.
 
 1. Review and pin both this automation PR and PR #19 (including their CI). **Do not merge PR #17, #18, #19 or this PR without separate explicit approval.** Confirm `PRODUCTION_DEPLOY_ENABLED` cannot launch a production deploy from any planned change to `main`.
 2. On Mac, create a **new** dedicated SSH key:
@@ -47,9 +49,9 @@ This does not provide complete VPS isolation: all projects share the host, Docke
 
    Do not use production SSH secrets. Staging API vendor credentials remain **on VPS only**, never in GitHub Actions.
 
-## Activation gate
+## Activation status
 
-GitHub `workflow_dispatch` workflows must be available on the default branch. This Draft PR is not an active deployment. After separate review and **explicit authorization**, activate only the workflow-only PR #20 on `main`, verifying that no existing production workflow triggers in consequence. Then manually run Actions → **Hey City staging deploy (manual, isolated)** from `main`, passing the exact approved SHA. The workflow builds and uploads one image through the forced staging-only SSH command, then checks public staging HTTPS and unchanged production HTTPS.
+Owner-authorized activation published only `.github/workflows/staging-deploy.yml`, `ios-preview.yml` and `release-workflow-validation.yml` on `main` in commit `97fce755c2e7d24b5b3c9acd228acae1b1b728ae`. Their paths do not trigger the existing production workflow. Product PRs #22/#27/#28/#31 remain Draft/unmerged. The staging workflow was exercised operationally via owner-authorized Browser dispatch; subsequent failed-job retries are also supported by the GitHub connector.
 
 If any required environment configuration, permission restriction, successful CI or HTTPS certificate is missing, **stop**; never fall back to production SSH keys/account, database or authentication secrets, and never run the workflow from an unreviewed PR branch. The limited and explicitly authorized sharing of three *external provider* key values is documented in `ops/STAGING_DEPLOYMENT.md`.
 
@@ -57,9 +59,9 @@ If any required environment configuration, permission restriction, successful CI
 
 Acceptance requires that the staging identity cannot open a shell or use Docker/sudo outside its forced command; invalid SHA and malformed image are rejected; running image revision is recorded; API remains loopback `127.0.0.1:4110`; DB/media networks and volumes do not connect to production; public staging HTTPS health and production HTTPS health both pass. Test OTP, media, spending budgets, native build and live M4 B1–B6 separately.
 
-On staging failure, the receiver stops only staging services, retaining staging DB/media for diagnosis. Administrator rollback must use the previous reviewed staging SHA and never use `docker system prune`, `down -v`, production project, or production SSH credentials.
+On failed API activation, the receiver restores the exact retained previous image and verifies its running ID and pre-deployment health. PostgreSQL/media are preserved. A failed rollback requires an administrator; never use `docker system prune`, `down -v`, the production project or production SSH credentials. The behavior is covered by automated regressions; a live failure/restore drill has not been executed on this VPS.
 
-**Not completed here:** VPS bootstrap, GitHub environment/secrets, Nginx/Certbot setup, actual deployment, native iOS build, M4 acceptance, production rollout.
+**Operationally verified:** restricted SSH, receiver upgrade, exact config/layer identity diagnosis and staging API deployment with HTTPS/source/production-health checks. **Still pending:** signed cloud iOS build/install, physical acceptance and live M4 benchmark. Production rollout is outside scope.
 
 ### SSH key read permissions (Ubuntu OpenSSH)
 
@@ -75,3 +77,99 @@ heycity-staging-ci ALL=(root) NOPASSWD: /usr/local/sbin/heycity-staging-deploy *
 ```
 
 The bootstrap template now installs these directives. If the account was already installed from an earlier revision, an administrator must update **only** this staging sudoers file and run `visudo -cf /etc/sudoers.d/heycity-staging-ci` before the first archive transfer. Root ownership and `0440` permissions must remain. No global `Defaults` change, no production sudo changes. Verify SSH is still forced-command-only and the user is not in the Docker group.
+
+
+## Release operation — PR #31
+
+PR #31 depends directly on PR #28 (`bb6a9ad539c7fb6db433671c602a51e63c45d9e5`). Keep the complete product chain Draft. The CLI checks that the selected open same-repository PR contains its current base SHA and has successful exact-head validation. An owner still reviews/authorizes the full release SHA; a green check is not release approval.
+
+### One-time activation and access
+
+- **Completed:** only the three reviewed release workflow files are active on `main` at `97fce75`, with owner authorization. The application Draft chain remains unmerged. Keep runtime tooling pinned separately; copying `ops/`/`mobile/` changes onto `main` could trigger the existing production workflow and is not an activation shortcut.
+- Pin `RELEASE_TOOLING_SHA` to the reviewed full PR #31 commit in both protected `staging` and `ios-preview` Environments. The workflow moves its separate tools checkout out of the application source archive. Maintain main-only branch restriction and required reviewer where supported. Use the four existing STAGING_SSH_* secrets only, dedicated account, host-key verification and forced command. No root/production key in Actions.
+- **Completed:** the owner installed the reviewed root-owned receiver, forced-command script and `/usr/local/lib/heycity/image_identity.py` from `eb7fb8e`; subsequent inspect proved execution through the restricted account. Existing bootstrap refuses overwriting accounts/configuration; upgrade only these code files, preserving sudoers, Compose and mode-600 staging env. Validate with `bash -n`/`visudo -cf`; do not replace DB/media/configuration. Root installation rights do not pass to CI.
+- Historical diagnosis passed in inspect run #2 attempt 2. For a later read-only audit, use `operation=inspect`, the approved source SHA and the config digest recorded for the current deployed build (command below). This exports only the loaded staging image, validates its exact config/layers and reports engine/store/manifest correspondence; no original TAR, Docker load or service changes are required. Resolve the reported identity/store correspondence before authorizing deploy. Set `STAGING_APPROVED_SHA` and `IOS_PREVIEW_APPROVED_SHA` to the same reviewed application SHA. Set `EAS_CLOUD_BUILD_AUTHORIZED=true` only after cloud-build/account access is authorized. Put EXPO_TOKEN directly in protected `ios-preview` secret, never chat/source/logs. The current connector cannot dispatch workflows or configure Environments; an authenticated GitHub CLI or explicit UI authorization is needed. Direct SSH from this runtime remains unavailable, but GitHub runner SSH is verified. Current deployment #3 passed staging HTTPS/source/capabilities and unchanged production-health checks.
+- EAS project remains `554718b7-7f37-4cbb-89d0-cec6fe193fb5`, bundle `com.sunshine.aiguide`. Use existing paid Apple Developer membership, registered iPhone UDID, valid ad-hoc profile and remote signing. Personal Team alone does not supply this cloud distribution path. Do not buy membership/build plans or change accounts automatically. Configure restricted public iOS Maps key in Expo `preview` environment; no backend provider credentials.
+- Smallest signing setup if not already complete: from `mobile/`, an authorized Expo/Apple owner runs `npx eas-cli@16.28.0 build --platform ios --profile preview` once to initialize remote credentials/device provisioning. This submits a cloud build; local Xcode compilation is not required. If remote build numbering must continue an existing series, seed it once with `eas build:version:set`. Workflow uses remote `appVersionSource` plus preview `autoIncrement`, and `--freeze-credentials`; it cannot repair missing signing interactively.
+
+### Owner command
+
+Request: **“Release Hey City staging from PR #N.”** An operator with reviewed tooling and an existing authenticated `gh` runs:
+
+```bash
+python3 ops/prepare-release.py N
+# Read-only audit of the currently deployed build (historical config was different):
+gh workflow run staging-deploy.yml --repo gris812/Hey-City --ref main \
+  -f operation=inspect -f commit_sha=bb6a9ad539c7fb6db433671c602a51e63c45d9e5 \
+  -f expected_config_digest=sha256:0c47fb12389ce012d72938594ec45d07d06b91062b368d0a4123dd75baa2b173
+# After exact SHA/Environment authorization, use the emitted commands:
+gh workflow run staging-deploy.yml --repo gris812/Hey-City --ref main -f commit_sha=FULL_SHA
+# Wait for success, actual image/config receipt and matching HTTPS source first:
+gh workflow run ios-preview.yml --repo gris812/Hey-City --ref main -f commit_sha=FULL_SHA
+```
+
+Staging builds from the approved source; records TAR checksum, config digest, source and platform; validates the fresh post-load export; updates only `api --no-deps`; and reports actual running ID plus rollback tag. It requires healthy existing PostgreSQL and available memory/disk. Public HTTPS revision/capability and production health checks are in the receiver's rollback boundary. Retrying checks all gates again, never creates a second API service, and retains the current running image as the next rollback target. See `STAGING_DEPLOYMENT.md` for failure behavior and known limitations.
+
+The iOS workflow checks matching staging SHA before submission, uses pinned EAS CLI 16.28.0, bundled Release/internal profile and remote signing. It overlays only public staging/SHA metadata and preview version configuration; production profile/assets/identity are preserved. `ops/ios_preview.py` requires exactly one FINISHED iOS result with the approved gitCommitHash, native build number and an install/dashboard URL. Failed/canceled/timed-out cloud builds are not success. If reporting fails after build submission, inspect the existing EAS build ID before retrying; do not create duplicate builds blindly. Physical installation is manual.
+
+### Artifact storage and acceptance
+
+PR/push CI builds images for validation but uploads no large artifacts. Explicit validation dispatch can retain one compressed image for **one day**, with upload compression disabled; this is an optional recovery export, not a dependency of staging deployment. Each export is approximately 224 MB in the last measured run, so two retained copies nearly exhaust a 0.5 GB allowance. Do not delete historical artifacts automatically or raise paid storage limits. Normal staging releases stream from ephemeral runner storage and retain the previous image on VPS; no routine Mac transfer or registry service is introduced.
+
+The CI suite checks archive/source/platform/layer rejection, malformed input and cleanup, engine-ID differences with exact content proof, diagnosis without mutation, API-only updates and health-failure rollback. EAS tests reject stale/unfinished/multiple results and unsafe links. These automated results do not establish VPS deployment/rollback, signing, install or physical acceptance.
+
+Final release report: PR/full source SHA and dependency; CI/run; archive/config/engine/running IDs; previous image/rollback tag; HTTPS/capability and production pre/post status; EAS build ID/native version/install link; automated vs physical evidence; remaining gates. **Do not create/install Hey City Release skill until operational backend and iOS pipeline acceptance passes.**
+
+## One-time upgrade of an already installed staging receiver
+
+Operational evidence: owner-authorized workflow activation is on `main` at `97fce755c2e7d24b5b3c9acd228acae1b1b728ae`; product PRs remain Draft. Read-only inspect run [#2 attempt 1](https://github.com/gris812/Hey-City/actions/runs/42316561697) passed source/CI gates and established the restricted SSH connection, then the existing VPS wrapper returned `Unauthorized staging operation`, exit 64. No image build/load/deployment occurred. This demonstrates an outdated or differently configured forced-command implementation; do not weaken it or substitute another SSH identity.
+
+An authorized administrator runs the following **once in a root terminal on the VPS**. It downloads only the three reviewed files from immutable tooling commit `eb7fb8e`, verifies their SHA256 before any installation, serializes with the existing deployment lock, retains old code, and atomically replaces only receiver/wrapper/verifier. It does not alter sudoers, Compose, environment secrets, PostgreSQL/media, Nginx or running services. The repository is public, so no GitHub credentials are required for these downloads. The owner executed this block successfully: `receiver_upgrade=installed`, backup `/opt/HeyCity-staging/receiver-backup.kSEURwBK`; inspect #2 attempt 2 subsequently passed. Retain the block for recovery rather than repeating it for routine releases.
+
+```bash
+(
+set -euo pipefail
+[ "$(id -u)" = 0 ]
+stg_upgrade_dir=$(mktemp -d /root/heycity-receiver.XXXXXXXX)
+trap 'rm -rf "$stg_upgrade_dir"' EXIT
+exec 9>/run/lock/heycity-staging-deploy.lock
+flock -n 9
+for stg_file in heycity-staging-deploy heycity-staging-ssh image_identity.py; do
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 \
+    "https://raw.githubusercontent.com/gris812/Hey-City/eb7fb8e0eb8f1b7c17d30ea460a7cc4b58eff3cb/ops/$stg_file" \
+    -o "$stg_upgrade_dir/$stg_file"
+done
+(cd "$stg_upgrade_dir"; sha256sum -c <<'SUMS'
+73d9826c17e06b2b6f14bcce4a02d811a8ee781604c6bae845426d85a5b484ec  heycity-staging-deploy
+647787984f4b61ca32c911474ed45eaeddc9ea7b5f1588a63d5fdf1c8e9a143a  heycity-staging-ssh
+9d4117902c9900b4eb420018509615e0271d7f6f174c90c0b71e1313311fa353  image_identity.py
+SUMS
+)
+bash -n "$stg_upgrade_dir/heycity-staging-deploy"
+bash -n "$stg_upgrade_dir/heycity-staging-ssh"
+python3 -c 'import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(),sys.argv[1],"exec")' "$stg_upgrade_dir/image_identity.py"
+stg_backup_dir=$(mktemp -d /opt/HeyCity-staging/receiver-backup.XXXXXXXX)
+chmod 700 "$stg_backup_dir"
+for stg_old in /usr/local/sbin/heycity-staging-deploy /usr/local/bin/heycity-staging-ssh; do
+  [ -f "$stg_old" ] && [ ! -L "$stg_old" ] && [ "$(stat -c %u "$stg_old")" = 0 ]
+  cp -p "$stg_old" "$stg_backup_dir/"
+done
+if [ -e /usr/local/lib/heycity/image_identity.py ]; then
+  [ ! -L /usr/local/lib/heycity/image_identity.py ]
+  cp -p /usr/local/lib/heycity/image_identity.py "$stg_backup_dir/"
+fi
+install -d -o root -g root -m 0755 /usr/local/lib/heycity
+install -o root -g root -m 0644 "$stg_upgrade_dir/image_identity.py" /usr/local/lib/heycity/image_identity.py.next
+mv -f /usr/local/lib/heycity/image_identity.py.next /usr/local/lib/heycity/image_identity.py
+install -o root -g root -m 0700 "$stg_upgrade_dir/heycity-staging-deploy" /usr/local/sbin/heycity-staging-deploy.next
+mv -f /usr/local/sbin/heycity-staging-deploy.next /usr/local/sbin/heycity-staging-deploy
+install -o root -g root -m 0755 "$stg_upgrade_dir/heycity-staging-ssh" /usr/local/bin/heycity-staging-ssh.next
+mv -f /usr/local/bin/heycity-staging-ssh.next /usr/local/bin/heycity-staging-ssh
+visudo -cf /etc/sudoers.d/heycity-staging-ci
+printf 'receiver_upgrade=installed tooling_sha=eb7fb8e0eb8f1b7c17d30ea460a7cc4b58eff3cb backup=%s\n' "$stg_backup_dir"
+)
+```
+
+The historical inspect job (run #2 attempt 2) passed and resolved the incident before deployment #3. That deploy is a fresh build of the same source and replaced the SHA tag with a new verified config digest; do not rerun the historical 6b2eb1a expectation against the current tag. Use the current config digest above for a fresh audit. Keep the printed backup directory until operational acceptance. Restore those saved code files with root-owned modes if installation must be reverted; this is separate from application-image rollback. Never expose private SSH keys or staging environment contents.
+
+GitHub configuration was verified after owner reauthentication: staging retains main-only restriction and its four existing secret names; approved source is `bb6a9ad…`, release tooling `eb7fb8e…`. Separate `ios-preview` is main-only with the same source/tooling pins and `EAS_CLOUD_BUILD_AUTHORIZED=false`; it has no EXPO_TOKEN yet. Enable cloud submission only after the existing Expo/Apple credentials and device provisioning are confirmed.
