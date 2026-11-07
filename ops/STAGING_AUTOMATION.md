@@ -1,6 +1,6 @@
 # Hey City staging automation — installation and activation
 
-Status: **PR #31 under validation; operational acceptance blocked**. PR #20 is merged and the existing manual staging workflow is on `main`; installation/current VPS state must still be inspected. This file is the canonical automation/setup procedure. Application/Compose/TLS, identity diagnosis and rollback are in adjacent `ops/STAGING_DEPLOYMENT.md`.
+Status: **backend release verified; iOS cloud acceptance pending**. Owner-authorized release workflows are active on `main` at `97fce75`; restricted receiver/tooling `eb7fb8e` is installed. Read-only inspect #2 and staging deploy #3 passed on the VPS. This file is the canonical automation/setup procedure. Application/Compose/TLS, identity diagnosis and rollback are in adjacent `ops/STAGING_DEPLOYMENT.md`.
 
 ## Architecture
 
@@ -12,7 +12,9 @@ The Actions workflow is `workflow_dispatch` **only**, executable exclusively fro
 
 This does not provide complete VPS isolation: all projects share the host, Docker daemon and memory. Keep resource caps; do not grant the staging account Docker access.
 
-## One-time setup (operator/admin)
+## Historical bootstrap — new VPS only (operator/admin)
+
+The existing VPS account/receiver is already installed. Routine releases use **Release operation — PR #31** below; this bootstrap block is only for a new host. The one-time receiver upgrade was completed and does not need repeating for each release.
 
 1. Review and pin both this automation PR and PR #19 (including their CI). **Do not merge PR #17, #18, #19 or this PR without separate explicit approval.** Confirm `PRODUCTION_DEPLOY_ENABLED` cannot launch a production deploy from any planned change to `main`.
 2. On Mac, create a **new** dedicated SSH key:
@@ -47,9 +49,9 @@ This does not provide complete VPS isolation: all projects share the host, Docke
 
    Do not use production SSH secrets. Staging API vendor credentials remain **on VPS only**, never in GitHub Actions.
 
-## Activation gate
+## Activation status
 
-GitHub `workflow_dispatch` workflows must be available on the default branch. This Draft PR is not an active deployment. After separate review and **explicit authorization**, activate only the workflow-only PR #20 on `main`, verifying that no existing production workflow triggers in consequence. Then manually run Actions → **Hey City staging deploy (manual, isolated)** from `main`, passing the exact approved SHA. The workflow builds and uploads one image through the forced staging-only SSH command, then checks public staging HTTPS and unchanged production HTTPS.
+Owner-authorized activation published only `.github/workflows/staging-deploy.yml`, `ios-preview.yml` and `release-workflow-validation.yml` on `main` in commit `97fce755c2e7d24b5b3c9acd228acae1b1b728ae`. Their paths do not trigger the existing production workflow. Product PRs #22/#27/#28/#31 remain Draft/unmerged. The staging workflow was exercised operationally via owner-authorized Browser dispatch; subsequent failed-job retries are also supported by the GitHub connector.
 
 If any required environment configuration, permission restriction, successful CI or HTTPS certificate is missing, **stop**; never fall back to production SSH keys/account, database or authentication secrets, and never run the workflow from an unreviewed PR branch. The limited and explicitly authorized sharing of three *external provider* key values is documented in `ops/STAGING_DEPLOYMENT.md`.
 
@@ -57,9 +59,9 @@ If any required environment configuration, permission restriction, successful CI
 
 Acceptance requires that the staging identity cannot open a shell or use Docker/sudo outside its forced command; invalid SHA and malformed image are rejected; running image revision is recorded; API remains loopback `127.0.0.1:4110`; DB/media networks and volumes do not connect to production; public staging HTTPS health and production HTTPS health both pass. Test OTP, media, spending budgets, native build and live M4 B1–B6 separately.
 
-On staging failure, the receiver stops only staging services, retaining staging DB/media for diagnosis. Administrator rollback must use the previous reviewed staging SHA and never use `docker system prune`, `down -v`, production project, or production SSH credentials.
+On failed API activation, the receiver restores the exact retained previous image and verifies its running ID and pre-deployment health. PostgreSQL/media are preserved. A failed rollback requires an administrator; never use `docker system prune`, `down -v`, the production project or production SSH credentials. The behavior is covered by automated regressions; a live failure/restore drill has not been executed on this VPS.
 
-**Not completed here:** VPS bootstrap, GitHub environment/secrets, Nginx/Certbot setup, actual deployment, native iOS build, M4 acceptance, production rollout.
+**Operationally verified:** restricted SSH, receiver upgrade, exact config/layer identity diagnosis and staging API deployment with HTTPS/source/production-health checks. **Still pending:** signed cloud iOS build/install, physical acceptance and live M4 benchmark. Production rollout is outside scope.
 
 ### SSH key read permissions (Ubuntu OpenSSH)
 
@@ -83,10 +85,10 @@ PR #31 depends directly on PR #28 (`bb6a9ad539c7fb6db433671c602a51e63c45d9e5`). 
 
 ### One-time activation and access
 
-- **Not performed:** separately authorize publishing only the reviewed staging/iOS/workflow-validation files on `main`. This does not merge the application Draft chain. Do not dispatch the old staging workflow for release acceptance: it omits the build SHA argument and verifies only a label/status. Changes under `ops/`/`mobile/` on `main` could trigger the existing production workflow; do not copy them there as an activation shortcut.
+- **Completed:** only the three reviewed release workflow files are active on `main` at `97fce75`, with owner authorization. The application Draft chain remains unmerged. Keep runtime tooling pinned separately; copying `ops/`/`mobile/` changes onto `main` could trigger the existing production workflow and is not an activation shortcut.
 - Pin `RELEASE_TOOLING_SHA` to the reviewed full PR #31 commit in both protected `staging` and `ios-preview` Environments. The workflow moves its separate tools checkout out of the application source archive. Maintain main-only branch restriction and required reviewer where supported. Use the four existing STAGING_SSH_* secrets only, dedicated account, host-key verification and forced command. No root/production key in Actions.
-- An authorized VPS administrator must install the reviewed root-owned receiver, forced-command script and `/usr/local/lib/heycity/image_identity.py`. Existing bootstrap refuses overwriting accounts/configuration; upgrade only these code files, preserving sudoers, Compose and mode-600 staging env. Validate with `bash -n`/`visudo -cf`; do not replace DB/media/configuration. Root installation rights do not pass to CI.
-- First use the existing staging workflow with `operation=inspect`, the historical source SHA and its independently verified config digest (command below). This exports only the loaded staging image, validates its exact config/layers and reports engine/store/manifest correspondence; no original TAR, Docker load or service changes are required. Resolve the reported identity/store correspondence before authorizing deploy. Set `STAGING_APPROVED_SHA` and `IOS_PREVIEW_APPROVED_SHA` to the same reviewed application SHA. Set `EAS_CLOUD_BUILD_AUTHORIZED=true` only after cloud-build/account access is authorized. Put EXPO_TOKEN directly in protected `ios-preview` secret, never chat/source/logs. The current connector cannot dispatch workflows or configure Environments; an authenticated GitHub CLI or explicit UI authorization is needed. Direct SSH from this runtime remains unavailable; current production/staging health has not been established.
+- **Completed:** the owner installed the reviewed root-owned receiver, forced-command script and `/usr/local/lib/heycity/image_identity.py` from `eb7fb8e`; subsequent inspect proved execution through the restricted account. Existing bootstrap refuses overwriting accounts/configuration; upgrade only these code files, preserving sudoers, Compose and mode-600 staging env. Validate with `bash -n`/`visudo -cf`; do not replace DB/media/configuration. Root installation rights do not pass to CI.
+- Historical diagnosis passed in inspect run #2 attempt 2. For a later read-only audit, use `operation=inspect`, the approved source SHA and the config digest recorded for the current deployed build (command below). This exports only the loaded staging image, validates its exact config/layers and reports engine/store/manifest correspondence; no original TAR, Docker load or service changes are required. Resolve the reported identity/store correspondence before authorizing deploy. Set `STAGING_APPROVED_SHA` and `IOS_PREVIEW_APPROVED_SHA` to the same reviewed application SHA. Set `EAS_CLOUD_BUILD_AUTHORIZED=true` only after cloud-build/account access is authorized. Put EXPO_TOKEN directly in protected `ios-preview` secret, never chat/source/logs. The current connector cannot dispatch workflows or configure Environments; an authenticated GitHub CLI or explicit UI authorization is needed. Direct SSH from this runtime remains unavailable, but GitHub runner SSH is verified. Current deployment #3 passed staging HTTPS/source/capabilities and unchanged production-health checks.
 - EAS project remains `554718b7-7f37-4cbb-89d0-cec6fe193fb5`, bundle `com.sunshine.aiguide`. Use existing paid Apple Developer membership, registered iPhone UDID, valid ad-hoc profile and remote signing. Personal Team alone does not supply this cloud distribution path. Do not buy membership/build plans or change accounts automatically. Configure restricted public iOS Maps key in Expo `preview` environment; no backend provider credentials.
 - Smallest signing setup if not already complete: from `mobile/`, an authorized Expo/Apple owner runs `npx eas-cli@16.28.0 build --platform ios --profile preview` once to initialize remote credentials/device provisioning. This submits a cloud build; local Xcode compilation is not required. If remote build numbering must continue an existing series, seed it once with `eas build:version:set`. Workflow uses remote `appVersionSource` plus preview `autoIncrement`, and `--freeze-credentials`; it cannot repair missing signing interactively.
 
@@ -96,10 +98,10 @@ Request: **“Release Hey City staging from PR #N.”** An operator with reviewe
 
 ```bash
 python3 ops/prepare-release.py N
-# One-time historical identity diagnosis after receiver/workflow installation:
+# Read-only audit of the currently deployed build (historical config was different):
 gh workflow run staging-deploy.yml --repo gris812/Hey-City --ref main \
   -f operation=inspect -f commit_sha=bb6a9ad539c7fb6db433671c602a51e63c45d9e5 \
-  -f expected_config_digest=sha256:6b2eb1a9260f69216248774f88d1b4dad89d314d1ba65888bb54ac1aa61a246b
+  -f expected_config_digest=sha256:0c47fb12389ce012d72938594ec45d07d06b91062b368d0a4123dd75baa2b173
 # After exact SHA/Environment authorization, use the emitted commands:
 gh workflow run staging-deploy.yml --repo gris812/Hey-City --ref main -f commit_sha=FULL_SHA
 # Wait for success, actual image/config receipt and matching HTTPS source first:
@@ -120,9 +122,9 @@ Final release report: PR/full source SHA and dependency; CI/run; archive/config/
 
 ## One-time upgrade of an already installed staging receiver
 
-Operational evidence: owner-authorized workflow activation is on `main` at `97fce755c2e7d24b5b3c9acd228acae1b1b728ae`; product PRs remain Draft. Read-only inspect run [#2](https://github.com/gris812/Hey-City/actions/runs/42316561697) passed source/CI gates and established the restricted SSH connection, then the existing VPS wrapper returned `Unauthorized staging operation`, exit 64. No image build/load/deployment occurred. This demonstrates an outdated or differently configured forced-command implementation; do not weaken it or substitute another SSH identity.
+Operational evidence: owner-authorized workflow activation is on `main` at `97fce755c2e7d24b5b3c9acd228acae1b1b728ae`; product PRs remain Draft. Read-only inspect run [#2 attempt 1](https://github.com/gris812/Hey-City/actions/runs/42316561697) passed source/CI gates and established the restricted SSH connection, then the existing VPS wrapper returned `Unauthorized staging operation`, exit 64. No image build/load/deployment occurred. This demonstrates an outdated or differently configured forced-command implementation; do not weaken it or substitute another SSH identity.
 
-An authorized administrator runs the following **once in a root terminal on the VPS**. It downloads only the three reviewed files from immutable tooling commit `eb7fb8e`, verifies their SHA256 before any installation, serializes with the existing deployment lock, retains old code, and atomically replaces only receiver/wrapper/verifier. It does not alter sudoers, Compose, environment secrets, PostgreSQL/media, Nginx or running services. The repository is public, so no GitHub credentials are required for these downloads. The shell block passes `bash -n`; actual installation is still administrator-executed and unverified until its receipt is returned.
+An authorized administrator runs the following **once in a root terminal on the VPS**. It downloads only the three reviewed files from immutable tooling commit `eb7fb8e`, verifies their SHA256 before any installation, serializes with the existing deployment lock, retains old code, and atomically replaces only receiver/wrapper/verifier. It does not alter sudoers, Compose, environment secrets, PostgreSQL/media, Nginx or running services. The repository is public, so no GitHub credentials are required for these downloads. The owner executed this block successfully: `receiver_upgrade=installed`, backup `/opt/HeyCity-staging/receiver-backup.kSEURwBK`; inspect #2 attempt 2 subsequently passed. Retain the block for recovery rather than repeating it for routine releases.
 
 ```bash
 (
@@ -168,6 +170,6 @@ printf 'receiver_upgrade=installed tooling_sha=eb7fb8e0eb8f1b7c17d30ea460a7cc4b5
 )
 ```
 
-After `receiver_upgrade=installed`, rerun only the failed inspect job (run #2), using the existing restricted identity. Do not deploy until its exact config/layer proof and engine/store correspondence resolve the historical incident. Keep the printed backup directory until operational acceptance. Restore those saved code files with root-owned modes if installation must be reverted; this is separate from application-image rollback. Never expose private SSH keys or staging environment contents.
+The historical inspect job (run #2 attempt 2) passed and resolved the incident before deployment #3. That deploy is a fresh build of the same source and replaced the SHA tag with a new verified config digest; do not rerun the historical 6b2eb1a expectation against the current tag. Use the current config digest above for a fresh audit. Keep the printed backup directory until operational acceptance. Restore those saved code files with root-owned modes if installation must be reverted; this is separate from application-image rollback. Never expose private SSH keys or staging environment contents.
 
 GitHub configuration was verified after owner reauthentication: staging retains main-only restriction and its four existing secret names; approved source is `bb6a9ad…`, release tooling `eb7fb8e…`. Separate `ios-preview` is main-only with the same source/tooling pins and `EAS_CLOUD_BUILD_AUTHORIZED=false`; it has no EXPO_TOKEN yet. Enable cloud submission only after the existing Expo/Apple credentials and device provisioning are confirmed.
