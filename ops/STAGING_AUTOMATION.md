@@ -117,3 +117,57 @@ PR/push CI builds images for validation but uploads no large artifacts. Explicit
 The CI suite checks archive/source/platform/layer rejection, malformed input and cleanup, engine-ID differences with exact content proof, diagnosis without mutation, API-only updates and health-failure rollback. EAS tests reject stale/unfinished/multiple results and unsafe links. These automated results do not establish VPS deployment/rollback, signing, install or physical acceptance.
 
 Final release report: PR/full source SHA and dependency; CI/run; archive/config/engine/running IDs; previous image/rollback tag; HTTPS/capability and production pre/post status; EAS build ID/native version/install link; automated vs physical evidence; remaining gates. **Do not create/install Hey City Release skill until operational backend and iOS pipeline acceptance passes.**
+
+## One-time upgrade of an already installed staging receiver
+
+Operational evidence: owner-authorized workflow activation is on `main` at `97fce755c2e7d24b5b3c9acd228acae1b1b728ae`; product PRs remain Draft. Read-only inspect run [#2](https://github.com/gris812/Hey-City/actions/runs/42316561697) passed source/CI gates and established the restricted SSH connection, then the existing VPS wrapper returned `Unauthorized staging operation`, exit 64. No image build/load/deployment occurred. This demonstrates an outdated or differently configured forced-command implementation; do not weaken it or substitute another SSH identity.
+
+An authorized administrator runs the following **once in a root terminal on the VPS**. It downloads only the three reviewed files from immutable tooling commit `eb7fb8e`, verifies their SHA256 before any installation, serializes with the existing deployment lock, retains old code, and atomically replaces only receiver/wrapper/verifier. It does not alter sudoers, Compose, environment secrets, PostgreSQL/media, Nginx or running services. The repository is public, so no GitHub credentials are required for these downloads. The shell block passes `bash -n`; actual installation is still administrator-executed and unverified until its receipt is returned.
+
+```bash
+(
+set -euo pipefail
+[ "$(id -u)" = 0 ]
+stg_upgrade_dir=$(mktemp -d /root/heycity-receiver.XXXXXXXX)
+trap 'rm -rf "$stg_upgrade_dir"' EXIT
+exec 9>/run/lock/heycity-staging-deploy.lock
+flock -n 9
+for stg_file in heycity-staging-deploy heycity-staging-ssh image_identity.py; do
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 \
+    "https://raw.githubusercontent.com/gris812/Hey-City/eb7fb8e0eb8f1b7c17d30ea460a7cc4b58eff3cb/ops/$stg_file" \
+    -o "$stg_upgrade_dir/$stg_file"
+done
+(cd "$stg_upgrade_dir"; sha256sum -c <<'SUMS'
+73d9826c17e06b2b6f14bcce4a02d811a8ee781604c6bae845426d85a5b484ec  heycity-staging-deploy
+647787984f4b61ca32c911474ed45eaeddc9ea7b5f1588a63d5fdf1c8e9a143a  heycity-staging-ssh
+9d4117902c9900b4eb420018509615e0271d7f6f174c90c0b71e1313311fa353  image_identity.py
+SUMS
+)
+bash -n "$stg_upgrade_dir/heycity-staging-deploy"
+bash -n "$stg_upgrade_dir/heycity-staging-ssh"
+python3 -c 'import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(),sys.argv[1],"exec")' "$stg_upgrade_dir/image_identity.py"
+stg_backup_dir=$(mktemp -d /opt/HeyCity-staging/receiver-backup.XXXXXXXX)
+chmod 700 "$stg_backup_dir"
+for stg_old in /usr/local/sbin/heycity-staging-deploy /usr/local/bin/heycity-staging-ssh; do
+  [ -f "$stg_old" ] && [ ! -L "$stg_old" ] && [ "$(stat -c %u "$stg_old")" = 0 ]
+  cp -p "$stg_old" "$stg_backup_dir/"
+done
+if [ -e /usr/local/lib/heycity/image_identity.py ]; then
+  [ ! -L /usr/local/lib/heycity/image_identity.py ]
+  cp -p /usr/local/lib/heycity/image_identity.py "$stg_backup_dir/"
+fi
+install -d -o root -g root -m 0755 /usr/local/lib/heycity
+install -o root -g root -m 0644 "$stg_upgrade_dir/image_identity.py" /usr/local/lib/heycity/image_identity.py.next
+mv -f /usr/local/lib/heycity/image_identity.py.next /usr/local/lib/heycity/image_identity.py
+install -o root -g root -m 0700 "$stg_upgrade_dir/heycity-staging-deploy" /usr/local/sbin/heycity-staging-deploy.next
+mv -f /usr/local/sbin/heycity-staging-deploy.next /usr/local/sbin/heycity-staging-deploy
+install -o root -g root -m 0755 "$stg_upgrade_dir/heycity-staging-ssh" /usr/local/bin/heycity-staging-ssh.next
+mv -f /usr/local/bin/heycity-staging-ssh.next /usr/local/bin/heycity-staging-ssh
+visudo -cf /etc/sudoers.d/heycity-staging-ci
+printf 'receiver_upgrade=installed tooling_sha=eb7fb8e0eb8f1b7c17d30ea460a7cc4b58eff3cb backup=%s\n' "$stg_backup_dir"
+)
+```
+
+After `receiver_upgrade=installed`, rerun only the failed inspect job (run #2), using the existing restricted identity. Do not deploy until its exact config/layer proof and engine/store correspondence resolve the historical incident. Keep the printed backup directory until operational acceptance. Restore those saved code files with root-owned modes if installation must be reverted; this is separate from application-image rollback. Never expose private SSH keys or staging environment contents.
+
+GitHub configuration was verified after owner reauthentication: staging retains main-only restriction and its four existing secret names; approved source is `bb6a9ad…`, release tooling `eb7fb8e…`. Separate `ios-preview` is main-only with the same source/tooling pins and `EAS_CLOUD_BUILD_AUTHORIZED=false`; it has no EXPO_TOKEN yet. Enable cloud submission only after the existing Expo/Apple credentials and device provisioning are confirmed.
