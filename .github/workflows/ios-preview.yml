@@ -57,7 +57,7 @@ jobs:
       - run: npm ci
       - uses: expo/expo-github-action@v8
         with:
-          eas-version: 16.28.0
+          eas-version: 27.5.0
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Submit standalone build using preconfigured credentials only
         working-directory: mobile
