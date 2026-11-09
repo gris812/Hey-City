@@ -13,7 +13,9 @@ def configure(data, sha):
     if profile.get('environment') != 'preview' or profile.get('ios', {}).get('simulator') is not False:
         raise ValueError('Physical preview environment required')
     data.setdefault('cli', {})['appVersionSource'] = 'remote'
-    profile['ios'].update(autoIncrement=True, buildConfiguration='Release', credentialsSource='remote')
+    # SDK 54's automatic image is Xcode 26.0; the locked audio module uses 26.2 SDK symbols.
+    profile['ios'].update(autoIncrement=True, buildConfiguration='Release', credentialsSource='remote',
+                          image='macos-sequoia-15.6-xcode-26.2')
     profile.setdefault('env', {}).update(EXPO_PUBLIC_GIT_SHA=sha, EXPO_PUBLIC_API_URL=API,
                                        EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED='false')
     # A previous local field-build override must not compete with EAS remote numbering.

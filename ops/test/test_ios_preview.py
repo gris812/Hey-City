@@ -17,6 +17,12 @@ class PreviewTests(unittest.TestCase):
         for k,v in [('developmentClient',True),('distribution','store'),('environment','production')]:
             d=self.profile();d['build']['preview'][k]=v
             with self.assertRaises(ValueError):configure(d,SHA)
+    def test_sdk54_auto_image_is_replaced_for_locked_audio_sdk_symbols(self):
+        d=self.profile();d['build']['preview']['ios']['image']='auto'
+        d['build']['production']['ios']={'image':'production-image'}
+        result=configure(d,SHA)
+        self.assertEqual(result['build']['preview']['ios']['image'],'macos-sequoia-15.6-xcode-26.2')
+        self.assertEqual(result['build']['production']['ios']['image'],'production-image')
     def test_finished_matching_build_reports_identity_and_link(self):
         output=report([self.build()],SHA)
         self.assertIn(SHA,output);self.assertIn('2026.10.27',output);self.assertIn('test.ipa',output)
