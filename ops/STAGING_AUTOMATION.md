@@ -94,7 +94,7 @@ PR #31 depends directly on PR #28 (`bb6a9ad539c7fb6db433671c602a51e63c45d9e5`). 
 
 ### Owner command
 
-Request: **“Release Hey City staging from PR #N.”** An operator with reviewed tooling and an existing authenticated `gh` runs:
+Request: **“Release Hey City staging from PR #N.”** The installed [Hey City Release](https://chatgpt.com/skills?skill_id=6af1a2914118819194392ed00643300d) follows this canonical procedure and was read-only forward-tested against the successful PR #28 backend/iOS release. Installation and field acceptance remain owner actions. An operator with reviewed tooling and an existing authenticated `gh` runs:
 
 ```bash
 python3 ops/prepare-release.py N
