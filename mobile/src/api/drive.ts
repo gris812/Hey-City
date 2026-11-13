@@ -110,3 +110,7 @@ export async function selectDriveStory(params: {
     method: 'POST', headers: guestHeaders(guestId), body, signal,
   });
 }
+
+export async function reportNarrativePlayback(sessionId:string,momentId:string,status:'playing'|'paused'|'failed',clientSha:string,latencyMs:number,guestId?:string):Promise<void> {
+  await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/narrative-events`,{method:'POST',headers:guestHeaders(guestId),body:{momentId,status,clientSha,latencyMs}});
+}

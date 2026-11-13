@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "pretest": "npm run test:m1",
-    "test:m1": "ts-node test/configRegression.test.ts && ts-node test/policyRefactor.test.ts && ts-node test/narrativeExperience.test.ts && ts-node test/storyContinuation.test.ts",
+    "test:m1": "ts-node test/configRegression.test.ts && ts-node test/policyRefactor.test.ts && ts-node test/narrativeExperience.test.ts && ts-node test/storyContinuation.test.ts && ts-node test/knowledgeRetrieval.test.ts && ts-node test/narrativeBenchmark.test.ts",
     "evaluate:m1": "ts-node test/evaluateNarrativeV2.ts",
     "build": "tsc",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -17,7 +17,9 @@
     "test:m3": "ts-node test/conversationBuildingBlocks.test.ts && ts-node test/conversationRuntimeLifecycle.test.ts && ts-node test/conversationRuntimeIntegration.test.ts && ts-node test/conversationReplay.test.ts",
     "test:m4": "ts-node test/voiceProviders.test.ts && ts-node test/realtimeVoiceSession.test.ts && ts-node test/realtimeVoiceRoutes.test.ts && ts-node test/realtimeVoiceBenchmark.test.ts && ts-node test/realtimeVoiceReplay.test.ts",
     "replay:m4": "ts-node src/scripts/replayRealtimeVoice.ts",
-    "benchmark:m4:live": "ts-node src/scripts/benchmarkRealtimeVoiceLive.ts"
+    "benchmark:m4:live": "ts-node src/scripts/benchmarkRealtimeVoiceLive.ts",
+    "benchmark:narrative": "ts-node test/runNarrativeBenchmark.ts",
+    "benchmark:narrative:review": "ts-node test/reviewNarrativeBenchmark.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

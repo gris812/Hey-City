@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
 import {
   finishDriveStory,
+  reportNarrativePlayback,
   forceAheadDiscoveryRefresh,
   pingDriveSession,
   startDriveSession,
@@ -35,7 +36,7 @@ import {
 } from '../../presentation';
 import { fromBackendGuideId } from '../../localization/guideIds';
 import { resolveVoiceSampleUrl } from '../guides/voiceSampleUrl';
-import { ExplicitStorySelection } from './explicitStorySelection';
+import { selectionFailurePresentation, ExplicitStorySelection } from './explicitStorySelection';
 import type { StoryAvailability } from '@heycity/shared';
 import { gpsSpeedKmh } from './motion';
 import type { StoryPlaybackIdentity } from '../../presentation/livePresentation';
@@ -271,6 +272,13 @@ export function useDriveDiscoverySession(input: {
     let resolvedUrl: string | undefined;
     try { resolvedUrl = audioUrl ? resolveVoiceSampleUrl(audioUrl, config.apiBase) : undefined; }
     catch { setLocalPlaybackState('error'); reportPlaybackError('audio_url_invalid'); return; }
+    const loadStarted = Date.now();
+    const reported = new Set<string>();
+    const report = (status:'playing'|'paused'|'failed') => {
+      if(reported.has(status))return;reported.add(status);
+      void reportNarrativePlayback(story.sessionId,story.momentId,status,config.buildSha,Date.now()-loadStarted,guestId)
+        .catch(()=>console.warn('native_narrative_telemetry_unavailable'));
+    };
     await conversationPlaybackRef.current.loadStory(story, resolvedUrl, {
       create: async (url, listener) => {
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
@@ -279,6 +287,8 @@ export function useDriveDiscoverySession(input: {
       },
       onState: (state, current, progress) => {
         if (activeSessionIdRef.current !== story.sessionId || activeMomentIdRef.current !== story.momentId) return;
+        if(state==='playing'||state==='paused')report(state);
+        if(state==='error')report('failed');
         setPlayback(current);
         setLocalPlaybackState(state);
         setAudioProgress(progress);
@@ -335,9 +345,16 @@ export function useDriveDiscoverySession(input: {
           guideId: fromBackendGuideId(result.guideId), target: { id: result.poiId, name: result.name,
             latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText }, result.audioUrl);
       },
-      failed: (_choice, error) => {
+      failed: (_choice, error, stage) => {
         if (activeSessionIdRef.current !== id) return;
-        setLocalPlaybackState('error');
+        // No audio exists for an evidence/generation rejection. Clear the preparation owner
+        // instead of rendering a second, misleading playback error/loading transcript.
+        activeMomentIdRef.current = null;
+        setPlayback(undefined);
+        setPlayingName(null);
+        setAudioProgress(undefined);
+        const failure = selectionFailurePresentation(stage, error instanceof ApiRequestError ? error.status : undefined);
+        setLocalPlaybackState(failure.playbackState);
         // Endpoint errors are intentionally not logged; they can contain provider payloads.
         setSessionError(error instanceof ApiRequestError && error.status === 422
           ? (guideLanguage === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.')

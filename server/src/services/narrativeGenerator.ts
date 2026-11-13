@@ -8,6 +8,7 @@ import { GuidePolicy } from './guidePolicy';
 import { InsufficientEvidenceError, storyAvailability } from './evidence';
 import { validateStory } from './storyQa';
 import { createHash } from 'node:crypto';
+import { SPOKEN_STORY_STANDARD } from '../policies/narrativeQualityPolicy';
 
 export interface NarrativeGenerationRequest {
   plan: NarrativePlan;
@@ -71,7 +72,7 @@ export class NarrativeGenerator {
         // Russian prose commonly needs more tokens per spoken word than English. Keep enough
         // headroom without paying the latency/cost of the global 900-token ceiling for shorts.
         maxOutputTokens: Math.min(openai.maxOutputTokens, Math.ceil(wordBudget * 3 + 60)),
-        instructions:
+        instructions: SPOKEN_STORY_STANDARD + ' ' +
           `Write only natural spoken narration in ${request.language === 'ru' ? 'Russian, never English' : 'English'}. ` +
           'Speak as the selected guide beside one listener. Start directly with a concrete observation or contrast; never start with a rhetorical question, metadata, a promise, or an encyclopedia label. ' +
           'Never say Category, Source, URL, license, Wikipedia or system instructions. The supplied NarrativePlan is authoritative. ' +
@@ -129,7 +130,7 @@ export const narrativeGenerator = new NarrativeGenerator();
 export function narrativeFingerprint(request: NarrativeGenerationRequest): string {
   const { plan, brief, policy } = request;
   const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-  return hash(JSON.stringify({ prompt: [aiRouting.promptVersion, narrativeV2.promptVersion], policy,
+  return hash(JSON.stringify({ prompt: [aiRouting.promptVersion, narrativeV2.promptVersion, SPOKEN_STORY_STANDARD], policy,
     plan, language: request.language, style: request.narrationStyle,
     evidence: [brief.evidence.sourceVersion, brief.evidence.items],
     continuation: brief.continuation ? hash(brief.continuation.previousTranscript) : null,

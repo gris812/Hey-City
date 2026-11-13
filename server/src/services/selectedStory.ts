@@ -1,6 +1,6 @@
 import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from './driveSession';
 import { sessionDiscoveryCandidate } from './aheadDiscovery';
-import { discoveryEvidence } from './discoveryKnowledge';
+import { discoveryEvidence, retrieveDiscoveryKnowledge } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
@@ -8,6 +8,7 @@ import { isCircuitOpen } from './budget';
 import type { SelectedStoryResult, StoryAvailability } from '@heycity/shared';
 import { generateIdentification, generateNarrationFromPlan } from './narration';
 import { narration, driveDiscovery } from '../config';
+import { recordNarrativeStage } from './usage';
 
 let selectedMomentSequence = 0;
 
@@ -27,7 +28,12 @@ export function selectStory(id: string, userId: string, poiId: string, level: st
   const requests = session.selectionRequests ??= new Map();
   const existing = requests.get(clientRequestId);
   if (existing) return existing.key === key ? existing.result : Promise.reject(new StorySelectionError(409, 'Request identity already used'));
-  const result = prepareSelectedStory(id, userId, poiId, level, language, clientRequestId);
+  const result = prepareSelectedStory(id, userId, poiId, level, language, clientRequestId).catch(error => {
+    // Only a deterministic pre-generation evidence refusal is safely retryable. Ambiguous
+    // provider failures and delivered audio keep their request identity/result to avoid charges.
+    if (error instanceof StorySelectionError && error.status === 422 && requests.get(clientRequestId)?.result === result) requests.delete(clientRequestId);
+    throw error;
+  });
   requests.set(clientRequestId, { key, result });
   if (requests.size > 32) requests.delete(requests.keys().next().value!);
   return result;
@@ -60,7 +66,10 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
   session.alreadyListening = true;
   let succeeded = false;
   const check = () => { request.signal.throwIfAborted(); if (getSession(id) !== session) throw new StorySelectionError(404,'Session not found'); };
+  const trace = {sessionId:id,momentId,requestId:clientRequestId,objectType:candidate.targetType};
+  const requestedAt = Date.now();
   try {
+    await recordNarrativeStage({...trace,stage:'request',status:'started'},userId);
     if (activeMoment) await recordSessionSuperseded(session, activeMoment.entityId);
     check();
     let result;
@@ -73,7 +82,9 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
       result = await generateIdentification(text,params.voiceId,params.language,userId);
       // Availability is resolved separately so identifying a place never waits for knowledge lookup.
     } else {
-      evidence = await discoveryEvidence(candidate); check();
+      const retrievalStarted = Date.now();
+      evidence = (await retrieveDiscoveryKnowledge(candidate)).evidence; check();
+      await recordNarrativeStage({...trace,stage:'retrieval',status:evidence && storyAvailability(evidence).short ? 'ready' : 'unavailable',latencyMs:Date.now()-retrievalStarted},userId);
       if (evidence) availability = storyAvailability(evidence, matchingContinuationGuide(session.storyContinuation, poiId, params.voiceId, params.language));
       if (!evidence || !(level === 'long' ? availability.long : availability.short)) throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.');
       const duration = level === 'long' ? narration.detailedSeconds : narration.briefSeconds;
@@ -90,7 +101,7 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
         planned.plan.mustAvoid = forbidden;
         planned.brief.constraints.forbiddenPatterns = forbidden;
       }
-      result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal});
+      result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal,trace});
     }
     check();
     if (level === 'short') {
@@ -128,6 +139,9 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
     succeeded = true;
     const attribution = evidence ? publicAttribution(evidence) : undefined;
     return {...result,poiId,name:candidate.name,guideId:canonicalGuideId(params.voiceId),level:level as SelectedStoryResult['level'],language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability};
+  } catch (error) {
+    await recordNarrativeStage({...trace,stage:'request',status:request.signal.aborted ? 'superseded' : error instanceof StorySelectionError && error.status === 422 ? 'unavailable' : 'failed',latencyMs:Date.now()-requestedAt},userId);
+    throw error;
   } finally {
     if (session.storyRequest === request) {session.storyRequest = undefined; session.selectedRequestId = undefined; if (!succeeded) session.alreadyListening = false;}
   }

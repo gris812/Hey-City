@@ -8,6 +8,8 @@ import { narrativeGenerator, type NarrativeGenerationRequest } from '../src/serv
 import { fixture } from './narrativeFixtures';
 import { openCircuit } from '../src/services/budget';
 import { openai } from '../src/config';
+import { recordNativeNarrativeEvent } from '../src/services/narrativeTelemetry';
+import { narrativeStageMetadata } from '../src/services/usage';
 import { validateStory } from '../src/services/storyQa';
 
 process.env.NODE_ENV = 'test';
@@ -33,6 +35,7 @@ async function run() {
   const started = new Promise<void>(resolve => { entered = resolve; });
   const gate = new Promise<void>(resolve => { release = resolve; });
   globalThis.fetch = async (url, options) => {
+    if(String(url).includes('wikidata.org'))return Response.json({search:[]});
     if (!String(url).includes('wikipedia.org')) return originalFetch(url, options);
     const name = new URL(String(url)).searchParams.get('titles') ?? '';
     const latitude = name === 'Distant Museum' ? 38.7125 : 38.62;
@@ -57,6 +60,13 @@ async function run() {
     const b = await selectStory(session.id, owner, 'explicit-b', 'short', 'en', 'new-choice');
     assert.equal(b.poiId, 'explicit-b');
     assert.equal(session.journeyState.getActiveMoment()?.entityId, 'explicit-b');
+    assert.equal(await recordNativeNarrativeEvent(session.id,owner,{momentId:b.momentId,status:'playing',clientSha:'a'.repeat(40)}),'recorded');
+    assert.equal(await recordNativeNarrativeEvent(session.id,owner,{momentId:b.momentId,status:'playing'}),'duplicate');
+    assert.equal(await recordNativeNarrativeEvent(session.id,'wrong-owner',{momentId:b.momentId,status:'failed'}),'stale');
+    assert.equal(await recordNativeNarrativeEvent(session.id,owner,{momentId:'old',status:'failed'}),'stale');
+    assert.equal(await recordNativeNarrativeEvent(session.id,owner,{momentId:b.momentId,status:'completed'}),'invalid','telemetry cannot create completion');
+    const safe=narrativeStageMetadata({stage:'playback',status:'playing',transcript:'private',latitude:25.8,latencyMs:Infinity} as never);
+    assert(!('transcript' in safe)&&!('latitude' in safe)&&!('latencyMs' in safe));
     release();
     await assert.rejects(first, error => (error as Error).name === 'AbortError');
     assert.equal(session.journeyState.getActiveMoment()?.momentId, b.momentId);
@@ -81,6 +91,7 @@ async function run() {
     assert.equal((await post(session.id, { poiId: 'invented', clientRequestId: 'unknown-id' })).status, 404);
     assert.equal((await post(session.id, { poiId: 'explicit-weak', clientRequestId: 'no-evidence' })).status, 422);
     assert.equal(calls.length, beforeRetry, 'insufficient evidence never invokes narrative generation');
+    assert(!session.selectionRequests?.has('no-evidence'),'pre-generation 422 does not poison the request replay forever');
     assert.equal((await post(session.id, { poiId: 'explicit-b', clientRequestId: 'mobile-request' })).status, 409, 'idempotency key cannot be reused for another selection');
     let abortEntered!: () => void, releaseAborted!: () => void;
     const enteredAbort = new Promise<void>(resolve => { abortEntered = resolve; });

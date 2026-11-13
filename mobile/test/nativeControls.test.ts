@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
+import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
 import { createMeasurementFormatter } from '../src/localization/measurements';
 import { MapCameraController, nearestHeading, cameraReliability } from '../src/presentation/mapCamera';
@@ -8,6 +8,9 @@ import type { SelectedStoryResult } from '@heycity/shared';
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 async function selections() {
+  assert.deepEqual(selectionFailurePresentation('request',422),{kind:'evidence',playbackState:'idle'});
+  assert.deepEqual(selectionFailurePresentation('request',503),{kind:'generation',playbackState:'idle'});
+  assert.deepEqual(selectionFailurePresentation('stop'),{kind:'playback',playbackState:'error'});
   const controller = new ExplicitStorySelection();
   const log: string[] = [], keys: string[] = [];
   const pending: Record<string, (result: SelectedStoryResult) => void> = {};

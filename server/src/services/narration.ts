@@ -13,7 +13,7 @@ import { GuidePolicy } from './guidePolicy';
 import { InsufficientEvidenceError, normalizeEvidence } from './evidence';
 import { getLocalPoiById } from './localPoi';
 import { narrativeGenerator } from './narrativeGenerator';
-import { recordUsage } from './usage';
+import { recordUsage, recordNarrativeStage } from './usage';
 import { getGuide, guideVersion } from './guides';
 import { ProgressiveAudio } from './progressiveAudio';
 import { OpenAISpeechProvider } from '../voice/speechProvider';
@@ -115,8 +115,9 @@ export async function generateNarration(input: GenerateNarrationInput): Promise<
 
 export async function generateNarrationFromPlan(
   plan: NarrativePlan,
-  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; brief: StoryBrief; policy: GuidePolicy }
+  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string} }
 ): Promise<GenerateNarrationResult> {
+  const generationStarted = Date.now();
   const generated = await narrativeGenerator.generate({
     plan,
     brief: input.brief,
@@ -125,7 +126,11 @@ export async function generateNarrationFromPlan(
     narrationStyle: input.narrationStyle,
     userId: input.userId,
     signal: input.signal,
+  }).catch(async error => {
+    await recordNarrativeStage({ ...input.trace, stage: 'generation', status: input.signal?.aborted ? 'superseded' : 'failed', latencyMs: Date.now() - generationStarted }, input.userId);
+    throw error;
   });
+  await recordNarrativeStage({...input.trace,stage:'generation',status:'ready',latencyMs:Date.now()-generationStarted},input.userId);
   const text = generated.text;
   input.signal?.throwIfAborted();
 
@@ -134,11 +139,12 @@ export async function generateNarrationFromPlan(
   let audioUrl = await cacheGet<string>(audioKey);
   let audioCached = !!audioUrl;
 
+  const ttsStarted = Date.now();
   if (!audioUrl) {
     try {
       // Return after the first audio bytes, not after the entire MP3 has arrived.
       // Only completed speech is persisted; an in-flight URL must not enter this cache.
-      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts', media.progressiveSpeech);
+      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts', media.progressiveSpeech, input.signal);
       const completion = pendingSpeech.get(audioUrl.split('/').pop()!)?.completion;
       if (completion) {
         void completion.then(url => cacheSet(audioKey, url, cacheTtl.ttsAudioDays * 86400)).catch(() => {
@@ -148,12 +154,15 @@ export async function generateNarrationFromPlan(
         await cacheSet(audioKey, audioUrl, cacheTtl.ttsAudioDays * 86400);
       }
     } catch (error) {
+      if(input.signal?.aborted)throw error;
       console.warn(JSON.stringify({ event: 'story_tts_failed', fallback: 'text_only' }));
       audioUrl = '';
       audioCached = false;
     }
   }
 
+  input.signal?.throwIfAborted();
+  await recordNarrativeStage({...input.trace,stage:'tts',status:audioUrl ? 'ready' : 'text_only',latencyMs:Date.now()-ttsStarted},input.userId);
   return {
     audioUrl,
     transcriptText: text,
