@@ -22,9 +22,12 @@ async function run() {
   const originalFetch = globalThis.fetch;
   const originalGenerate = narrativeGenerator.generate;
   const calls: NarrativeGenerationRequest[] = [];
-  globalThis.fetch = async () => new Response(JSON.stringify({ query: { pages: {
-    '1': { pageid: 1, title: 'Federal Hall', coordinates: [{ lat: 38.627, lon: -90.1994 }], extract: fixture().brief.evidence.items.map(item => item.claim).join(' ') },
-  } } }));
+  globalThis.fetch = async url => {
+    const title = new URL(String(url)).searchParams.get('titles');
+    return Response.json({ query: { pages: title ? {
+      '1': { pageid: 1, title, coordinates: [{ lat: 38.627, lon: -90.1994 }], extract: fixture().brief.evidence.items.map(item => item.claim).join(' ') },
+    } : {} } });
+  };
   narrativeGenerator.generate = async request => {
     calls.push(request);
     return { text: `Narration ${calls.length}`, providerId: 'fixture', cached: false };

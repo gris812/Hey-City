@@ -9,8 +9,15 @@ export const knowledgePolicy = {
   overallTimeoutMs: 18_000,
   nameOverlap: 0.6,
   /** Operator-reviewed exact hosts only; never trust a model-supplied hostname. */
-  officialHosts: (process.env.KNOWLEDGE_OFFICIAL_HOSTS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean),
+  officialHosts: (process.env.KNOWLEDGE_OFFICIAL_HOSTS ?? '')
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean),
   researchEnabled: process.env.KNOWLEDGE_RESEARCH_ENABLED === 'true',
   researchCallsPerMinute: 2,
-  radius(city: boolean): number { return city ? aheadDiscovery.cityContextRadiusMeters : aheadDiscovery.knowledgeMatchRadiusMeters; },
+  radius(city: boolean): number {
+    return city
+      ? aheadDiscovery.cityContextRadiusMeters
+      : aheadDiscovery.knowledgeMatchRadiusMeters;
+  },
 };
