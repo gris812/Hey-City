@@ -57,19 +57,18 @@ export class OpenAIGenerativeProvider implements GenerativeProvider {
 
     const inputTokens = data.usage?.input_tokens ?? 0;
     const outputTokens = data.usage?.output_tokens ?? 0;
+    const estimatedCostUsd = (inputTokens * openai.textInputUsdPerMillion + outputTokens * openai.textOutputUsdPerMillion) / 1e6;
     await recordUsage({
       userId: request.userId,
       category: 'openai_text',
       operation: openai.textModel,
       inputTokens,
       outputTokens,
-      estimatedCostUsd:
-        inputTokens / 1e6 * openai.textInputUsdPerMillion +
-        outputTokens / 1e6 * openai.textOutputUsdPerMillion,
+      estimatedCostUsd,
       metadata: { aiTask: request.task, provider: this.id },
     });
 
     if (!text || (data.status && data.status !== 'completed')) throw new Error(`OpenAI returned incomplete narration${data.incomplete_details?.reason ? `: ${data.incomplete_details.reason}` : ''}`);
-    return { text, providerId: this.id, model: openai.textModel };
+    return { text, providerId: this.id, model: openai.textModel, usage: { inputTokens, outputTokens, estimatedCostUsd } };
   }
 }

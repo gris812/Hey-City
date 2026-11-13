@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
+import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
 import { createMeasurementFormatter } from '../src/localization/measurements';
 import { MapCameraController, nearestHeading, cameraReliability } from '../src/presentation/mapCamera';
@@ -8,6 +8,9 @@ import type { SelectedStoryResult } from '@heycity/shared';
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 async function selections() {
+  assert.deepEqual(selectionFailurePresentation('request',422),{kind:'evidence',playbackState:'idle'});
+  assert.deepEqual(selectionFailurePresentation('request',503),{kind:'generation',playbackState:'idle'});
+  assert.deepEqual(selectionFailurePresentation('stop'),{kind:'playback',playbackState:'error'});
   const controller = new ExplicitStorySelection();
   const log: string[] = [], keys: string[] = [];
   const pending: Record<string, (result: SelectedStoryResult) => void> = {};
@@ -46,6 +49,12 @@ async function selections() {
   await flush(); controller.cancel(); pending.C(result('C')); await old;
   assert.ok(!log.includes('play-C'), 'session stop ignores even a transport that cannot abort');
   assert.equal(controller.holdsAutomaticNarration, false);
+  await controller.select(choice('unavailable'), {
+    ...deps,
+    request: async () => { throw new Error('422'); },
+    failed: (_selected, _error, stage) => assert.equal(stage, 'request'),
+  });
+  assert.equal(controller.holdsAutomaticNarration, false, 'terminal request refusal releases the automatic narration hold');
 }
 
 async function units() {

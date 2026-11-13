@@ -1,0 +1,33 @@
+{
+  "version": "world-strata-v1",
+  "entities": [
+    ["Doral, Florida","city",25.8195,-80.3553,"North America","sparse"],
+    ["Knoxville, Tennessee","city",35.9617,-83.9232,"North America","regional"],
+    ["New Rochelle, New York","city",40.923,-73.781,"North America","regional"],
+    ["Carmel, Indiana","city",39.968,-86.109,"North America","sparse"],
+    ["Federal Hall","historical_landmark",40.7074,-74.0104,"North America","popular"],
+    ["Golden Gate Bridge","bridge",37.8199,-122.4783,"North America","popular"],
+    ["Millennium Park","park",41.8826,-87.6226,"North America","popular"],
+    ["Bletchley Park","historical_landmark",51.9975,-0.7408,"Europe","regional"],
+    ["Kew Gardens","park",51.4787,-0.2956,"Europe","popular"],
+    ["Gamla Uppsala","historical_landmark",59.898,17.634,"Europe","regional"],
+    ["Vardø","city",70.371,31.11,"Europe","sparse"],
+    ["Český Krumlov","city",48.811,14.315,"Europe","regional"],
+    ["Charminar","historical_landmark",17.3616,78.4747,"Asia","popular"],
+    ["Fushimi Inari-taisha","historical_landmark",34.9671,135.7727,"Asia","popular"],
+    ["Kanazawa","city",36.561,136.656,"Asia","regional"],
+    ["National Museum of Singapore","museum",1.2966,103.8485,"Asia","regional"],
+    ["Nairobi National Museum","museum",-1.2736,36.8153,"Africa","regional"],
+    ["Soweto","city",-26.267,27.858,"Africa","regional"],
+    ["Kirstenbosch National Botanical Garden","park",-33.988,18.432,"Africa","popular"],
+    ["Saint-Louis, Senegal","city",16.033,-16.5,"Africa","sparse"],
+    ["Botanical Garden of Curitiba","park",-25.442, -49.238,"South America","regional"],
+    ["Valparaíso","city",-33.046,-71.62,"South America","regional"],
+    ["Museo de la Memoria y los Derechos Humanos","museum",-33.44,-70.679,"South America","regional"],
+    ["Colonia del Sacramento","city",-34.471,-57.844,"South America","sparse"],
+    ["Broken Hill","city",-31.956,141.467,"Oceania","sparse"],
+    ["Museum of New Zealand Te Papa Tongarewa","museum",-41.29,174.782,"Oceania","popular"],
+    ["Royal Botanic Garden, Sydney","park",-33.864,151.217,"Oceania","popular"],
+    ["Arrowtown","city",-44.942,168.835,"Oceania","sparse"]
+  ]
+}

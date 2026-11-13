@@ -14,14 +14,16 @@ export type SelectionDependencies = {
   request(choice: StoryChoice, requestId: string, signal: AbortSignal): Promise<SelectedStoryResult>;
   preparing(choice: StoryChoice): void;
   selected(choice: StoryChoice, result: SelectedStoryResult): Promise<void>;
-  failed(choice: StoryChoice, error: unknown): void;
+  failed(choice: StoryChoice, error: unknown, stage?: 'stop' | 'request' | 'delivery'): void;
 };
 
 /** Local request supersession only. The session's server JourneyState owns narrative decisions. */
 export class ExplicitStorySelection {
   private sequence = 0;
   private current?: { key: string; abort: AbortController; state: 'pending' | 'delivered' | 'error'; requestId: string; result?: SelectedStoryResult };
-  get holdsAutomaticNarration(): boolean { return Boolean(this.current); }
+  get holdsAutomaticNarration(): boolean {
+    return Boolean(this.current && (this.current.state !== 'error' || this.current.result));
+  }
 
   async select(choice: StoryChoice, deps: SelectionDependencies): Promise<void> {
     const key = JSON.stringify([choice.sessionId, choice.poiId, choice.level, choice.language]);
@@ -32,18 +34,21 @@ export class ExplicitStorySelection {
       requestId: prior?.requestId ?? `native-${Date.now()}-${++this.sequence}`, result: prior?.result };
     this.current = current;
     deps.preparing(choice);
+    let stage: 'stop' | 'request' | 'delivery' = 'stop';
     try {
       await deps.stopPlayback();
       if (this.current !== current) return;
+      stage = 'request';
       const result = current.result ?? await deps.request(choice, current.requestId, current.abort.signal);
       if (this.current !== current) return;
       this.current.result = result;
       this.current.state = 'delivered';
+      stage = 'delivery';
       await deps.selected(choice, result);
     } catch (error) {
       if (this.current !== current) return;
       this.current.state = 'error';
-      deps.failed(choice, error);
+      deps.failed(choice, error, stage);
     }
   }
 
@@ -53,4 +58,9 @@ export class ExplicitStorySelection {
     this.current?.abort.abort();
     this.current = undefined;
   }
+}
+
+/** A terminal request refusal has no audio owner and must never render playback failure. */
+export function selectionFailurePresentation(stage:'stop'|'request'|'delivery'|undefined,status?:number): {kind:'evidence'|'generation'|'playback';playbackState:'idle'|'error'} {
+  return stage==='stop' ? {kind:'playback',playbackState:'error'} : {kind:status===422?'evidence':'generation',playbackState:'idle'};
 }

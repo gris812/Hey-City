@@ -1,0 +1,999 @@
+{
+  "schemaVersion": 1,
+  "seed": 20261109,
+  "samplingVersion": "world-strata-v1",
+  "sourceSha": "2704bcae2ef4d28301987c93241bbdd11d7b4fb6",
+  "sourceTree": "287abe6246f4d8c26161d0a6a566e12c31f0aecd",
+  "dirty": false,
+  "language": "en",
+  "durationSec": 30,
+  "samplingBias": "Nearby frame: geotagged English Wikipedia pages in supplied 10km test area; random frame: versioned worldwide catalog, stratified region/type/coverage. Coverage strata are hypotheses, not measured evidence.",
+  "entities": [
+    {
+      "candidate": {
+        "providerId": "wikipedia:109481",
+        "provider": "google",
+        "name": "Virginia Gardens, Florida",
+        "targetType": "other_significant_place",
+        "latitude": 25.80944444,
+        "longitude": -80.2975,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:109427",
+        "provider": "google",
+        "name": "Fontainebleau, Florida",
+        "targetType": "other_significant_place",
+        "latitude": 25.77388889,
+        "longitude": -80.36166667,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:1050772",
+        "provider": "google",
+        "name": "Palmetto station",
+        "targetType": "other_significant_place",
+        "latitude": 25.84333333,
+        "longitude": -80.32416667,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:109422",
+        "provider": "google",
+        "name": "Doral, Florida",
+        "targetType": "other_significant_place",
+        "latitude": 25.82388889,
+        "longitude": -80.37166667,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:109475",
+        "provider": "google",
+        "name": "Sweetwater, Miami-Dade County, Florida",
+        "targetType": "other_significant_place",
+        "latitude": 25.78611111,
+        "longitude": -80.37833333,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:607797",
+        "provider": "google",
+        "name": "Miami Herald",
+        "targetType": "other_significant_place",
+        "latitude": 25.807,
+        "longitude": -80.344,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:1051272",
+        "provider": "google",
+        "name": "Okeechobee station (Metrorail)",
+        "targetType": "other_significant_place",
+        "latitude": 25.83972222,
+        "longitude": -80.30138889,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:2678921",
+        "provider": "google",
+        "name": "Ronald W. Reagan/Doral Senior High School",
+        "targetType": "other_significant_place",
+        "latitude": 25.85259,
+        "longitude": -80.37146,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:109452",
+        "provider": "google",
+        "name": "Miami Springs, Florida",
+        "targetType": "other_significant_place",
+        "latitude": 25.81944444,
+        "longitude": -80.28944444,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "wikipedia:532216",
+        "provider": "google",
+        "name": "Miami International Mall",
+        "targetType": "other_significant_place",
+        "latitude": 25.786638,
+        "longitude": -80.364904,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "nearby"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Museum of New Zealand Te Papa Tongarewa",
+        "provider": "google",
+        "name": "Museum of New Zealand Te Papa Tongarewa",
+        "targetType": "museum",
+        "latitude": -41.29,
+        "longitude": 174.782,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "Oceania",
+      "evidenceStratum": "popular"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Valparaíso",
+        "provider": "google",
+        "name": "Valparaíso",
+        "targetType": "city",
+        "latitude": -33.046,
+        "longitude": -71.62,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "South America",
+      "evidenceStratum": "regional"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Federal Hall",
+        "provider": "google",
+        "name": "Federal Hall",
+        "targetType": "historical_landmark",
+        "latitude": 40.7074,
+        "longitude": -74.0104,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "North America",
+      "evidenceStratum": "popular"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Vardø",
+        "provider": "google",
+        "name": "Vardø",
+        "targetType": "city",
+        "latitude": 70.371,
+        "longitude": 31.11,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "Europe",
+      "evidenceStratum": "sparse"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Nairobi National Museum",
+        "provider": "google",
+        "name": "Nairobi National Museum",
+        "targetType": "museum",
+        "latitude": -1.2736,
+        "longitude": 36.8153,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "Africa",
+      "evidenceStratum": "regional"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Charminar",
+        "provider": "google",
+        "name": "Charminar",
+        "targetType": "historical_landmark",
+        "latitude": 17.3616,
+        "longitude": 78.4747,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "Asia",
+      "evidenceStratum": "popular"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Royal Botanic Garden, Sydney",
+        "provider": "google",
+        "name": "Royal Botanic Garden, Sydney",
+        "targetType": "park",
+        "latitude": -33.864,
+        "longitude": 151.217,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "Oceania",
+      "evidenceStratum": "popular"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Botanical Garden of Curitiba",
+        "provider": "google",
+        "name": "Botanical Garden of Curitiba",
+        "targetType": "park",
+        "latitude": -25.442,
+        "longitude": -49.238,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "South America",
+      "evidenceStratum": "regional"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Golden Gate Bridge",
+        "provider": "google",
+        "name": "Golden Gate Bridge",
+        "targetType": "bridge",
+        "latitude": 37.8199,
+        "longitude": -122.4783,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "North America",
+      "evidenceStratum": "popular"
+    },
+    {
+      "candidate": {
+        "providerId": "benchmark:Gamla Uppsala",
+        "provider": "google",
+        "name": "Gamla Uppsala",
+        "targetType": "historical_landmark",
+        "latitude": 59.898,
+        "longitude": 17.634,
+        "providerTypes": [],
+        "distanceMeters": 0,
+        "bearingDegrees": 0,
+        "headingDeltaDegrees": 180,
+        "isAhead": false
+      },
+      "group": "random",
+      "region": "Europe",
+      "evidenceStratum": "regional"
+    }
+  ],
+  "models": {
+    "heycity": "gpt-5.6-luna",
+    "gemini": "not_configured"
+  },
+  "configuration": {
+    "gemini": {
+      "temperature": 0.7,
+      "maxOutputTokens": 900
+    },
+    "knowledgeResearch": "disabled for benchmark cost isolation",
+    "heycity": "production config/plan/guide; no benchmark generator"
+  },
+  "rubric": {
+    "version": "narrative-experience-v1",
+    "weights": {
+      "engagement": 30,
+      "spoken": 25,
+      "relevance": 20,
+      "discovery": 15,
+      "coherence": 10
+    },
+    "gates": [
+      "No fabricated landmark, material historical falsehood, invented quote or misleading attribution.",
+      "No unsafe driving interaction or false location/navigation instruction."
+    ],
+    "instruction": "Score interesting natural spoken entertainment, not encyclopedic precision. Conversational rounding is acceptable unless materially misleading. Evaluate each dimension independently. Explain weaknesses and uncertainty. Gemini is not ground truth. Refer factual claims to retained source evidence; unsupported is not automatically false. Human review is required for disputed gates."
+  },
+  "results": [
+    {
+      "entityId": "wikipedia:109481",
+      "name": "Virginia Gardens, Florida",
+      "retrievalMs": 2973.2025259999996,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 2972
+        }
+      ],
+      "entity": {
+        "name": "Virginia Gardens, Florida",
+        "pageId": 109481,
+        "wikidataId": "Q2232282"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 3,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=109481"
+      ]
+    },
+    {
+      "entityId": "wikipedia:109427",
+      "name": "Fontainebleau, Florida",
+      "retrievalMs": 76.21665200000007,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 76
+        }
+      ],
+      "entity": {
+        "name": "Fontainebleau, Florida",
+        "pageId": 109427,
+        "wikidataId": "Q514636"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 3,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=109427"
+      ]
+    },
+    {
+      "entityId": "wikipedia:1050772",
+      "name": "Palmetto station",
+      "retrievalMs": 71.76912900000025,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 71
+        }
+      ],
+      "entity": {
+        "name": "Palmetto station",
+        "pageId": 1050772,
+        "wikidataId": "Q7128351"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 6,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=1050772"
+      ]
+    },
+    {
+      "entityId": "wikipedia:109422",
+      "name": "Doral, Florida",
+      "retrievalMs": 77.3024349999996,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 77
+        }
+      ],
+      "entity": {
+        "name": "Doral, Florida",
+        "pageId": 109422,
+        "wikidataId": "Q1784180"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 12,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=109422"
+      ]
+    },
+    {
+      "entityId": "wikipedia:109475",
+      "name": "Sweetwater, Miami-Dade County, Florida",
+      "retrievalMs": 76.04963899999984,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 76
+        }
+      ],
+      "entity": {
+        "name": "Sweetwater, Miami-Dade County, Florida",
+        "pageId": 109475,
+        "wikidataId": "Q2180831"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 3,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=109475"
+      ]
+    },
+    {
+      "entityId": "wikipedia:607797",
+      "name": "Miami Herald",
+      "retrievalMs": 71.71146099999987,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 71
+        }
+      ],
+      "entity": {
+        "name": "Miami Herald",
+        "pageId": 607797,
+        "wikidataId": "Q1706651"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 5,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=607797"
+      ]
+    },
+    {
+      "entityId": "wikipedia:1051272",
+      "name": "Okeechobee station (Metrorail)",
+      "retrievalMs": 66.29702999999972,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 66
+        }
+      ],
+      "entity": {
+        "name": "Okeechobee station (Metrorail)",
+        "pageId": 1051272,
+        "wikidataId": "Q7081896"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 3,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=1051272"
+      ]
+    },
+    {
+      "entityId": "wikipedia:2678921",
+      "name": "Ronald W. Reagan/Doral Senior High School",
+      "retrievalMs": 77.8492839999999,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 77
+        }
+      ],
+      "entity": {
+        "name": "Ronald W. Reagan/Doral Senior High School",
+        "pageId": 2678921,
+        "wikidataId": "Q7365363"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 4,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=2678921"
+      ]
+    },
+    {
+      "entityId": "wikipedia:109452",
+      "name": "Miami Springs, Florida",
+      "retrievalMs": 84.67548600000009,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 84
+        }
+      ],
+      "entity": {
+        "name": "Miami Springs, Florida",
+        "pageId": 109452,
+        "wikidataId": "Q775769"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 3,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=109452"
+      ]
+    },
+    {
+      "entityId": "wikipedia:532216",
+      "name": "Miami International Mall",
+      "retrievalMs": 64.48688599999969,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 64
+        }
+      ],
+      "entity": {
+        "name": "Miami International Mall",
+        "pageId": 532216,
+        "wikidataId": "Q6827340"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 6,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=532216"
+      ]
+    },
+    {
+      "entityId": "benchmark:Museum of New Zealand Te Papa Tongarewa",
+      "name": "Museum of New Zealand Te Papa Tongarewa",
+      "retrievalMs": 4248.872518000001,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 4249
+        }
+      ],
+      "entity": {
+        "name": "Te Papa",
+        "wikidataId": "Q915603",
+        "officialUrl": "https://www.tepapa.govt.nz",
+        "pageId": 1225932
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 6,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=1225932"
+      ]
+    },
+    {
+      "entityId": "benchmark:Valparaíso",
+      "name": "Valparaíso",
+      "retrievalMs": 73.36476599999878,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 73
+        }
+      ],
+      "entity": {
+        "name": "Valparaíso",
+        "pageId": 70566,
+        "wikidataId": "Q33986"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 19,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=70566"
+      ]
+    },
+    {
+      "entityId": "benchmark:Federal Hall",
+      "name": "Federal Hall",
+      "retrievalMs": 112.987337999999,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 112
+        }
+      ],
+      "entity": {
+        "name": "Federal Hall",
+        "pageId": 464921,
+        "wikidataId": "Q858689"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 16,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=464921"
+      ]
+    },
+    {
+      "entityId": "benchmark:Vardø",
+      "name": "Vardø",
+      "retrievalMs": 214.08175899999878,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 213
+        }
+      ],
+      "entity": {
+        "name": "Vardø (town)",
+        "pageId": 38045338,
+        "wikidataId": "Q7915572"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 9,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=38045338"
+      ]
+    },
+    {
+      "entityId": "benchmark:Nairobi National Museum",
+      "name": "Nairobi National Museum",
+      "retrievalMs": 751.8080160000009,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "no_match",
+          "latencyMs": 752
+        },
+        {
+          "level": "L3",
+          "status": "disabled",
+          "latencyMs": 0
+        },
+        {
+          "level": "L4",
+          "status": "disabled",
+          "latencyMs": 0
+        }
+      ],
+      "entity": {
+        "name": "Nairobi National Museum",
+        "wikidataId": "Q2595707",
+        "officialUrl": "https://www.museums.or.ke/nairobi-national-museum/"
+      },
+      "availability": {
+        "short": false,
+        "long": false
+      },
+      "claimCount": 0,
+      "sourceUrls": []
+    },
+    {
+      "entityId": "benchmark:Charminar",
+      "name": "Charminar",
+      "retrievalMs": 77.64813399999912,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 77
+        }
+      ],
+      "entity": {
+        "name": "Charminar",
+        "pageId": 903375,
+        "wikidataId": "Q1771696"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 10,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=903375"
+      ]
+    },
+    {
+      "entityId": "benchmark:Royal Botanic Garden, Sydney",
+      "name": "Royal Botanic Garden, Sydney",
+      "retrievalMs": 86.80162199999904,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 87
+        }
+      ],
+      "entity": {
+        "name": "Royal Botanic Garden, Sydney",
+        "pageId": 1803839,
+        "wikidataId": "Q54489"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 8,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=1803839"
+      ]
+    },
+    {
+      "entityId": "benchmark:Botanical Garden of Curitiba",
+      "name": "Botanical Garden of Curitiba",
+      "retrievalMs": 77.26253499999984,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 77
+        }
+      ],
+      "entity": {
+        "name": "Botanical Garden of Curitiba",
+        "pageId": 14268324,
+        "wikidataId": "Q94923"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 14,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=14268324"
+      ]
+    },
+    {
+      "entityId": "benchmark:Golden Gate Bridge",
+      "name": "Golden Gate Bridge",
+      "retrievalMs": 59.90524100000039,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 60
+        }
+      ],
+      "entity": {
+        "name": "Golden Gate Bridge",
+        "pageId": 12103,
+        "wikidataId": "Q44440"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 10,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=12103"
+      ]
+    },
+    {
+      "entityId": "benchmark:Gamla Uppsala",
+      "name": "Gamla Uppsala",
+      "retrievalMs": 58.209633999998914,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 58
+        }
+      ],
+      "entity": {
+        "name": "Gamla Uppsala",
+        "pageId": 251243,
+        "wikidataId": "Q433032"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 11,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=251243"
+      ]
+    }
+  ],
+  "metrics": [],
+  "status": "KNOWLEDGE_MEASURED_NO_NARRATIVE_COMPARISON",
+  "cost": {
+    "reservedUpperBoundUsd": 0,
+    "reportedUsageEstimateUsd": 0
+  },
+  "tts": {
+    "status": "not_run",
+    "note": "Narrative quality benchmark isolates text. Existing evaluate:m1 exercises production TTS; first audible audio requires native field telemetry."
+  },
+  "publishedCodeSha": "10c249d2f105347a3b213f71d8a13c56aa163df6",
+  "sampleOrigin": {
+    "latitude": 25.8195,
+    "longitude": -80.3553,
+    "kind": "public test coordinate"
+  },
+  "fixedRegressions": [
+    {
+      "entityId": "regression:doral",
+      "name": "Doral",
+      "retrievalMs": 3193.1564879999996,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 3192
+        }
+      ],
+      "entity": {
+        "name": "Doral, Florida",
+        "pageId": 109422,
+        "wikidataId": "Q1784180"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 12,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=109422"
+      ]
+    },
+    {
+      "entityId": "regression:knoxville",
+      "name": "Knoxville, Tennessee",
+      "retrievalMs": 71.85346600000048,
+      "attempts": [
+        {
+          "level": "L2",
+          "status": "matched",
+          "latencyMs": 71
+        }
+      ],
+      "entity": {
+        "name": "Knoxville, Tennessee",
+        "pageId": 135256,
+        "wikidataId": "Q185582"
+      },
+      "availability": {
+        "short": true,
+        "long": true
+      },
+      "claimCount": 16,
+      "sourceUrls": [
+        "https://en.wikipedia.org/?curid=135256"
+      ]
+    }
+  ],
+  "officialSourceProbe": {
+    "allowedHosts": [
+      "www.museums.or.ke"
+    ],
+    "results": [
+      {
+        "entityId": "benchmark:Nairobi National Museum",
+        "name": "Nairobi National Museum",
+        "retrievalMs": 12828.983588,
+        "attempts": [
+          {
+            "level": "L2",
+            "status": "no_match",
+            "latencyMs": 6506
+          },
+          {
+            "level": "L3",
+            "status": "error",
+            "latencyMs": 6321
+          },
+          {
+            "level": "L4",
+            "status": "disabled",
+            "latencyMs": 0
+          }
+        ],
+        "entity": {
+          "name": "Nairobi National Museum",
+          "wikidataId": "Q2595707",
+          "officialUrl": "https://www.museums.or.ke/nairobi-national-museum/"
+        },
+        "availability": {
+          "short": false,
+          "long": false
+        },
+        "claimCount": 0,
+        "sourceUrls": []
+      }
+    ]
+  }
+}

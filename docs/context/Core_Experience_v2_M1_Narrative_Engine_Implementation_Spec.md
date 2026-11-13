@@ -948,3 +948,11 @@ Use this text when starting implementation:
 >
 > Run every applicable test and acceptance scenario. Report failures honestly. The task is not complete merely because code compiles.
 
+
+### Knowledge acquisition and narrative acceptance
+
+Discovery passes its approved entity to knowledge retrieval. L1 reuses cached source-backed evidence and coalesces identical pending lookups. L2 preserves locality qualifiers and checks names and coordinates across Wikipedia title, text and geographic search. Wikidata can resolve an entity independently and bind an alternate article or official website through its entity ID. L3 reads subject-matching paragraphs from operator-approved HTTPS official hosts. L4 is opt-in, uses the existing auxiliary AI route to propose sources and accepts only a quote found on an independently retrieved approved page. It requires a resolved entity, shares the retrieval deadline and request limit, and has a separate call limit. With the default deterministic auxiliary route, there are no paid research calls. Official host configuration and the L4 switch are `KNOWLEDGE_OFFICIAL_HOSTS` and `KNOWLEDGE_RESEARCH_ENABLED`.
+
+Identification needs a known session entity and can state its name and type. A short needs at least one informative supported claim at the default thresholds. A detailed story needs at least three and a continuation needs at least two unused claims. Keep source references internal to planning and audit. If evidence remains insufficient, the explicit story request returns 422 before generation. Provider failures, insufficient evidence, text-only TTS delivery and native audio failure have distinct states. The native client clears preparation on terminal request failure. Playback reporting observes the existing moment owner and cannot complete a story.
+
+The existing narrative policy calls for one supported opening and one angle with local meaning, spoken through the selected guide. Conversational approximation is acceptable when it preserves meaning. Material falsehood, invented quotations and unsafe location instructions fail acceptance. See the golden corpus and evaluation README for the quality procedure.

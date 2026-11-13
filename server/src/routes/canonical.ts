@@ -5,6 +5,7 @@ import { requireAuth, requireAuthOrGuest } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { getGuide } from '../services/guides';
 import { getSession } from '../services/driveSession';
+import { recordNativeNarrativeEvent } from '../services/narrativeTelemetry';
 import {
   canonicalStoryEnd,
   canonicalSessionContext,
@@ -29,6 +30,12 @@ import {
 } from '../controllers/realtimeVoice';
 
 export const sessionsRouter = Router();
+sessionsRouter.post('/:sessionId/narrative-events', rateLimit({windowMs:60000,limit:60,standardHeaders:true,legacyHeaders:false,skip:()=>process.env.NODE_ENV==='test'}), requireAuthOrGuest, async (req:AuthRequest,res,next)=>{
+  try {
+    const status=await recordNativeNarrativeEvent(req.params.sessionId,req.user!.userId,req.body);
+    res.status(status==='invalid'?400:status==='stale'?409:200).json({status});
+  }catch(error){next(error);}
+});
 sessionsRouter.get('/:sessionId/objects/:poiId/availability', requireAuthOrGuest, async (req: AuthRequest, res, next) => {
   try { res.json(await selectedStoryAvailability(req.params.sessionId, req.user!.userId, req.params.poiId)); }
   catch (error) {

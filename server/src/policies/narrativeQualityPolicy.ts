@@ -1,5 +1,8 @@
 import type { NarrativeBeatKind, NarrativeLevel } from '@heycity/shared';
 
+export const NARRATIVE_EXPERIENCE_WEIGHTS = Object.freeze({ engagement: 30, spoken: 25, relevance: 20, discovery: 15, coherence: 10 });
+export const SPOKEN_STORY_STANDARD = 'Lead with an intriguing supported contrast or human detail; develop one angle and explain why it matters locally. Connect facts naturally rather than reciting a list. Reasonable rounding and conversational simplification are welcome when they preserve meaning. Never invent landmarks, quotations, historical causality, attribution or location instructions. No padding or academic caveats that add no useful uncertainty. A continuation must add unused material.';
+
 /** Mutable spoken-language guardrails, independent of runtime limits and providers. */
 export const NARRATIVE_FORBIDDEN_PATTERNS = Object.freeze([
   '^\\s*(?:I will tell you about|Let me tell you about|This historic building|Я расскажу вам|Позвольте рассказать|Это историческое здание)',

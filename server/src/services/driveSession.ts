@@ -436,11 +436,13 @@ export async function pingSession(
   const request = new AbortController();
   session.storyRequest = request;
   session.alreadyListening = true;
+  const momentId = `moment_${randomUUID()}`;
   let narration;
   try {
     narration = await generateNarrationFromPlan(narrativePlan, {
       brief, policy, language: session.params.language,
       narrationStyle: session.params.narrationStyle, userId, signal: request.signal,
+      trace: { sessionId, momentId, objectType: selectedEvidence.category },
     });
     request.signal.throwIfAborted();
     if (sessions.get(sessionId) !== session || session.storyRequest !== request) throw new Error('Story request superseded');
@@ -457,7 +459,6 @@ export async function pingSession(
   }
   session.storyContinuation = undefined;
 
-  const momentId = `moment_${randomUUID()}`;
   session.journeyState.startStory({momentId,entityId:decision.poiId,entityName:place.name,
     category:selectedEvidence.category,level:'auto',guideId:policy.id,callbackId:brief.journey?.callback?.id,startedAt:at});
   session.journeyState.recordNarration({momentId,evidenceRefs:brief.selectedEvidenceRefs,topicKeys,

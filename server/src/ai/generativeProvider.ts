@@ -20,6 +20,7 @@ export interface GenerativeTaskResult {
   text: string;
   providerId: string;
   model: string;
+  usage?: { inputTokens: number; outputTokens: number; estimatedCostUsd: number };
 }
 
 export interface GenerativeProvider {

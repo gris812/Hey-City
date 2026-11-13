@@ -342,3 +342,25 @@ export async function adminUsers(limit = 100): Promise<unknown[]> {
      ORDER BY u.last_seen_at DESC LIMIT $1`, [limit]
   );
 }
+
+export interface NarrativeStageEvent {
+  sessionId?: string; momentId?: string; requestId?: string;
+  stage: 'request' | 'retrieval' | 'generation' | 'tts' | 'playback';
+  status: 'started' | 'ready' | 'failed' | 'unavailable' | 'text_only' | 'playing' | 'paused' | 'completed' | 'skipped' | 'superseded';
+  latencyMs?: number; objectType?: string; clientSha?: string;
+}
+/** Whitelist only. No coordinates, URL, transcript, error messages or arbitrary client metadata. */
+export function narrativeStageMetadata(event: NarrativeStageEvent): Record<string, unknown> {
+  const out: Record<string,unknown> = {stage:event.stage,status:event.status,sourceSha:/^[a-f0-9]{40}$/.test(process.env.GIT_SHA??'')?process.env.GIT_SHA:'unknown'};
+  for(const key of ['sessionId','momentId','requestId','objectType'] as const) if(typeof event[key]==='string')out[key]=event[key]!.slice(0,160);
+  if(typeof event.latencyMs==='number' && Number.isFinite(event.latencyMs))out.latencyMs=Math.max(0,Math.min(600000,Math.round(event.latencyMs)));
+  if(/^[a-f0-9]{40}$/.test(event.clientSha??''))out.clientSha=event.clientSha;
+  return out;
+}
+export async function recordNarrativeStage(event: NarrativeStageEvent,userId?:string):Promise<void> {
+  try {
+    await recordUsage({ userId, category: 'product', operation: 'narrative_stage', metadata: narrativeStageMetadata(event) });
+  } catch {
+    console.warn('narrative_stage_telemetry_unavailable');
+  }
+}
