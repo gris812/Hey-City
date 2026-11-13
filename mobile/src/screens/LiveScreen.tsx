@@ -167,6 +167,10 @@ export function LiveScreen() {
     driveDiscoveryOn,
     sessionId,
     sessionError,
+    storyNotice,
+    dismissStoryNotice,
+    dismissExplicitTarget,
+    explicitTarget,
     settingsOpen,
     setSettingsOpen,
     themes,
@@ -236,6 +240,7 @@ export function LiveScreen() {
   } = guided;
   useExplorationKeepAwake(shouldKeepExplorationAwake({ focused, foreground: true, scenario: mode,
     sessionActive: Boolean(sessionId) && driveDiscoveryOn, tourState: tourState.journeyState, tourPaused: tourState.isPaused }));
+  useEffect(() => { if (!focused || liveOverlay) dismissStoryNotice(); }, [focused, liveOverlay, dismissStoryNotice]);
   const selectStoryForPlace = (place: ExploreNearbyPlace, level: 'short' | 'long' = 'short') => {
     setSelectedExplorePlace(null);
     void tellPlaceNow(place, level);
@@ -274,7 +279,7 @@ export function LiveScreen() {
   const aheadDecision = lastResult?.aheadDiscovery?.decision;
   const aheadTarget = aheadDecision?.type === 'target_selected' ? aheadDecision.target : null;
   const aheadCandidates = lastResult?.aheadDiscovery?.topCandidates ?? [];
-  const exploreNearbyPlaces: ExploreNearbyPlace[] = aheadCandidates.slice(0, 8).map((candidate) => ({
+  const exploreNearbyPlaces: ExploreNearbyPlace[] = (lastResult?.aheadDiscovery?.nearbyCandidates ?? aheadCandidates).slice(0, 8).map((candidate) => ({
     id: candidate.providerId,
     coordinate: {
       latitude: candidate.latitude,
@@ -286,7 +291,18 @@ export function LiveScreen() {
     isAhead: candidate.isAhead,
     selected: candidate.providerId === aheadTarget?.providerId,
   }));
-  const exploreActiveTarget: ExploreActiveTarget | undefined = aheadTarget ? {
+  const selectedNearbyTarget = explicitTarget
+    ? exploreNearbyPlaces.find(place => place.id === explicitTarget.id)
+    : undefined;
+  const exploreActiveTarget: ExploreActiveTarget | undefined = explicitTarget ? {
+    ...selectedNearbyTarget,
+    ...explicitTarget,
+    targetType: selectedNearbyTarget?.targetType ?? 'other_significant_place',
+    distanceMeters: selectedNearbyTarget?.distanceMeters ?? Number.NaN,
+    isAhead: selectedNearbyTarget?.isAhead ?? false,
+    selected: true,
+    isNarrating: presentation.playback?.poiId === explicitTarget.id && presentation.playbackState === 'playing',
+  } : aheadTarget ? {
     id: aheadTarget.providerId,
     coordinate: {
       latitude: aheadTarget.latitude,
@@ -700,7 +716,7 @@ export function LiveScreen() {
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
           vehicleMode={movementMode === 'vehicle'}
-          onSelectPlace={setSelectedExplorePlace}
+          onSelectPlace={place => { dismissStoryNotice(); setSelectedExplorePlace(place); }}
           motion={lastMotion}
           onTellNow={selectStoryForPlace}
           selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === exploreActiveTarget?.id}
@@ -716,6 +732,8 @@ export function LiveScreen() {
               void closeRealtimeVoiceSession();
             }
           } : undefined}
+          storyNotice={focused ? storyNotice ?? undefined : undefined}
+          onDismissStoryNotice={dismissStoryNotice}
           statusMessage={explorationStopped ? t('walking.explorationStopped') : sessionError ?? undefined}
           onRetry={explorationStopped ? () => { setExplorationStopped(false); void startSession(); } : sessionError ? (locationSettingsRequired ? () => void openLocationSettings() : retryExploration) : undefined}
         >
@@ -1285,7 +1303,6 @@ export function LiveScreen() {
         }
         body={
           presentation.playback?.transcript ??
-          lastResult?.textPreview ??
           activeNarrative?.arrivalText ??
           exploreNarrative.narrative?.arrivalText ??
           t('walking.transcriptUnavailable')
@@ -1304,7 +1321,7 @@ export function LiveScreen() {
           presentation.activeTarget?.id === selectedExplorePlace.id &&
           backendWalkingStoryVisible
         )}
-        onClose={() => setSelectedExplorePlace(null)}
+        onClose={() => { setSelectedExplorePlace(null); dismissExplicitTarget(); }}
         onTellNow={() => { if (selectedExplorePlace) selectStoryForPlace(selectedExplorePlace); }}
         onTellMore={selectedExplorePlace && selectionAvailability?.poiId === selectedExplorePlace.id && selectionAvailability.availability.long
           ? () => selectStoryForPlace(selectedExplorePlace, 'long') : undefined}

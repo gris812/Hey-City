@@ -8,6 +8,7 @@ export type StoryChoice = {
   longitude: number;
   level: 'short' | 'long';
   language: string;
+  guideId?: 'dana' | 'arthur';
 };
 export type SelectionDependencies = {
   stopPlayback(): Promise<void>;
@@ -21,12 +22,13 @@ export type SelectionDependencies = {
 export class ExplicitStorySelection {
   private sequence = 0;
   private current?: { key: string; abort: AbortController; state: 'pending' | 'delivered' | 'error'; requestId: string; result?: SelectedStoryResult };
+  get isPreparing(): boolean { return this.current?.state === 'pending'; }
   get holdsAutomaticNarration(): boolean {
-    return Boolean(this.current && (this.current.state !== 'error' || this.current.result));
+    return Boolean(this.current);
   }
 
   async select(choice: StoryChoice, deps: SelectionDependencies): Promise<void> {
-    const key = JSON.stringify([choice.sessionId, choice.poiId, choice.level, choice.language]);
+    const key = JSON.stringify([choice.sessionId, choice.poiId, choice.level, choice.language, choice.guideId]);
     const prior = this.current?.key === key ? this.current : undefined;
     if (prior && prior.state !== 'error') return;
     this.cancel();
@@ -41,6 +43,10 @@ export class ExplicitStorySelection {
       stage = 'request';
       const result = current.result ?? await deps.request(choice, current.requestId, current.abort.signal);
       if (this.current !== current) return;
+      if (result.poiId !== choice.poiId ||
+          (choice.guideId && result.guideId !== choice.guideId && !(choice.guideId === 'arthur' && result.guideId === 'artur'))) {
+        throw new Error('Selection response identity mismatch');
+      }
       this.current.result = result;
       this.current.state = 'delivered';
       stage = 'delivery';
@@ -53,6 +59,7 @@ export class ExplicitStorySelection {
   }
 
   /** Allow a deliberate retry after a native loading failure, without accepting stale media. */
+  markEnded(): void { if (this.current?.state === 'delivered') this.current = { ...this.current, state: 'error', result: undefined, requestId: `native-${Date.now()}-${++this.sequence}` }; }
   retryAfterAudioFailure(): void { if (this.current) this.current.state = 'error'; }
   cancel(): void {
     this.current?.abort.abort();

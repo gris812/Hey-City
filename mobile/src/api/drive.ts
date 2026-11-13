@@ -102,6 +102,7 @@ export async function selectDriveStory(params: {
   level: 'short' | 'long';
   language: string;
   clientRequestId: string;
+  guideId?: 'dana' | 'arthur';
   guestId?: string;
   signal?: AbortSignal;
 }): Promise<import('@heycity/shared').SelectedStoryResult> {
@@ -113,4 +114,11 @@ export async function selectDriveStory(params: {
 
 export async function reportNarrativePlayback(sessionId:string,momentId:string,status:'playing'|'paused'|'failed',clientSha:string,latencyMs:number,guestId?:string):Promise<void> {
   await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/narrative-events`,{method:'POST',headers:guestHeaders(guestId),body:{momentId,status,clientSha,latencyMs}});
+}
+
+
+export async function updateDriveGuide(sessionId: string, guideId: string, language: string, guestId?: string): Promise<void> {
+  await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/guide`, {
+    method: 'PUT', headers: guestHeaders(guestId), body: { guideId, language },
+  });
 }

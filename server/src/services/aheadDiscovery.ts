@@ -11,6 +11,7 @@ import type { DiscoveryCandidate, DiscoveryDataProvider, ProviderDiscoveryCandid
 type AheadDiscoverySessionState = {
   previousMovement: MovementContext | null;
   candidates: ProviderDiscoveryCandidate[];
+  recentCandidates?: Map<string, ProviderDiscoveryCandidate>;
   lastRefreshedAtMs: number | null;
   lastAttemptedAtMs: number | null;
   refreshInProgress: boolean;
@@ -25,7 +26,7 @@ const states = new Map<string, AheadDiscoverySessionState>();
  * Automatic ranking continues to use filterAheadCandidates with real geometry below. */
 export function sessionDiscoveryCandidate(sessionId: string, providerId: string): DiscoveryCandidate | undefined {
   const state = states.get(sessionId);
-  const candidate = state?.candidates.find(c => c.providerId === providerId);
+  const candidate = state?.candidates.find(c => c.providerId === providerId) ?? state?.recentCandidates?.get(providerId);
   if (!candidate || !state?.previousMovement) return undefined;
   const geometry = { ...candidate, ...createCandidateGeometry(state.previousMovement, candidate) };
   // Override heading only for eligibility, retaining truthful relative direction in the plan.
@@ -163,12 +164,14 @@ async function refreshProviderCandidates(
   });
 
   try {
-    state.candidates = await provider.searchAhead({
+    const refreshed = await provider.searchAhead({
       movement,
       projectedPoint: projectedSearchPoint(movement),
       radiusMeters: discoverySearchProfile(movement).radiusMeters,
       limit: aheadDiscovery.providerLimit,
     });
+    state.recentCandidates = new Map(state.candidates.map(candidate => [candidate.providerId, candidate]));
+    state.candidates = refreshed;
     state.lastRefreshedAtMs = nowMs;
     state.lastErrorCode = undefined;
     logAheadDiscovery('ahead_discovery_provider_refresh_completed', {
@@ -358,7 +361,8 @@ function createDiagnostic(input: {
     nearbyCandidates: filterAheadCandidates(input.state.candidates.map(candidate => ({
       ...candidate, ...createCandidateGeometry(input.movement, candidate), isAhead: true,
     }))).included.filter(c => c.distanceMeters <= aheadDiscovery.targetDistanceMaxM)
-      .sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 8),
+      .sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, 8)
+      .map(candidate => ({ ...candidate, ...createCandidateGeometry(input.movement, candidate) })),
     topCandidates: included
       .map((candidate) => scoreCandidate(candidate, input.state.selectedTarget?.providerId, input.movement))
       .sort((a, b) => Number(b.candidate.targetType === 'city') - Number(a.candidate.targetType === 'city') || b.score - a.score)
