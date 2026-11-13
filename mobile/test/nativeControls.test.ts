@@ -54,7 +54,9 @@ async function selections() {
     request: async () => { throw new Error('422'); },
     failed: (_selected, _error, stage) => assert.equal(stage, 'request'),
   });
-  assert.equal(controller.holdsAutomaticNarration, false, 'terminal request refusal releases the automatic narration hold');
+  assert.equal(controller.holdsAutomaticNarration, true, 'failed explicit target stays pinned until dismissal or a new request');
+  controller.cancel();
+  assert.equal(controller.holdsAutomaticNarration, false);
 }
 
 async function units() {

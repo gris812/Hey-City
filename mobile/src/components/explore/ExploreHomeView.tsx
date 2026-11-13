@@ -1,6 +1,8 @@
 import { useMeasurements } from '../../localization/useMeasurements';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
+  PanResponder,
   Image,
   type ImageSourcePropType,
   ScrollView,
@@ -55,6 +57,8 @@ export type ExploreHomeViewProps = {
   voiceLabel?: string;
   onToggleVoice?: () => void;
   statusMessage?: string;
+  storyNotice?: string;
+  onDismissStoryNotice?: () => void;
   onRetry?: () => void;
   children?: React.ReactNode;
 };
@@ -81,11 +85,24 @@ export function ExploreHomeView({
   voiceLabel,
   onToggleVoice,
   statusMessage,
+  storyNotice,
+  onDismissStoryNotice,
   onRetry,
   children,
 }: ExploreHomeViewProps) {
   const { locale, t } = useAppTranslation();
   const measurements = useMeasurements();
+  const [expanded, setExpanded] = useState(true);
+  const sheetPan = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 12 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderRelease: (_, gesture) => {
+      if (gesture.dy > 24) setExpanded(false);
+      else if (gesture.dy < -24) setExpanded(true);
+    },
+  })).current;
+  useEffect(() => {
+    if (storyNotice && !statusMessage) AccessibilityInfo.announceForAccessibility(storyNotice);
+  }, [storyNotice, statusMessage]);
   const visibleNearbyPlaces = (vehicleMode ? [] : nearbyPlaces)
     .filter((place) => place.id !== activeTarget?.id)
     .slice(0, 4);
@@ -223,6 +240,15 @@ export function ExploreHomeView({
         </View>
       )}
 
+      {storyNotice && !statusMessage && (
+        <View style={[styles.statusBanner, { top: statusTop }]}>
+          <Text style={styles.statusMessage} accessibilityLiveRegion="polite">{storyNotice}</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={locale === 'ru' ? 'Закрыть уведомление' : 'Dismiss notification'}
+            hitSlop={10} onPress={onDismissStoryNotice}>
+            <Text style={styles.retryText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {children}
 
       {onToggleVoice && (
@@ -238,14 +264,18 @@ export function ExploreHomeView({
       )}
 
       <View style={styles.bottomSheet}>
-        <View style={styles.sheetHandle} />
-        <View style={styles.sheetHeader}>
+        <TouchableOpacity {...sheetPan.panHandlers} accessibilityRole="button" accessibilityState={{ expanded }}
+          accessibilityLabel={t('walking.nearby')} onPress={() => setExpanded(value => !value)}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>{t('walking.nearby')}</Text>
           <Text style={styles.areaName} numberOfLines={1}>
             {viewModel.areaName}
           </Text>
-        </View>
+          </View>
+        </TouchableOpacity>
 
+        {expanded && <>
         {activeTarget ? (
           <TouchableOpacity
             accessibilityRole="button"
@@ -341,6 +371,7 @@ export function ExploreHomeView({
             <Text style={styles.guidedButtonText}>{t('walking.chooseWalk')}</Text>
           </TouchableOpacity>
         ) : null}
+        </>}
       </View>
     </View>
   );

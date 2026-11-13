@@ -9,6 +9,7 @@ import {
   pingDriveSession,
   startDriveSession,
   selectDriveStory,
+  updateDriveGuide,
   stopDriveSession,
   type PingResult,
   type StoryFinishReason,
@@ -77,6 +78,19 @@ export function useDriveDiscoverySession(input: {
   const [driveDiscoveryOn, setDriveDiscoveryOn] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [storyNotice, setStoryNotice] = useState<string | null>(null);
+  const [explicitTarget, setExplicitTarget] = useState<{id:string; title:string; coordinate:{latitude:number; longitude:number}}>();
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const dismissStoryNotice = useCallback(() => {
+    clearTimeout(noticeTimer.current);
+    setStoryNotice(null);
+  }, []);
+  const notifyStoryFailure = useCallback((message: string) => {
+    clearTimeout(noticeTimer.current);
+    setStoryNotice(message);
+    noticeTimer.current = setTimeout(() => setStoryNotice(null), 8000);
+  }, []);
+  useEffect(() => () => clearTimeout(noticeTimer.current), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [themes, setThemes] = useState<string[]>(['mixed']);
   const [style, setStyle] = useState('documentary');
@@ -108,9 +122,27 @@ export function useDriveDiscoverySession(input: {
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const explicitSelectionRef = useRef(new ExplicitStorySelection());
+  const guideSync = useRef<{key:string; promise:Promise<void>} | undefined>(undefined);
+  const syncGuide = useCallback((id:string, guest?:string) => {
+    const key = JSON.stringify([id, guideId, guideLanguage]);
+    if (guideSync.current?.key === key) return guideSync.current.promise;
+    const promise = (guideSync.current?.promise.catch(() => undefined) ?? Promise.resolve()).then(() => {
+      if (activeSessionIdRef.current === id) return updateDriveGuide(id, guideId, guideLanguage, guest);
+    });
+    guideSync.current = {key, promise};
+    void promise.catch(() => { if (guideSync.current?.promise === promise) guideSync.current = undefined; });
+    return promise;
+  }, [guideId, guideLanguage]);
   const startingRef = useRef(false);
   const requestRevisionRef = useRef(0);
   const activeMomentIdRef = useRef<string | null>(null);
+  const dismissExplicitTarget = useCallback(() => {
+    if (!activeMomentIdRef.current && !explicitSelectionRef.current.isPreparing) {
+      explicitSelectionRef.current.cancel();
+      setExplicitTarget(undefined);
+    }
+    dismissStoryNotice();
+  }, [dismissStoryNotice]);
   const profileRef = useRef<Awaited<ReturnType<typeof getProfile>> | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
   const storySoundRef = useRef<Audio.Sound | null>(null);
@@ -228,10 +260,10 @@ export function useDriveDiscoverySession(input: {
   const reportPlaybackError = useCallback((code: string) => {
     // Deliberately exclude raw exception messages, URLs, GPS and transcript text.
     console.warn(JSON.stringify({ event: 'native_story_error', code }));
-    setSessionError(guideLanguage === 'ru'
+    notifyStoryFailure(guideLanguage === 'ru'
       ? 'Не удалось воспроизвести рассказ. Попробуйте ещё раз или пропустите его.'
       : 'Story audio could not play. Try again or skip this story.');
-  }, [guideLanguage]);
+  }, [guideLanguage, notifyStoryFailure]);
 
   const stopSession = useCallback(async () => {
     const id = activeSessionIdRef.current;
@@ -239,6 +271,8 @@ export function useDriveDiscoverySession(input: {
     if (!id) return;
     activeSessionIdRef.current = null;
     explicitSelectionRef.current.cancel();
+    setExplicitTarget(undefined);
+    dismissStoryNotice();
     ++requestRevisionRef.current;
     activeMomentIdRef.current = null;
     conversationTurnRevisionRef.current += 1;
@@ -255,7 +289,7 @@ export function useDriveDiscoverySession(input: {
     if (voice) await voice.dispose().catch(() => reportPlaybackError('voice_dispose_failed'));
     await clearConversationPlayback().catch(() => reportPlaybackError('audio_unload_failed'));
     await stopDriveSession(id, ownerGuestId).catch(() => console.warn('native_session_stop_failed'));
-  }, [clearConversationPlayback, guestId, reportPlaybackError]);
+  }, [clearConversationPlayback, dismissStoryNotice, guestId, reportPlaybackError]);
 
   useEffect(() => {
     // Auth changes must never reuse a session owned by the previous guest/account.
@@ -296,9 +330,9 @@ export function useDriveDiscoverySession(input: {
       onEnded: (ended) => {
         if (activeSessionIdRef.current !== ended.sessionId || activeMomentIdRef.current !== ended.momentId) return;
         activeMomentIdRef.current = null;
-        explicitSelectionRef.current.cancel();
+        explicitSelectionRef.current.markEnded();
         void finishDriveStory(ended.sessionId, 'ended', guestId, ended.momentId)
-          .catch(() => reportPlaybackError('completion_report_failed'));
+          .catch(() => console.warn('completion_report_failed'));
       },
       onError: code => {
         if (activeSessionIdRef.current === story.sessionId && activeMomentIdRef.current === story.momentId) {
@@ -314,9 +348,11 @@ export function useDriveDiscoverySession(input: {
     if (!id) return;
     const choice = { sessionId: id, poiId: place.id, name: place.title,
       latitude: place.coordinate.latitude, longitude: place.coordinate.longitude,
-      level, language: guideLanguage };
+      level, language: guideLanguage, guideId };
     await explicitSelectionRef.current.select(choice, {
       preparing: selected => {
+        dismissStoryNotice();
+        setExplicitTarget(place);
         ++requestRevisionRef.current;
         ++conversationTurnRevisionRef.current;
         activeMomentIdRef.current = null;
@@ -335,8 +371,11 @@ export function useDriveDiscoverySession(input: {
         if (voice) await voice.dispose();
         await clearing;
       },
-      request: (selected, clientRequestId, signal) => selectDriveStory({ sessionId: selected.sessionId,
-        poiId: selected.poiId, level: selected.level, language: selected.language, clientRequestId, guestId, signal }),
+      request: async (selected, clientRequestId, signal) => {
+        await syncGuide(id, guestId);
+        signal.throwIfAborted();
+        return selectDriveStory({ sessionId: id, poiId: selected.poiId, level: selected.level, language: selected.language, guideId: selected.guideId, clientRequestId, guestId, signal });
+      },
       selected: async (selected, result) => {
         if (activeSessionIdRef.current !== id) return;
         if (!result.momentId || result.poiId !== selected.poiId) throw new Error('Invalid selection response');
@@ -360,12 +399,12 @@ export function useDriveDiscoverySession(input: {
           reportPlaybackError('audio_unload_failed');
           return;
         }
-        setSessionError(failure.kind === 'evidence'
+        notifyStoryFailure(failure.kind === 'evidence'
           ? (guideLanguage === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.')
           : (guideLanguage === 'ru' ? 'Рассказ временно недоступен. Попробуйте ещё раз.' : 'Story is temporarily unavailable. Try again.'));
       },
     });
-  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError]);
+  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError, syncGuide, dismissStoryNotice, notifyStoryFailure]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -421,13 +460,15 @@ export function useDriveDiscoverySession(input: {
         const speedKmh = gpsSpeedKmh(loc.coords.speed);
         setLastMotion({ speedKmh, heading, timestampMs: loc.timestamp, accuracyMeters: loc.coords.accuracy ?? undefined });
         const accuracy = typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0 ? loc.coords.accuracy : undefined;
+        await syncGuide(sessionId, guestId);
+        if (disposed || activeSessionIdRef.current !== sessionId) return;
         const result = await pingDriveSession(sessionId, loc.coords.latitude, loc.coords.longitude,
-          heading, speedKmh, loc.timestamp, accuracy, false, guestId, muted || explicitSelectionRef.current.holdsAutomaticNarration);
+          heading, speedKmh, loc.timestamp, accuracy, false, guestId, muted || !!activeMomentIdRef.current || explicitSelectionRef.current.holdsAutomaticNarration);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
         if (result.mode) setMovementMode(result.mode);
         // Discovery can advance while the current audio identity remains intact.
         setLastResult(result);
-        if (!muted && !explicitSelectionRef.current.holdsAutomaticNarration && revision === requestRevisionRef.current && result.nextAction === 'PLAY' && result.poi && result.momentId) {
+        if (!muted && !activeMomentIdRef.current && !explicitSelectionRef.current.holdsAutomaticNarration && revision === requestRevisionRef.current && result.nextAction === 'PLAY' && result.poi && result.momentId) {
           void loadStoryPlayback({ sessionId, momentId: result.momentId, poiId: result.poi.place_id,
             guideId: fromBackendGuideId(result.narrativePlan?.guideId),
             target: { id: result.poi.place_id, name: result.poi.name,
@@ -444,7 +485,7 @@ export function useDriveDiscoverySession(input: {
     void runPing();
     pingIntervalRef.current = setInterval(runPing, config.pingIntervalSec * 1000);
     return () => { disposed = true; clearDrivePingInterval(pingIntervalRef); };
-  }, [guestId, guideLanguage, loadStoryPlayback, muted, sessionId]);
+  }, [guestId, guideLanguage, loadStoryPlayback, muted, sessionId, syncGuide]);
 
   useEffect(() => () => {
     activeSessionIdRef.current = null;
@@ -468,7 +509,10 @@ export function useDriveDiscoverySession(input: {
   const finishStory = async (reason: StoryFinishReason) => {
     const id = activeSessionIdRef.current;
     const momentId = activeMomentIdRef.current;
+    if (reason === 'paused') { await conversationPlaybackRef.current.pause(); return; }
     explicitSelectionRef.current.cancel();
+    setExplicitTarget(undefined);
+    dismissStoryNotice();
     if (!id) return;
     if (!momentId) {
       ++requestRevisionRef.current;
@@ -476,15 +520,16 @@ export function useDriveDiscoverySession(input: {
       setLocalPlaybackState('idle');
       return;
     }
-    if (reason === 'paused') { await conversationPlaybackRef.current.pause(); return; }
     // Closing/skipping a story is not proof that it was heard to completion.
     activeMomentIdRef.current = null;
     ++requestRevisionRef.current;
-    await conversationPlaybackRef.current.clear().catch(() => reportPlaybackError('audio_unload_failed'));
+    const revision = requestRevisionRef.current;
+    await conversationPlaybackRef.current.clear().catch(() => console.warn('audio_unload_failed'));
+    if (revision !== requestRevisionRef.current || activeSessionIdRef.current !== id) return;
     setLocalPlaybackState('idle');
     setPlayback(undefined);
     setPlayingName(null);
-    await finishDriveStory(id, 'skipped', guestId, momentId).catch(() => reportPlaybackError('skip_report_failed'));
+    await finishDriveStory(id, 'skipped', guestId, momentId).catch(() => console.warn('skip_report_failed'));
   };
 
   const pausePlayback = () => { void conversationPlaybackRef.current.pause(); };
@@ -812,6 +857,10 @@ export function useDriveDiscoverySession(input: {
     driveDiscoveryOn,
     sessionId,
     sessionError,
+    storyNotice,
+    dismissStoryNotice,
+    dismissExplicitTarget,
+    explicitTarget,
     settingsOpen,
     setSettingsOpen,
     themes,

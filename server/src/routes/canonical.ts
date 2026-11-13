@@ -50,36 +50,39 @@ sessionsRouter.post('/:sessionId/select', rateLimit({ windowMs: 15 * 60 * 1000, 
     const session = getSession(req.params.sessionId);
     if (session?.userId === req.user?.userId && session?.selectedRequestId === requestId) session?.storyRequest?.abort();
   });
-  try { res.json(await selectStory(req.params.sessionId,req.user!.userId,String(req.body.poiId),req.body.level ?? 'short',req.body.language,req.body.clientRequestId)); }
+  try { res.json(await selectStory(req.params.sessionId,req.user!.userId,String(req.body.poiId),req.body.level ?? 'short',req.body.language,req.body.clientRequestId,req.body.guideId)); }
   catch (error) {
     if (error instanceof StorySelectionError) {res.status(error.status).json({error:error.message});return;}
     if (error instanceof Error && error.name === 'AbortError') {res.status(409).json({error:'Selection superseded'});return;}
     res.status(503).json({error:req.body.language === 'en' ? 'Story is temporarily unavailable. Try again.' : 'Рассказ временно недоступен. Попробуйте ещё раз.'});
   }
 });
-sessionsRouter.use(requireAuth);
-sessionsRouter.post('/start', startSession);
-sessionsRouter.put('/:sessionId/guide', async (req: AuthRequest, res, next) => {
+sessionsRouter.put('/:sessionId/guide', requireAuthOrGuest, async (req: AuthRequest, res, next) => {
   try {
     const session = getSession(req.params.sessionId);
     if (!session || session.userId !== req.user?.userId) { res.status(404).json({ error: 'Session not found' }); return; }
     const guide = await getGuide(String(req.body.guideId));
     if (!guide?.active) { res.status(400).json({ error: 'Guide is unavailable' }); return; }
     const nextLanguage = req.body.language === 'ru' || req.body.language === 'en' ? req.body.language : session.params.language;
-    if (session.realtimeVoiceSession && (guide.id !== session.params.voiceId || nextLanguage !== session.params.language)) {
-      await session.realtimeVoiceSession.close(guide.id !== session.params.voiceId ? 'guide_changed' : 'language_changed');
-    }
-    session.storyRequest?.abort();
-    session.conversationRuntime.abandonForContextChange();
-    session.storyContinuation = undefined;
-    session.alreadyListening = false;
-    session.params.voiceId = guide.id;
-    if (req.body.language === 'ru' || req.body.language === 'en') {
-      session.storyRequest?.abort();session.params.language=req.body.language;session.alreadyListening=false;
+    if (guide.id !== session.params.voiceId || nextLanguage !== session.params.language) {
+      const reason = guide.id !== session.params.voiceId ? 'guide_changed' : 'language_changed';
+      session.selectionRevision = (session.selectionRevision ?? 0) + 1;
+      session.storyRequest?.abort();
+      session.storyContinuation = undefined;
+      // The delivered moment retains its original guide and ownership until completion.
+      if (!session.journeyState?.getActiveMoment()) {
+        session.conversationRuntime.abandonForContextChange();
+        session.alreadyListening = false;
+      }
+      session.params.voiceId = guide.id;
+      session.params.language = nextLanguage;
+      await session.realtimeVoiceSession?.close(reason);
     }
     res.json({ ok: true });
   } catch (error) { next(error); }
 });
+sessionsRouter.use(requireAuth);
+sessionsRouter.post('/start', startSession);
 sessionsRouter.post('/:sessionId/context', canonicalSessionContext);
 sessionsRouter.post('/:sessionId/conversation/interrupt', conversationInterruptHandler);
 sessionsRouter.post('/:sessionId/conversation/turn', conversationTurnHandler);

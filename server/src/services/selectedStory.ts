@@ -19,9 +19,12 @@ export class StorySelectionError extends Error {
 const categories: Record<string, [string,string]> = {city:['город','city'],museum:['музей','museum'],park:['парк','park'],national_park:['национальный парк','national park'],historical_landmark:['историческое место','historic landmark'],cultural_landmark:['достопримечательность','landmark'],monument:['памятник','monument'],university:['университет','university'],region:['регион','region']};
 
 /** Latest explicit choice supersedes previous work; discovery never waits for this pipeline. */
-export function selectStory(id: string, userId: string, poiId: string, level: string, language?: string, clientRequestId?: string): Promise<SelectedStoryResult> {
+export function selectStory(id: string, userId: string, poiId: string, level: string, language?: string, clientRequestId?: string, expectedGuideId?: unknown): Promise<SelectedStoryResult> {
   const session = getSession(id);
   if (!session || session.userId !== userId) return Promise.reject(new StorySelectionError(404, 'Session not found'));
+  if (expectedGuideId !== undefined && expectedGuideId !== canonicalGuideId(session.params.voiceId)) {
+    return Promise.reject(new StorySelectionError(409, 'Session guide changed'));
+  }
   if (!clientRequestId) return prepareSelectedStory(id, userId, poiId, level, language, clientRequestId);
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(clientRequestId)) return Promise.reject(new StorySelectionError(400, 'Invalid request identity'));
   const key = JSON.stringify([poiId, level, language ?? session.params.language, session.params.voiceId]);
@@ -86,7 +89,13 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
       evidence = (await retrieveDiscoveryKnowledge(candidate)).evidence; check();
       await recordNarrativeStage({...trace,stage:'retrieval',status:evidence && storyAvailability(evidence).short ? 'ready' : 'unavailable',latencyMs:Date.now()-retrievalStarted},userId);
       if (evidence) availability = storyAvailability(evidence, matchingContinuationGuide(session.storyContinuation, poiId, params.voiceId, params.language));
-      if (!evidence || !(level === 'long' ? availability.long : availability.short)) throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.');
+      if (!evidence || !(level === 'long' ? availability.long : availability.short)) {
+        // Public provider place coordinates only, never the listener's position.
+        console.info(JSON.stringify({ event: 'explicit_story_evidence_unavailable', poiId,
+          name: candidate.name, latitude: candidate.latitude, longitude: candidate.longitude,
+          targetType: candidate.targetType, buildSha: process.env.GIT_SHA }));
+        throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.');
+      }
       const duration = level === 'long' ? narration.detailedSeconds : narration.briefSeconds;
       const journey = session.journeyState;
       const topicKeys = [...params.themeTags, evidence.category, ...specificCallbackTopics(evidence)];

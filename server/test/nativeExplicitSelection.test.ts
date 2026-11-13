@@ -93,6 +93,19 @@ async function run() {
     assert.equal(calls.length, beforeRetry, 'insufficient evidence never invokes narrative generation');
     assert(!session.selectionRequests?.has('no-evidence'),'pre-generation 422 does not poison the request replay forever');
     assert.equal((await post(session.id, { poiId: 'explicit-b', clientRequestId: 'mobile-request' })).status, 409, 'idempotency key cannot be reused for another selection');
+    const previousMoment = await post(session.id, { poiId: 'explicit-a', clientRequestId: 'before-guide-switch' });
+    const changeGuide = await originalFetch(`http://127.0.0.1:${port}/sessions/${session.id}/guide`, {
+      method: 'PUT', headers: { 'content-type': 'application/json', 'x-hey-city-guest-id': owner },
+      body: JSON.stringify({ guideId: 'arthur', language: 'en' }),
+    });
+    assert.equal(changeGuide.status, 200);
+    assert.equal(session.journeyState.getActiveMoment()?.momentId, previousMoment.body.momentId);
+    assert.equal(session.alreadyListening, true);
+    assert.equal((await post(session.id, { poiId: 'explicit-b', guideId: 'dana' })).status, 409);
+    const afterSwitch = await post(session.id, { poiId: 'explicit-b', guideId: 'arthur', clientRequestId: 'after-guide-switch' });
+    assert.equal(afterSwitch.body.guideId, 'arthur');
+    assert.equal(afterSwitch.body.poiId, 'explicit-b');
+    assert.equal(calls.at(-1)?.plan.guideId, 'arthur');
     let abortEntered!: () => void, releaseAborted!: () => void;
     const enteredAbort = new Promise<void>(resolve => { abortEntered = resolve; });
     const abortedGate = new Promise<void>(resolve => { releaseAborted = resolve; });
