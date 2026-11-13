@@ -21,7 +21,9 @@ export type SelectionDependencies = {
 export class ExplicitStorySelection {
   private sequence = 0;
   private current?: { key: string; abort: AbortController; state: 'pending' | 'delivered' | 'error'; requestId: string; result?: SelectedStoryResult };
-  get holdsAutomaticNarration(): boolean { return Boolean(this.current); }
+  get holdsAutomaticNarration(): boolean {
+    return Boolean(this.current && (this.current.state !== 'error' || this.current.result));
+  }
 
   async select(choice: StoryChoice, deps: SelectionDependencies): Promise<void> {
     const key = JSON.stringify([choice.sessionId, choice.poiId, choice.level, choice.language]);

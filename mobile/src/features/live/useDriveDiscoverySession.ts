@@ -356,12 +356,16 @@ export function useDriveDiscoverySession(input: {
         const failure = selectionFailurePresentation(stage, error instanceof ApiRequestError ? error.status : undefined);
         setLocalPlaybackState(failure.playbackState);
         // Endpoint errors are intentionally not logged; they can contain provider payloads.
-        setSessionError(error instanceof ApiRequestError && error.status === 422
+        if (failure.kind === 'playback') {
+          reportPlaybackError('audio_unload_failed');
+          return;
+        }
+        setSessionError(failure.kind === 'evidence'
           ? (guideLanguage === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.')
           : (guideLanguage === 'ru' ? 'Рассказ временно недоступен. Попробуйте ещё раз.' : 'Story is temporarily unavailable. Try again.'));
       },
     });
-  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback]);
+  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {

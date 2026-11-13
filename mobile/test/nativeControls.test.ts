@@ -49,6 +49,12 @@ async function selections() {
   await flush(); controller.cancel(); pending.C(result('C')); await old;
   assert.ok(!log.includes('play-C'), 'session stop ignores even a transport that cannot abort');
   assert.equal(controller.holdsAutomaticNarration, false);
+  await controller.select(choice('unavailable'), {
+    ...deps,
+    request: async () => { throw new Error('422'); },
+    failed: (_selected, _error, stage) => assert.equal(stage, 'request'),
+  });
+  assert.equal(controller.holdsAutomaticNarration, false, 'terminal request refusal releases the automatic narration hold');
 }
 
 async function units() {
