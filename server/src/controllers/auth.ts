@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { jwt as jwtConfig } from '../config';
 import { isAdminEmail, sendOtpEmail, verifyOtp as verifyOtpStore } from '../services/emailOtp';
 import { getOrCreateUser } from '../services/user';
+import { databaseEnabled } from '../services/database';
+import { createMobileSession, renewMobileSession, revokeMobileSession } from '../services/mobileAuthSession';
 import { JwtPayload } from '../middleware/auth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -56,11 +58,31 @@ export async function verifyOtp(req: Request, res: Response): Promise<void> {
 
     const user = await getOrCreateUser(email);
     const payload: JwtPayload = { userId: user.id, email: user.email, role: isAdminEmail(email) ? 'admin' : 'user' };
-    const token = jwt.sign(payload, jwtConfig.secret, { expiresIn: isAdminEmail(email) ? 8 * 60 * 60 : 30 * 24 * 60 * 60 });
-
-    res.json({ token, user: { id: user.id, email: user.email, role: payload.role } });
+    const session = req.body?.renewableSession === true && payload.role === 'user' && databaseEnabled()
+      ? await createMobileSession(user.id, user.email)
+      : { token: jwt.sign(payload, jwtConfig.secret, { expiresIn: payload.role === 'admin' ? '8h' : '30d' }) };
+    res.set('Cache-Control', 'no-store').json({ ...session, user: { id: user.id, email: user.email, role: payload.role } });
   } catch (e) {
     console.error('verifyOtp', e);
     res.status(500).json({ error: 'Verification failed' });
+  }
+}
+
+export async function refreshSession(req: Request, res: Response): Promise<void> {
+  try {
+    const result = await renewMobileSession(req.body?.refreshToken);
+    if (!result) { res.status(401).json({ error: 'Invalid or expired session' }); return; }
+    res.set('Cache-Control', 'no-store').json(result);
+  } catch {
+    res.status(503).json({ error: 'Session service unavailable' });
+  }
+}
+
+export async function signOutSession(req: Request, res: Response): Promise<void> {
+  try {
+    await revokeMobileSession(req.body?.refreshToken);
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ error: 'Session service unavailable' });
   }
 }

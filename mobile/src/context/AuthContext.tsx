@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import {
-  getToken,
+  restoreToken,
   setToken,
   clearToken,
   setAuthInvalidationHandler,
@@ -26,7 +26,7 @@ type AuthContextType = {
   token: string | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (token: string) => Promise<void>;
+  login: (token: string, refreshToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   updatePreferences: (patch: Partial<GuestPreferences>) => Promise<void>;
   completeWelcomeExperience: () => Promise<void>;
@@ -58,30 +58,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    const becomeGuest = async () => {
-      const guestId = await getOrCreateGuestId();
-      if (mounted) setIdentity({ status: 'guest', guestId });
+    let hydrated = false;
+    let guestId: string | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    setAuthInvalidationHandler(() => {
+      if (mounted && hydrated && guestId) setIdentity({ status: 'guest', guestId });
+    });
+
+    const hydrate = async () => {
+      try {
+        guestId ??= await getOrCreateGuestId();
+        const [token, prefs] = await Promise.all([restoreToken(), readPreferences(SecureStore, getSystemLocale())]);
+        if (!mounted) return;
+        preferencesRef.current = prefs;
+        setPreferences(prefs);
+        hydrated = true;
+        setIdentity(identityFromStoredToken(token, guestId));
+      } catch {
+        // Keychain may be temporarily inaccessible after boot. A read failure
+        // cannot stand in for a missing credential.
+        if (mounted) retry = setTimeout(() => { void hydrate(); }, 1500);
+      }
     };
-
-    setAuthInvalidationHandler(async () => {
-      await becomeGuest();
-    });
-
-    Promise.all([getToken(), getOrCreateGuestId(), readPreferences(SecureStore, getSystemLocale())]).then(([t, guestId, prefs]) => {
-      if (!mounted) return;
-      preferencesRef.current = prefs;
-      setPreferences(prefs);
-      setIdentity(identityFromStoredToken(t, guestId));
-    });
+    void hydrate();
 
     return () => {
       mounted = false;
+      clearTimeout(retry);
       setAuthInvalidationHandler(null);
     };
   }, []);
 
-  const login = async (t: string) => {
-    await setToken(t);
+  const login = async (t: string, refreshToken?: string) => {
+    await setToken(t, refreshToken);
     setIdentity({ status: 'authenticated', token: t });
   };
 

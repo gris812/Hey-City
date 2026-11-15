@@ -4,6 +4,7 @@ require('dotenv').config({ path: '.env' });
 module.exports = {
   expo: {
     name: 'Hey City',
+    icon: './assets/app-icon.png',
     slug: 'hey-city',
     version: '1.0.0',
     orientation: 'portrait',
