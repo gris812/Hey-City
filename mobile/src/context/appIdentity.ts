@@ -64,7 +64,12 @@ export function initialRouteForSession(
   welcomeExperienceSeen = false
 ): 'Welcome' | 'Main' | null {
   if (identity.status === 'loading') return null;
+  if (identity.status === 'authenticated' && onboardingCompleted) return 'Main';
   if (!welcomeExperienceSeen) return 'Welcome';
   if (!onboardingCompleted || showOnboardingAtLaunch) return 'Welcome';
   return 'Main';
+}
+
+export function returningGreeting(hour: number): 'welcome.morning' | 'welcome.afternoon' | 'welcome.evening' {
+  return hour < 12 ? 'welcome.morning' : hour < 18 ? 'welcome.afternoon' : 'welcome.evening';
 }

@@ -191,6 +191,8 @@ export async function finishActiveStory(
   }
   session.alreadyListening = false;
   session.nextPoi = undefined;
+  if (reason !== 'ended') session.storyContinuation = undefined;
+  session.conversationRuntime.storyFinished(momentId);
   if (moment) {
     session.journeyState.finishStory({ momentId: moment.momentId, reason: reason === 'ended' ? 'completed' : reason,
       listenedSeconds: Number.isFinite(listenedSeconds) && (listenedSeconds ?? 0) >= 0 ? Math.min(86400, listenedSeconds!) : undefined });
@@ -217,8 +219,6 @@ export async function finishActiveStory(
       experienceEvent(session, {type:'trigger_story',selectedTargetId:moment.entityId,
         momentRelationship:'callback'}), session.userId);
   }
-  if (reason !== 'ended') session.storyContinuation = undefined;
-  session.conversationRuntime.storyFinished(momentId);
 
   return {
     ok: true,
@@ -241,7 +241,8 @@ export async function pingSession(
   timestamp: number,
   accuracyMeters?: number,
   forceAheadRefresh = false,
-  discoveryOnly = false
+  discoveryOnly = false,
+  dismissedPoiIds: ReadonlySet<string> = new Set(),
 ): Promise<PingResult> {
   const session = sessions.get(sessionId);
   if (!session) {
@@ -288,7 +289,7 @@ export async function pingSession(
     const suggested = !session.alreadyListening && !session.conversationRuntime.blocksNarration() && !session.storyRequest &&
       !session.muted && !isCircuitOpen(session.userId) &&
       (!session.lastStoryStartedAt || now-session.lastStoryStartedAt >= discoveryConfig.discoveryCooldownSeconds*1000)
-      ? aheadDiscovery.topCandidates.find(c => !session.spokenProviderIds?.has(c.providerId) &&
+      ? aheadDiscovery.topCandidates.find(c => !dismissedPoiIds.has(c.providerId) && !session.spokenProviderIds?.has(c.providerId) &&
         (c.distanceMeters <= driveDiscovery.fallbackDistanceM ||
          c.distanceMeters / Math.max(speedKmh/3.6,1) <= session.params.leadTimeMin*60 ||
          (c.targetType === 'city' && c.distanceMeters <= discoverySettings.cityContextRadiusMeters))) : undefined;
@@ -328,7 +329,7 @@ export async function pingSession(
       speedKmh,
       themeTags: session.params.themeTags,
       limit: poi.kDestinations,
-    }).map(async (candidate) => ({
+    }).filter(candidate => !dismissedPoiIds.has(candidate.poiId)).map(async (candidate) => ({
       ...candidate,
       listenedRecently: await wasPoiListenedRecently(
         userId,
@@ -338,7 +339,7 @@ export async function pingSession(
     }))
   );
 
-  const live = [...aheadDiscovery.topCandidates].sort((a, b) =>
+  const live = aheadDiscovery.topCandidates.filter(candidate => !dismissedPoiIds.has(candidate.providerId)).sort((a, b) =>
     Number(b.targetType === 'city') - Number(a.targetType === 'city'));
   const livePlaces = new Map(live.map(candidate => [candidate.providerId, {
     place_id: candidate.providerId, name: candidate.name, types: candidate.providerTypes,
@@ -441,7 +442,7 @@ export async function pingSession(
   try {
     narration = await generateNarrationFromPlan(narrativePlan, {
       brief, policy, language: session.params.language,
-      narrationStyle: session.params.narrationStyle, userId, signal: request.signal,
+      narrationStyle: session.params.narrationStyle, userId, signal: request.signal, completeAudio: true,
       trace: { sessionId, momentId, objectType: selectedEvidence.category },
     });
     request.signal.throwIfAborted();

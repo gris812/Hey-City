@@ -6,6 +6,7 @@ export const config = {
   apiBase: API_BASE,
   apiBaseExplicit: Boolean(RAW_API_BASE),
   buildSha: process.env.EXPO_PUBLIC_GIT_SHA?.trim() || 'unstamped',
+  dismissedTargetSuppressionMs: 120_000,
   pingIntervalSec: 10,
   /** Development-build field control only; never exposed as a production preference. */
   m4NativeBenchmarkEnabled:

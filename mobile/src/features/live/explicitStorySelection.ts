@@ -59,7 +59,7 @@ export class ExplicitStorySelection {
   }
 
   /** Allow a deliberate retry after a native loading failure, without accepting stale media. */
-  markEnded(): void { if (this.current?.state === 'delivered') this.current = { ...this.current, state: 'error', result: undefined, requestId: `native-${Date.now()}-${++this.sequence}` }; }
+  markEnded(): void { if (this.current?.state === 'delivered') this.cancel(); }
   retryAfterAudioFailure(): void { if (this.current) this.current.state = 'error'; }
   cancel(): void {
     this.current?.abort.abort();

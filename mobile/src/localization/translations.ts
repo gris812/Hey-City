@@ -2,6 +2,12 @@ import type { SupportedLocale } from './locales';
 
 export const translations = {
   en: {
+    'welcome.morning': 'Good morning',
+    'welcome.afternoon': 'Good afternoon',
+    'welcome.evening': 'Good evening',
+    'walking.readStory': 'Open story',
+    'walking.stopTracking': 'Stop tracking',
+    'walking.targetSelected': 'Selected place',
     'app.loading': 'Loading',
     'tabs.live': 'Live',
     'tabs.explore': 'Map',
@@ -256,6 +262,12 @@ export const translations = {
     'postValuePrompt': 'I hope you enjoyed the walk. Create an account to save the places you visited, return to this story later, and share the walk with friends.',
   },
   ru: {
+    'welcome.morning': 'Доброе утро',
+    'welcome.afternoon': 'Добрый день',
+    'welcome.evening': 'Добрый вечер',
+    'walking.readStory': 'Открыть рассказ',
+    'walking.stopTracking': 'Не отслеживать',
+    'walking.targetSelected': 'Выбранное место',
     'app.loading': 'Загрузка',
     'tabs.live': 'Live',
     'tabs.explore': 'Карта',

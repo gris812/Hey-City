@@ -86,7 +86,7 @@ function camera() {
   assert.equal(nearestHeading(359, 1), 361, 'north crossing takes two degrees');
   assert.equal(nearestHeading(1, 359), -1);
   const map = new MapCameraController(); const position = { latitude: 1, longitude: 2 };
-  map.toggleOrientation();
+  assert.equal(map.orientation, 'course-up');
   assert.equal(map.update(position, { heading: 359, speedKmh: 60, timestampMs: 1000 }, 1000)?.heading, -1);
   assert.equal(map.update(position, { heading: 1, speedKmh: 60, timestampMs: 2000 }, 2000)?.heading, 1);
   map.update(position, { heading: 180, speedKmh: 60, timestampMs: 1500 }, 2001);

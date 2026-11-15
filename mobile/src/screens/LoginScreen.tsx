@@ -119,6 +119,7 @@ export function LoginScreen() {
               placeholderTextColor={colors.textMuted}
               value={code}
               onChangeText={setCode}
+              autoFocus
               keyboardType={codeEntry.keyboardType}
               textContentType={delivery === 'admin_code' ? 'none' : 'oneTimeCode'}
               autoComplete={delivery === 'admin_code' ? 'off' : 'one-time-code'}

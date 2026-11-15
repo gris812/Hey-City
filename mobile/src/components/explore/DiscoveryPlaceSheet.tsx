@@ -122,7 +122,7 @@ export function DiscoveryPlaceSheet({
               <View style={styles.guideCopy}>
                 <Text style={styles.guideName}>{guideName}</Text>
                 <Text style={styles.guideStatus}>
-                  {hasActiveStory ? t('walking.storyReady') : t('walking.tellNow')}
+                  {hasActiveStory ? t('walking.readStory') : t('walking.tellNow')}
                 </Text>
               </View>
             </View>

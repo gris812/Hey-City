@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   PanResponder,
+  Platform,
   Image,
   type ImageSourcePropType,
   ScrollView,
@@ -47,6 +48,11 @@ export type ExploreHomeViewProps = {
   markers: ExploreHomeMarker[];
   nearbyPlaces: ExploreNearbyPlace[];
   activeTarget?: ExploreActiveTarget;
+  greeting?: string;
+  mapTarget?: ExploreNearbyPlace;
+  currentLocation?: LatLng;
+  onStopTracking?: (place: ExploreNearbyPlace) => void;
+  onRetryNotice?: () => void;
   guideImage: ImageSourcePropType;
   viewModel: ExploreHomeViewModel;
   onOpenMenu: () => void;
@@ -74,7 +80,7 @@ export function ExploreHomeView({
   region,
   markers,
   nearbyPlaces,
-  activeTarget,
+  activeTarget, greeting, mapTarget, currentLocation, onStopTracking, onRetryNotice,
   guideImage,
   viewModel,
   onOpenMenu,
@@ -101,7 +107,7 @@ export function ExploreHomeView({
     },
   })).current;
   useEffect(() => {
-    if (storyNotice && !statusMessage) AccessibilityInfo.announceForAccessibility(storyNotice);
+    if (Platform.OS === 'ios' && storyNotice && !statusMessage) AccessibilityInfo.announceForAccessibility(storyNotice);
   }, [storyNotice, statusMessage]);
   const visibleNearbyPlaces = (vehicleMode ? [] : nearbyPlaces)
     .filter((place) => place.id !== activeTarget?.id)
@@ -113,6 +119,22 @@ export function ExploreHomeView({
   const [cameraVersion, setCameraVersion] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [mapReady, setMapReady] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const framedTarget = useRef<ExploreNearbyPlace | undefined>(undefined);
+  useEffect(() => {
+    if (!mapReady || !sheetHeight || !mapTarget || !currentLocation || vehicleMode || framedTarget.current === mapTarget) return;
+    framedTarget.current = mapTarget;
+    camera.current.pan();
+    setCameraVersion(value => value + 1);
+    mapRef.current?.fitToCoordinates([currentLocation, mapTarget.coordinate], {
+      edgePadding: { top: statusTop + 60, right: 65, bottom: Math.min(sheetHeight + 36, height * 0.55), left: 65 },
+      animated: true,
+    });
+  }, [mapReady, sheetHeight, mapTarget, currentLocation, statusTop, height, vehicleMode]);
+  const highlightedPlace = mapTarget ?? activeTarget;
+  const visibleMarkers = highlightedPlace
+    ? [...markers.filter(marker => marker.id !== highlightedPlace.id), { ...highlightedPlace, selected: true }]
+    : markers;
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (!mapReady) return;
@@ -135,14 +157,14 @@ export function ExploreHomeView({
         showsCompass={false}
         toolbarEnabled={false}
       >
-        {markers.map((marker) => (
+        {visibleMarkers.map((marker) => (
           <Marker
             key={marker.id}
             coordinate={marker.coordinate}
             title={marker.title}
             anchor={{ x: 0.5, y: 1 }}
             onPress={() => {
-              const place = [activeTarget, ...nearbyPlaces].find((item) => item?.id === marker.id);
+              const place = [mapTarget, activeTarget, ...nearbyPlaces].find((item) => item?.id === marker.id);
               if (place) onSelectPlace(place);
             }}
           >
@@ -242,7 +264,10 @@ export function ExploreHomeView({
 
       {storyNotice && !statusMessage && (
         <View style={[styles.statusBanner, { top: statusTop }]}>
-          <Text style={styles.statusMessage} accessibilityLiveRegion="polite">{storyNotice}</Text>
+          <Text style={styles.statusMessage} accessibilityLiveRegion={Platform.OS === 'android' ? 'polite' : undefined}>{storyNotice}</Text>
+          {onRetryNotice && <TouchableOpacity accessibilityRole="button" onPress={onRetryNotice}>
+            <Text style={styles.retryText}>{t('walking.retry')}</Text>
+          </TouchableOpacity>}
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={locale === 'ru' ? 'Закрыть уведомление' : 'Dismiss notification'}
             hitSlop={10} onPress={onDismissStoryNotice}>
             <Text style={styles.retryText}>✕</Text>
@@ -263,19 +288,22 @@ export function ExploreHomeView({
         </TouchableOpacity>
       )}
 
-      <View style={styles.bottomSheet}>
+      <View style={styles.bottomSheet} onLayout={event => setSheetHeight(event.nativeEvent.layout.height)}>
         <TouchableOpacity {...sheetPan.panHandlers} accessibilityRole="button" accessibilityState={{ expanded }}
           accessibilityLabel={t('walking.nearby')} onPress={() => setExpanded(value => !value)}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>{t('walking.nearby')}</Text>
           <Text style={styles.areaName} numberOfLines={1}>
-            {viewModel.areaName}
+            {greeting ?? viewModel.areaName}
           </Text>
           </View>
         </TouchableOpacity>
 
         {expanded && <>
+        {activeTarget && onStopTracking && <TouchableOpacity accessibilityRole="button" style={styles.retryButton} onPress={() => onStopTracking(activeTarget)}>
+          <Text style={styles.retryText}>{t('walking.stopTracking')}</Text>
+        </TouchableOpacity>}
         {activeTarget ? (
           <TouchableOpacity
             accessibilityRole="button"
@@ -297,7 +325,7 @@ export function ExploreHomeView({
               <Text style={styles.activeSummary} numberOfLines={2}>
                 {activeTarget.isNarrating
                   ? t('walking.guideSpeaking').replace('{guide}', viewModel.guideName)
-                  : t('walking.targetReady')}
+                  : t('walking.targetSelected')}
               </Text>
             </View>
             <View style={[styles.audioBadge, activeTarget.isNarrating && styles.audioBadgeActive]}>
@@ -307,7 +335,7 @@ export function ExploreHomeView({
                   activeTarget.isNarrating && styles.audioBadgeIconActive,
                 ]}
               >
-                {activeTarget.isNarrating ? '▥' : '✓'}
+                {activeTarget.isNarrating ? '▥' : '•'}
               </Text>
             </View>
           </TouchableOpacity>

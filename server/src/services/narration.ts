@@ -115,7 +115,7 @@ export async function generateNarration(input: GenerateNarrationInput): Promise<
 
 export async function generateNarrationFromPlan(
   plan: NarrativePlan,
-  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string} }
+  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; completeAudio?: boolean; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string} }
 ): Promise<GenerateNarrationResult> {
   const generationStarted = Date.now();
   const generated = await narrativeGenerator.generate({
@@ -137,6 +137,12 @@ export async function generateNarrationFromPlan(
   const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
   const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${input.language}:${plan.guideId}:${guideVersion(await getGuide(plan.guideId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
+  // A cache URL can survive an expired file or a change to the serving origin.
+  if (audioUrl && input.completeAudio) {
+    const filename = /^[a-f0-9]{24}\.mp3$/.test(audioUrl.split('/').pop() ?? '') ? audioUrl.split('/').pop()! : undefined;
+    audioUrl = filename && await access(join(media.directory, filename)).then(() => true, () => false)
+      ? `${media.publicApiUrl}/media/${filename}` : null;
+  }
   let audioCached = !!audioUrl;
 
   const ttsStarted = Date.now();
@@ -144,7 +150,7 @@ export async function generateNarrationFromPlan(
     try {
       // Return after the first audio bytes, not after the entire MP3 has arrived.
       // Only completed speech is persisted; an in-flight URL must not enter this cache.
-      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts', media.progressiveSpeech, input.signal);
+      audioUrl = await synthesizeSpeech(text, plan.guideId, input.language, input.userId, 'story_tts', media.progressiveSpeech && !input.completeAudio, input.signal);
       const completion = pendingSpeech.get(audioUrl.split('/').pop()!)?.completion;
       if (completion) {
         void completion.then(url => cacheSet(audioKey, url, cacheTtl.ttsAudioDays * 86400)).catch(() => {
@@ -228,7 +234,7 @@ async function synthesizeSpeechOnce(
     // Generate once, then reuse the persistent media volume across API restarts.
   }
   if (!openai.apiKey) {
-    if (process.env.NODE_ENV === 'production') throw new Error('OpenAI TTS key is not configured');
+    if (['production', 'staging'].includes(process.env.NODE_ENV ?? '')) throw new Error('OpenAI TTS key is not configured');
     return `https://example.com/tts/${voiceId}/${hash}.mp3`;
   }
   const isArthur = voiceId === 'artur' || voiceId === 'arthur';
