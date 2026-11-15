@@ -65,8 +65,8 @@ export function LoginScreen() {
     if (!e || !code.trim()) return;
     setLoading(true);
     try {
-      const { token } = await verifyOtp(e, normalizeSubmittedCode(delivery, code));
-      await login(token);
+      const { token, refreshToken } = await verifyOtp(e, normalizeSubmittedCode(delivery, code));
+      await login(token, refreshToken);
       navigation.navigate('Main' as never);
     } catch (err) {
       Alert.alert(t('common.error'), localizeAuthError((err as Error).message, delivery, t));

@@ -43,6 +43,16 @@ export async function initializeDatabase(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now(),
       last_seen_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS mobile_auth_sessions (
+      id uuid PRIMARY KEY,
+      user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      email text NOT NULL,
+      current_hash text NOT NULL,
+      previous_hash text,
+      rotated_at timestamptz,
+      expires_at timestamptz NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS mobile_auth_sessions_user_expiry_idx ON mobile_auth_sessions(user_id, expires_at);
     CREATE TABLE IF NOT EXISTS otp_challenges (
       email text PRIMARY KEY,
       code_hash text NOT NULL,

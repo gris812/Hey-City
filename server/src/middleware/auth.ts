@@ -1,12 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { auth as authConfig, jwt as jwtConfig } from '../config';
+import { isMobileSessionActive } from '../services/mobileAuthSession';
 import { requestContext } from '../services/requestContext';
 
 export interface JwtPayload {
   userId: string;
   email: string;
   role?: 'user' | 'admin';
+  sessionId?: string;
 }
 
 export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
@@ -62,6 +64,14 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
 
   try {
     const payload = jwt.verify(token, jwtConfig.secret) as JwtPayload;
+    if (payload.sessionId) {
+      void isMobileSessionActive(payload.sessionId, payload.userId).then(active => {
+        if (!active) { res.status(401).json({ error: 'Invalid or expired session' }); return; }
+        req.user = payload;
+        requestContext.run({ userId: payload.userId }, next);
+      }, () => { res.status(503).json({ error: 'Session service unavailable' }); });
+      return;
+    }
     req.user = payload;
     requestContext.run({ userId: payload.userId }, next);
   } catch {

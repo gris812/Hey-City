@@ -6,6 +6,6 @@ export async function sendOtp(email: string): Promise<{ ok: boolean; delivery: O
   return apiFetch('/auth/otp/send', { method: 'POST', body: { email } });
 }
 
-export async function verifyOtp(email: string, code: string): Promise<{ token: string; user: { id: string; email: string } }> {
-  return apiFetch('/auth/otp/verify', { method: 'POST', body: { email, code } });
+export async function verifyOtp(email: string, code: string): Promise<{ token: string; refreshToken?: string; user: { id: string; email: string } }> {
+  return apiFetch('/auth/otp/verify', { method: 'POST', body: { email, code, renewableSession: true } });
 }

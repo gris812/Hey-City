@@ -2,6 +2,7 @@ import {
   AUTH_SESSION_EXPIRED_MESSAGE,
   isAuthenticationFailure,
   toUserSafeRequestMessage,
+  shouldInvalidateStoredSession,
 } from '../src/api/authErrors';
 
 function assertEqual<T>(actual: T, expected: T, message: string): void {
@@ -35,5 +36,8 @@ assertEqual(
   'Server unavailable',
   'non-auth errors remain diagnosable'
 );
+
+assertEqual(shouldInvalidateStoredSession('/me', 403), false, 'forbidden is not a session expiry');
+assertEqual(shouldInvalidateStoredSession('/auth/otp/verify', 401), false, 'OTP failure does not invalidate an existing session');
 
 console.log('authErrors tests passed');

@@ -25,12 +25,12 @@ assert.throws(
 );
 
 assert.equal(
-  shouldInvalidateStoredSession('/auth/otp/verify', 401, 'Invalid or expired OTP'),
+  shouldInvalidateStoredSession('/auth/otp/verify', 401),
   false,
   'invalid OTP must remain an OTP error, not become a stored-session expiry',
 );
 assert.equal(
-  shouldInvalidateStoredSession('/sessions/abc/realtime-voice/connect', 401, 'Unauthorized'),
+  shouldInvalidateStoredSession('/sessions/abc/realtime-voice/connect', 401),
   true,
   'authenticated API 401 still invalidates the stored app session',
 );
