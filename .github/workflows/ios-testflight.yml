@@ -1,0 +1,99 @@
+name: Hey City internal TestFlight
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Reviewed source SHA running on staging
+        required: true
+        type: string
+permissions:
+  contents: read
+  checks: read
+concurrency:
+  group: heycity-ios-testflight
+  cancel-in-progress: false
+jobs:
+  upload:
+    if: github.repository == 'gris812/Hey-City' && github.ref == 'refs/heads/main'
+    environment: ios-testflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: ${{ inputs.commit_sha }}
+      APPROVED_SHA: ${{ vars.IOS_TESTFLIGHT_APPROVED_SHA }}
+      ASC_APP_ID: ${{ vars.ASC_APP_ID }}
+      STAGING_API: https://staging-api.heycity.stolbergco.com
+    steps:
+      - name: Verify approval, CI, live staging and public support
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ && "$SOURCE_SHA" == "$APPROVED_SHA" && "$ASC_APP_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "validate" and .conclusion == "success")] | length' | grep -qxE '[1-9][0-9]*'
+          curl -fsS --max-time 15 "$STAGING_API/health" | \
+            python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["environment"]=="staging" and d["buildSha"]==sys.argv[1]' "$SOURCE_SHA"
+          curl -fsSL --max-time 15 https://heycity.stolbergco.com/support -o "$RUNNER_TEMP/support.html"
+          grep -Fq 'mailto:heycity@stolbergco.com' "$RUNNER_TEMP/support.html"
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.commit_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: 27.5.0
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Configure separate store-signed staging profile
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('eas.json')
+          data = json.loads(path.read_text())
+          data.setdefault('cli', {})['appVersionSource'] = 'remote'
+          data['build']['testflight'] = {
+              'distribution': 'store', 'developmentClient': False, 'environment': 'preview',
+              'env': {'EXPO_PUBLIC_GIT_SHA': os.environ['SOURCE_SHA'],
+                      'EXPO_PUBLIC_API_URL': os.environ['STAGING_API'],
+                      'EXPO_PUBLIC_M4_NATIVE_BENCHMARK_ENABLED': 'false'},
+              'ios': {'simulator': False, 'buildConfiguration': 'Release', 'credentialsSource': 'remote',
+                      'autoIncrement': True, 'image': 'macos-sequoia-15.6-xcode-26.2'},
+          }
+          data.setdefault('submit', {})['testflight'] = {'ios': {'ascAppId': os.environ['ASC_APP_ID']}}
+          path.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+      - name: Build and verify the exact archive
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          eas build --platform ios --profile testflight --non-interactive --freeze-credentials --wait --json > "$RUNNER_TEMP/testflight.json"
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          result = json.loads((Path(os.environ['RUNNER_TEMP']) / 'testflight.json').read_text())
+          if not isinstance(result, list) or len(result) != 1:
+              raise SystemExit('Expected one EAS build')
+          build = result[0]
+          assert (build.get('status'), build.get('platform'), build.get('gitCommitHash')) == (
+              'FINISHED', 'IOS', os.environ['SOURCE_SHA'])
+          assert build.get('distribution') == 'STORE' and build.get('buildProfile') == 'testflight'
+          build_id, version = build['id'], build['appBuildVersion']
+          assert re.fullmatch(r'[a-f0-9-]{36}', build_id) and re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', version)
+          (Path(os.environ['RUNNER_TEMP']) / 'testflight.id').write_text(build_id)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              print(f"Source: {os.environ['SOURCE_SHA']}\n\nEAS build: {build_id}\n\niOS build number: {version}", file=summary)
+          PY
+      - name: Upload verified build to App Store Connect
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          eas submit --platform ios --profile testflight --id "$(cat "$RUNNER_TEMP/testflight.id")" --non-interactive --wait
+          echo 'Upload complete. Verify Apple processing and assign the internal group in App Store Connect.' >> "$GITHUB_STEP_SUMMARY"
