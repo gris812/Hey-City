@@ -412,7 +412,7 @@ export function useDriveDiscoverySession(input: {
       },
       request: async (selected, clientRequestId, signal) => {
         await syncGuide(id, guestId);
-        signal.throwIfAborted();
+        if (signal.aborted) throw new Error('Story selection cancelled');
         return selectDriveStory({ sessionId: id, poiId: selected.poiId, level: selected.level, language: selected.language, guideId: selected.guideId, clientRequestId, guestId, signal });
       },
       selected: async (selected, result) => {
