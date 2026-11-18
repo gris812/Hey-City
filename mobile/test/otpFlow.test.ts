@@ -11,7 +11,10 @@ assert.equal(email.canVerify('12345'), false);
 assert.equal(email.canResend, true);
 
 const admin = otpCodeEntry('admin_code');
-assert.equal(admin.keyboardType, 'default');
+assert.equal(admin.keyboardType, 'number-pad');
+assert.equal(otpCodeEntry('admin_code', true).keyboardType, 'default');
+assert.equal(otpCodeEntry('email', true).keyboardType, 'number-pad');
+assert.equal(otpCodeEntry('development_console').keyboardType, 'number-pad');
 assert.equal(admin.maxLength, 128);
 assert.equal(admin.canVerify('long-Admin_Secret-2026'), true, 'admin code is not assumed numeric/six-digit');
 assert.equal(admin.canVerify(''), false);
