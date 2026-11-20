@@ -81,7 +81,8 @@ export class MapCameraController {
     if (!wanted && center === undefined) return undefined;
     const oldHeading = this.lastVehicleHeading;
     const delta = nearestHeading(oldHeading, this.heading) - oldHeading;
-    const nextHeading = oldHeading + Math.max(-vehicleCamera.turnDegreesPerTick, Math.min(vehicleCamera.turnDegreesPerTick, delta));
+    const automaticStep = Math.max(-vehicleCamera.turnDegreesPerTick, Math.min(vehicleCamera.turnDegreesPerTick, delta));
+    const nextHeading = oldHeading + (this.orientationChanged ? delta : automaticStep);
     this.heading = nextHeading;
     const centerChanged = this.following && center && (this.lastVehicleCenter?.latitude !== center.latitude || this.lastVehicleCenter?.longitude !== center.longitude);
     const changed = centerChanged || nextHeading !== oldHeading || this.orientationChanged;

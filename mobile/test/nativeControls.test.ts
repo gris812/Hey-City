@@ -142,7 +142,9 @@ function drivingCameraReplay() {
   map.pan();
   assert.equal(map.updateVehicle(fix(20500, 42.001, 0), 20500), undefined);
   map.toggleOrientation();
-  assert.equal(map.updateVehicle(undefined, 20500)?.center, undefined, 'compass preserves manual pan');
+  const manualNorth = map.updateVehicle(undefined, 20500);
+  assert.equal(manualNorth?.center, undefined, 'compass preserves manual pan');
+  assert.equal(manualNorth?.heading, 0, 'manual compass completes even while automatic camera is paused');
   map.follow();
   assert(map.updateVehicle(undefined, 20500)?.center);
   const bounds = { latitude: 42, longitude: 179.999, latitudeDelta: 0.02, longitudeDelta: 0.02 };
