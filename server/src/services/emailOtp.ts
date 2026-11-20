@@ -28,9 +28,7 @@ export function isEmailAllowed(email: string): boolean {
 export type OtpDeliveryMode = 'email' | 'development_console' | 'admin_code';
 
 export async function sendOtpEmail(email: string): Promise<OtpDeliveryMode> {
-  // Production field access remains allowlisted. Local/native development must
-  // be able to exercise the canonical get-or-create OTP flow with a fresh email.
-  if ((server.nodeEnv === 'production' || server.nodeEnv === 'staging') && !isEmailAllowed(email)) throw new Error('EMAIL_NOT_ALLOWED');
+  if (server.nodeEnv === 'production' && !isEmailAllowed(email)) throw new Error('EMAIL_NOT_ALLOWED');
   if (isAdminEmail(email)) {
     if (!auth.adminCode) throw new Error('ADMIN_CODE_NOT_CONFIGURED');
     return 'admin_code';

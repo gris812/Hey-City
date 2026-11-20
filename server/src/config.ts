@@ -72,7 +72,7 @@ export function assertProductionConfig(): void {
   if (!auth.adminEmail) missing.push('ADMIN_EMAIL');
   if (!auth.adminCode) missing.push('ADMIN_AUTH_CODE');
   if (auth.otpPepper.length < 32) missing.push('OTP_PEPPER');
-  if (auth.testerAllowlist.length === 0) missing.push('TESTER_EMAIL_ALLOWLIST');
+  if (server.nodeEnv === 'production' && auth.testerAllowlist.length === 0) missing.push('TESTER_EMAIL_ALLOWLIST');
   if (server.nodeEnv === 'staging') {
     let publicMediaUrlValid = false;
     try {
