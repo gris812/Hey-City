@@ -6,6 +6,20 @@ export function nearestHeading(previous: number, next: number): number {
   return previous + ((next - previous + 540) % 360 + 360) % 360 - 180;
 }
 
+type Coordinate = { latitude: number; longitude: number };
+export type VehicleCameraFix = CameraMotion & Coordinate;
+const vehicleCamera = { tickMs: 500, maxFixAgeMs: 6000, maxFixAccuracyMeters: 50, maxBlendMs: 1800, turnDegreesPerTick: 24 } as const;
+export const vehicleCameraTickMs = vehicleCamera.tickMs;
+
+export function markersInViewport<T extends { coordinate: Coordinate }>(markers: T[], region: Coordinate & {
+  latitudeDelta: number; longitudeDelta: number;
+}): T[] {
+  return markers.filter(({ coordinate }) =>
+    Math.abs(coordinate.latitude - region.latitude) <= region.latitudeDelta * 0.6 &&
+    Math.abs(nearestHeading(region.longitude, coordinate.longitude) - region.longitude) <= region.longitudeDelta * 0.6,
+  ).slice(0, 8);
+}
+
 /** Camera state only. Speed gating is course reliability, never a movement classifier. */
 export class MapCameraController {
   orientation: MapOrientation = 'course-up';
@@ -15,9 +29,58 @@ export class MapCameraController {
   private validCourse?: { heading: number; timestampMs: number; accuracyMeters?: number };
   private last?: { latitude?: number; longitude?: number; heading: number };
 
+  private vehicleFix?: VehicleCameraFix;
+  private blendFrom?: Coordinate;
+  private blendMs = 0;
+  private lastVehicleTick?: number;
+  private lastVehicleCenter?: Coordinate;
+  private lastVehicleHeading?: number;
+  private orientationChanged = false;
+
+  updateVehicle(fix: VehicleCameraFix | undefined, now: number) {
+    const previous = this.vehicleFix;
+    if (fix && (!previous || fix.timestampMs > previous.timestampMs) && now >= fix.timestampMs &&
+        now - fix.timestampMs <= vehicleCamera.maxFixAgeMs && Number.isFinite(fix.latitude) && Number.isFinite(fix.longitude) &&
+        fix.accuracyMeters !== undefined && fix.accuracyMeters >= 0 && fix.accuracyMeters <= vehicleCamera.maxFixAccuracyMeters) {
+      this.vehicleFix = fix;
+      this.blendFrom = previous && this.lastVehicleCenter && fix.timestampMs - previous.timestampMs <= vehicleCamera.maxFixAgeMs
+        ? this.lastVehicleCenter : fix;
+      this.blendMs = previous ? Math.min(vehicleCamera.maxBlendMs, fix.timestampMs - previous.timestampMs) : 0;
+    }
+    const accepted = this.vehicleFix;
+    if (!accepted || (!this.following && !this.orientationChanged)) return undefined;
+    if (!this.orientationChanged && this.lastVehicleTick !== undefined && now - this.lastVehicleTick < vehicleCamera.tickMs) return undefined;
+    if (this.lastVehicleHeading === undefined) this.lastVehicleHeading = this.heading;
+    this.lastVehicleTick = now;
+
+    const fresh = now - accepted.timestampMs <= vehicleCamera.maxFixAgeMs;
+    const moving = accepted.speedKmh !== null && accepted.speedKmh >= cameraReliability.minCourseSpeedKmh;
+    const progress = this.blendMs > 0 ? Math.min(1, (now - accepted.timestampMs) / this.blendMs) : 1;
+    const from = this.blendFrom ?? accepted;
+    const stationaryJitter = !moving && this.lastVehicleCenter &&
+      Math.abs(this.lastVehicleCenter.latitude - accepted.latitude) < 0.000045 &&
+      Math.abs(nearestHeading(this.lastVehicleCenter.longitude, accepted.longitude) - this.lastVehicleCenter.longitude) < 0.000045;
+    const center = !fresh || stationaryJitter ? this.lastVehicleCenter : {
+      latitude: from.latitude + (accepted.latitude - from.latitude) * progress,
+      longitude: ((from.longitude + (nearestHeading(from.longitude, accepted.longitude) - from.longitude) * progress + 540) % 360) - 180,
+    };
+    const wanted = this.update(center ?? accepted, fresh && moving ? accepted : null, now);
+    if (!wanted && center === undefined) return undefined;
+    const oldHeading = this.lastVehicleHeading;
+    const delta = nearestHeading(oldHeading, this.heading) - oldHeading;
+    const nextHeading = oldHeading + Math.max(-vehicleCamera.turnDegreesPerTick, Math.min(vehicleCamera.turnDegreesPerTick, delta));
+    this.heading = nextHeading;
+    const centerChanged = this.following && center && (this.lastVehicleCenter?.latitude !== center.latitude || this.lastVehicleCenter?.longitude !== center.longitude);
+    const changed = centerChanged || nextHeading !== oldHeading || this.orientationChanged;
+    this.orientationChanged = false;
+    this.lastVehicleHeading = nextHeading;
+    if (centerChanged) this.lastVehicleCenter = center;
+    return changed ? { ...(centerChanged ? { center } : {}), heading: nextHeading } : undefined;
+  }
+
   pan(): void { this.following = false; }
-  follow(): void { this.following = true; this.last = undefined; }
-  toggleOrientation(): void { this.orientation = this.orientation === 'north-up' ? 'course-up' : 'north-up'; }
+  follow(): void { this.following = true; this.last = undefined; this.lastVehicleCenter = undefined; this.orientationChanged = true; }
+  toggleOrientation(): void { this.orientationChanged = true; this.orientation = this.orientation === 'north-up' ? 'course-up' : 'north-up'; }
 
   update(coordinate: { latitude: number; longitude: number }, motion: CameraMotion | null, now: number) {
     const age = motion ? now - motion.timestampMs : Infinity;

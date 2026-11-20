@@ -146,6 +146,7 @@ export function LiveScreen() {
     const timer = setTimeout(() => setGreeting(undefined), 6000);
     return () => clearTimeout(timer);
   }, []);
+  const [pinnedTarget, setPinnedTarget] = useState<ExploreNearbyPlace>();
   const [mapTarget, setMapTarget] = useState<ExploreNearbyPlace>();
   const [explorationStopped, setExplorationStopped] = useState(false);
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Hidden Gems', 'Local Life']);
@@ -252,6 +253,7 @@ export function LiveScreen() {
   useEffect(() => { if (!focused || liveOverlay) dismissStoryNotice(); }, [focused, liveOverlay, dismissStoryNotice]);
   const selectStoryForPlace = (place: ExploreNearbyPlace, level: 'short' | 'long' = 'short') => {
     setSelectedExplorePlace(null);
+    setMapTarget(undefined);
     void tellPlaceNow(place, level);
   };
   const retryExploration = () => {
@@ -314,6 +316,11 @@ export function LiveScreen() {
     isAhead: selectedNearbyTarget?.isAhead ?? false,
     selected: true,
     isNarrating: presentation.playback?.poiId === explicitTarget.id && presentation.playbackState === 'playing',
+  } : pinnedTarget ? {
+    ...pinnedTarget,
+    selected: true,
+    distanceMeters: liveDistance(pinnedTarget.coordinate.latitude, pinnedTarget.coordinate.longitude, pinnedTarget.distanceMeters),
+    isNarrating: presentation.playback?.poiId === pinnedTarget.id && presentation.playbackState === 'playing',
   } : aheadTarget ? {
     id: aheadTarget.providerId,
     coordinate: {
@@ -710,21 +717,18 @@ export function LiveScreen() {
           height={Math.max(520, windowHeight - tabBarHeight)}
           topInset={insets.top}
           region={exploreRegion}
-          markers={aheadCandidates.slice(0, 8).map((candidate) => ({
-            id: candidate.providerId,
-            coordinate: {
-              latitude: candidate.latitude,
-              longitude: candidate.longitude,
-            },
-            title: candidate.name,
-            targetType: candidate.targetType,
-            selected: candidate.providerId === aheadTarget?.providerId,
-          }))}
+          markers={exploreNearbyPlaces}
           nearbyPlaces={exploreNearbyPlaces}
           greeting={greeting && movementMode !== 'vehicle' && identity.status === 'authenticated' ? t(greeting) : undefined}
           mapTarget={mapTarget}
+          vehicleCameraActive={focused && Boolean(sessionId)}
           currentLocation={deviceLocation ?? undefined}
-          onStopTracking={place => { setMapTarget(undefined); setSelectedExplorePlace(null); stopTracking(place.id); }}
+          onStopTracking={place => {
+            setMapTarget(current => current?.id === place.id ? undefined : current);
+            setPinnedTarget(current => current?.id === place.id ? undefined : current);
+            setSelectedExplorePlace(null);
+            stopTracking(place.id);
+          }}
           activeTarget={exploreActiveTarget}
           guideImage={guideImages[preferences.preferredGuideId]}
           viewModel={exploreHomeViewModel}
@@ -736,7 +740,7 @@ export function LiveScreen() {
           motion={lastMotion}
           onTellNow={selectStoryForPlace}
           selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === exploreActiveTarget?.id}
-          onEndExploration={() => { setExplorationStopped(true); setMapTarget(undefined); void stopSession(); }}
+          onEndExploration={() => { setExplorationStopped(true); setMapTarget(undefined); setPinnedTarget(undefined); void stopSession(); }}
           voiceState={realtimeVoiceState}
           voiceLabel={preferences.appLanguage === 'ru'
             ? (realtimeVoiceState === 'closed' ? 'Говорить' : 'Закончить')
@@ -1338,14 +1342,20 @@ export function LiveScreen() {
           presentation.activeTarget?.id === selectedExplorePlace.id &&
           presentation.playback?.transcript
         )}
-        onClose={() => { setSelectedExplorePlace(null); dismissExplicitTarget(); }}
+        onClose={() => { setSelectedExplorePlace(null); setMapTarget(undefined); dismissExplicitTarget(); }}
+        onPin={() => {
+          if (!selectedExplorePlace) return;
+          setPinnedTarget(selectedExplorePlace);
+          setMapTarget(undefined);
+          setSelectedExplorePlace(null);
+        }}
         onTellNow={() => { if (selectedExplorePlace) selectStoryForPlace(selectedExplorePlace); }}
         onTellMore={selectedExplorePlace && selectionAvailability?.poiId === selectedExplorePlace.id && selectionAvailability.availability.long
           ? () => selectStoryForPlace(selectedExplorePlace, 'long') : undefined}
         selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === selectedExplorePlace?.id}
         vehicleMode={movementMode === 'vehicle'}
         onOpenMaps={(place) => void openPlaceInMaps(place)}
-        onOpenStory={() => setSelectedExplorePlace(null)}
+        onOpenStory={() => { setSelectedExplorePlace(null); setMapTarget(undefined); }}
       />
 
       <Modal visible={sharePreviewOpen} animationType="slide">

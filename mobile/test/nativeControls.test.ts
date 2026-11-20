@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
 import { createMeasurementFormatter } from '../src/localization/measurements';
-import { MapCameraController, nearestHeading, cameraReliability } from '../src/presentation/mapCamera';
+import { MapCameraController, nearestHeading, cameraReliability, markersInViewport } from '../src/presentation/mapCamera';
 import { ExplorationWakeLock, shouldKeepExplorationAwake } from '../src/features/live/explorationWakeLock';
 import type { SelectedStoryResult } from '@heycity/shared';
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
@@ -109,6 +109,50 @@ function camera() {
   assert.equal(map.orientation, 'course-up');
 }
 
+function drivingCameraReplay() {
+  const map = new MapCameraController();
+  const start = { latitude: 42, longitude: -96 };
+  const fix = (timestampMs: number, latitude: number, heading: number, speedKmh = 100, accuracyMeters = 10) =>
+    ({ ...start, latitude, heading, speedKmh, timestampMs, accuracyMeters });
+  const initial = fix(1000, 42, 359);
+  const next = fix(3000, 42.0005, 1);
+  map.updateVehicle(initial, 1000);
+  const incremental = [3000, 3500, 4000, 4500, 5000]
+    .map(time => map.updateVehicle(next, time)?.center?.latitude)
+    .filter((latitude): latitude is number => latitude !== undefined);
+  assert.equal(incremental.at(-1), next.latitude);
+  let last = initial.latitude;
+  const peakStep = Math.max(...incremental.map(latitude => {
+    const step = Math.abs(latitude - last);
+    last = latitude;
+    return step;
+  }));
+  assert(peakStep < (next.latitude - initial.latitude) / 2);
+  const turn = map.updateVehicle(fix(5500, 42.0006, 95), 5500);
+  assert(turn && Math.abs(nearestHeading(1, turn.heading) - 1) <= 24);
+  assert.equal(map.updateVehicle(fix(5600, 51, 180), 5600), undefined, 'one automatic camera command per tick');
+  assert(map.updateVehicle(fix(6000, 60, 180, 100, 500), 6000)?.center?.latitude !== 60);
+  const stop = fix(7500, 42.0006, 220, 0);
+  map.updateVehicle(stop, 7500);
+  const stopped = map.updateVehicle(stop, 9500)?.center;
+  assert(stopped && Math.abs(stopped.latitude - stop.latitude) < 0.00001);
+  assert.equal(map.updateVehicle(fix(10000, 42.00061, 180, 0), 10000)?.center, undefined, 'stopped GPS jitter frozen');
+  assert.equal(map.updateVehicle(undefined, 20000)?.center, undefined, 'lost GPS does not predict motion');
+  map.pan();
+  assert.equal(map.updateVehicle(fix(20500, 42.001, 0), 20500), undefined);
+  map.toggleOrientation();
+  assert.equal(map.updateVehicle(undefined, 20500)?.center, undefined, 'compass preserves manual pan');
+  map.follow();
+  assert(map.updateVehicle(undefined, 20500)?.center);
+  const bounds = { latitude: 42, longitude: 179.999, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+  assert.deepEqual(markersInViewport([
+    { id: 'near', coordinate: { latitude: 42, longitude: -179.999 } },
+    { id: 'far', coordinate: { latitude: 43, longitude: 179.999 } },
+  ], bounds).map(marker => marker.id), ['near']);
+  console.log(JSON.stringify({ replay: 'synthetic vehicle route', oldPeakCenterStepM: Math.round((next.latitude - initial.latitude) * 111195),
+    newPeakCenterStepM: Math.round(peakStep * 111195), oldHeadingStepDeg: 94, newHeadingStepLimitDeg: 24 }));
+}
+
 async function wake() {
   const state = { focused: true, foreground: true, scenario: 'city_explorer', sessionActive: true, tourState: 'idle', tourPaused: false };
   assert.ok(shouldKeepExplorationAwake(state));
@@ -126,4 +170,4 @@ async function wake() {
   await other.setEnabled(true); await other.setEnabled(true); await other.setEnabled(false); await other.dispose();
   assert.deepEqual(normal, ['on', 'off'], 'stop/background releases exactly once');
 }
-void (async () => { await selections(); await units(); camera(); await wake(); console.log('native selection, units persistence, camera and keep-awake behavioral regressions passed'); })();
+void (async () => { await selections(); await units(); camera(); drivingCameraReplay(); await wake(); console.log('native selection, units persistence, camera and keep-awake behavioral regressions passed'); })();
