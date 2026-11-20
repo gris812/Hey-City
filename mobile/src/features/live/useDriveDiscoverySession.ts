@@ -59,7 +59,7 @@ import type {
   M4NativeBenchmarkRecorder,
 } from './realtimeVoiceBenchmark';
 
-export type DriveMotion = { speedKmh: number | null; heading: number | null; timestampMs: number; accuracyMeters?: number };
+export type DriveMotion = { latitude: number; longitude: number; speedKmh: number | null; heading: number | null; timestampMs: number; accuracyMeters?: number };
 export type DriveIntervalRef = { current: ReturnType<typeof setInterval> | null };
 
 export function clearDrivePingInterval(
@@ -374,6 +374,7 @@ export function useDriveDiscoverySession(input: {
         if (activeSessionIdRef.current !== ended.sessionId || activeMomentIdRef.current !== ended.momentId) return;
         activeMomentIdRef.current = null;
         explicitSelectionRef.current.markEnded();
+        setExplicitTarget(current => current?.id === ended.poiId ? undefined : current);
         pendingFinish.current = { sessionId: ended.sessionId, momentId: ended.momentId, reason: 'ended' };
         void flushFinish(ended.sessionId)
           .catch(() => console.warn('completion_report_failed'));
@@ -497,7 +498,7 @@ export function useDriveDiscoverySession(input: {
         setDeviceLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
         const heading = typeof loc.coords.heading === 'number' && loc.coords.heading >= 0 ? loc.coords.heading : null;
         const speedKmh = gpsSpeedKmh(loc.coords.speed);
-        setLastMotion({ speedKmh, heading, timestampMs: loc.timestamp, accuracyMeters: loc.coords.accuracy ?? undefined });
+        setLastMotion({ latitude: loc.coords.latitude, longitude: loc.coords.longitude, speedKmh, heading, timestampMs: loc.timestamp, accuracyMeters: loc.coords.accuracy ?? undefined });
         const accuracy = typeof loc.coords.accuracy === 'number' && loc.coords.accuracy > 0 ? loc.coords.accuracy : undefined;
         await syncGuide(sessionId, guestId);
         if (disposed || activeSessionIdRef.current !== sessionId) return;

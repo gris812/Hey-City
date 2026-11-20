@@ -32,6 +32,7 @@ export type DiscoveryPlaceSheetProps = {
   onOpenStory: () => void;
   onTellNow: () => void;
   onTellMore?: () => void;
+  onPin?: () => void;
   selectionBusy?: boolean;
   vehicleMode?: boolean;
 };
@@ -48,6 +49,7 @@ export function DiscoveryPlaceSheet({
   onOpenStory,
   onTellNow,
   onTellMore,
+  onPin,
   selectionBusy = false,
   vehicleMode = false,
 }: DiscoveryPlaceSheetProps) {
@@ -140,6 +142,9 @@ export function DiscoveryPlaceSheet({
               </TouchableOpacity>
             )}
 
+            {onPin && !vehicleMode && <TouchableOpacity accessibilityRole="button" style={styles.secondaryButton} onPress={onPin}>
+              <Text style={styles.secondaryButtonText}>{t('walking.pinPlace')}</Text>
+            </TouchableOpacity>}
             <TouchableOpacity style={styles.secondaryButton} onPress={() => onOpenMaps(place)}>
               <Text style={styles.secondaryButtonText}>{t('walking.openInMaps')}</Text>
             </TouchableOpacity>

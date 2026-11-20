@@ -86,6 +86,30 @@ async function run() {
   });
   assert.equal(provider.calls, 2, 'manual refresh forces provider call');
 
+  const cityRoute = {
+    ...createProvider(),
+    async searchAhead() {
+      this.calls += 1;
+      return [
+        { providerId: 'sioux-city', provider: 'google' as const, name: 'Sioux City', targetType: 'city' as const,
+          latitude: 42.5, longitude: -96.4, providerTypes: ['locality'] },
+        { providerId: 'sioux-falls', provider: 'google' as const, name: 'Sioux Falls', targetType: 'city' as const,
+          latitude: 43.55, longitude: -96.73, providerTypes: ['locality'] },
+        { providerId: 'park', provider: 'google' as const, name: 'Nearby Park', targetType: 'park' as const,
+          latitude: 43.526, longitude: -96.73, providerTypes: ['park'] },
+      ];
+    },
+  };
+  for (const [index, [latitude, longitude, expected]] of [
+    [42.49, -96.4, 'sioux-city'], [43.54, -96.73, 'sioux-falls'],
+  ].entries()) {
+    const nowMs = Date.parse(movement.timestamp) + index * 60000;
+    const result = await evaluateAheadDiscovery({ sessionId: 'city-route', provider: cityRoute, nowMs,
+      movement: { ...movement, latitude: Number(latitude), longitude: Number(longitude), timestamp: new Date(nowMs).toISOString() } });
+    assert.equal(result.decision.type === 'target_selected' && result.decision.target.providerId, expected);
+    if (index) assert(result.nearbyCandidates?.some(candidate => candidate.providerId === 'park' && !candidate.isAhead));
+  }
+  assert.equal(cityRoute.calls, 1, 'cached candidates are re-evaluated with current movement');
   const emptyProvider = createEmptyProvider();
   await evaluateAheadDiscovery({
     sessionId: 'refresh-empty',

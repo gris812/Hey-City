@@ -2,6 +2,7 @@ import { useMeasurements } from '../../localization/useMeasurements';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  AppState,
   PanResponder,
   Platform,
   Image,
@@ -12,11 +13,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Location from 'expo-location';
+import { gpsSpeedKmh } from '../../features/live/motion';
 import MapView, { Marker, type LatLng, type Region } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
-import { MapCameraController, type CameraMotion } from '../../presentation/mapCamera';
+import { MapCameraController, markersInViewport, vehicleCameraTickMs, type VehicleCameraFix } from '../../presentation/mapCamera';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
 
 export type ExploreHomeMarker = {
@@ -38,7 +41,8 @@ export type ExploreActiveTarget = ExploreNearbyPlace & {
 
 export type ExploreHomeViewProps = {
   vehicleMode?: boolean;
-  motion?: CameraMotion | null;
+  vehicleCameraActive?: boolean;
+  motion?: VehicleCameraFix | null;
   onTellNow?: (place: ExploreNearbyPlace) => void;
   selectionBusy?: boolean;
   onEndExploration?: () => void;
@@ -72,6 +76,7 @@ export type ExploreHomeViewProps = {
 export function ExploreHomeView({
   height,
   vehicleMode = false,
+  vehicleCameraActive = false,
   motion = null,
   onTellNow,
   selectionBusy = false,
@@ -118,6 +123,26 @@ export function ExploreHomeView({
   const camera = useRef(new MapCameraController());
   const [cameraVersion, setCameraVersion] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [viewport, setViewport] = useState(region);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const gpsFix = useRef<VehicleCameraFix | undefined>(undefined);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => setAppActive(state === 'active'));
+    return () => subscription.remove();
+  }, []);
+  const smoothVehicleCamera = vehicleMode && vehicleCameraActive && appActive;
+  useEffect(() => {
+    if (!smoothVehicleCamera) return;
+    let disposed = false;
+    let subscription: Location.LocationSubscription | undefined;
+    void Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 8 }, fix => {
+      if (disposed) return;
+      gpsFix.current = { latitude: fix.coords.latitude, longitude: fix.coords.longitude, timestampMs: fix.timestamp,
+        heading: fix.coords.heading, speedKmh: gpsSpeedKmh(fix.coords.speed), accuracyMeters: fix.coords.accuracy ?? undefined };
+    }).then(value => { if (disposed) value.remove(); else subscription = value; })
+      .catch(() => console.warn('vehicle_camera_location_unavailable'));
+    return () => { disposed = true; subscription?.remove(); gpsFix.current = undefined; };
+  }, [smoothVehicleCamera]);
   const [mapReady, setMapReady] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
   const framedTarget = useRef<ExploreNearbyPlace | undefined>(undefined);
@@ -132,15 +157,24 @@ export function ExploreHomeView({
     });
   }, [mapReady, sheetHeight, mapTarget, currentLocation, statusTop, height, vehicleMode]);
   const highlightedPlace = mapTarget ?? activeTarget;
+  const viewportMarkers = markersInViewport(markers, viewport);
   const visibleMarkers = highlightedPlace
-    ? [...markers.filter(marker => marker.id !== highlightedPlace.id), { ...highlightedPlace, selected: true }]
-    : markers;
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+    ? [...viewportMarkers.filter(marker => marker.id !== highlightedPlace.id), { ...highlightedPlace, selected: true }]
+    : viewportMarkers;
   useEffect(() => {
-    if (!mapReady) return;
-    const command = camera.current.update({ latitude: region.latitude, longitude: region.longitude }, motion, now);
-    if (command) mapRef.current?.animateCamera(command, { duration: 450 });
-  }, [mapReady, region.latitude, region.longitude, motion?.heading, motion?.speedKmh, motion?.timestampMs, now, cameraVersion]);
+    if (!appActive) return;
+    const timer = setInterval(() => setNow(Date.now()), smoothVehicleCamera ? vehicleCameraTickMs : 1000);
+    return () => clearInterval(timer);
+  }, [appActive, smoothVehicleCamera]);
+  useEffect(() => {
+    if (!mapReady || !appActive) return;
+    const position = { latitude: region.latitude, longitude: region.longitude };
+    const time = Date.now();
+    const command = smoothVehicleCamera
+      ? camera.current.updateVehicle(gpsFix.current ?? motion ?? undefined, time)
+      : camera.current.update(position, motion, time);
+    if (command) mapRef.current?.animateCamera(command, { duration: smoothVehicleCamera ? 400 : 450 });
+  }, [mapReady, appActive, region.latitude, region.longitude, motion, now, cameraVersion, smoothVehicleCamera]);
   const changeCamera = (action: () => void) => { action(); setCameraVersion(value => value + 1); };
 
   return (
@@ -150,7 +184,8 @@ export function ExploreHomeView({
         style={StyleSheet.absoluteFillObject}
         initialRegion={region}
         onMapReady={() => setMapReady(true)}
-        onPanDrag={() => changeCamera(() => camera.current.pan())}
+        onRegionChangeComplete={setViewport}
+        onPanDrag={() => { if (camera.current.following) changeCamera(() => camera.current.pan()); }}
         rotateEnabled={false}
         showsUserLocation
         showsMyLocationButton={false}

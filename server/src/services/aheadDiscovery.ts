@@ -208,7 +208,14 @@ function evaluateCandidateSet(input: {
     // Nearby discovery must still work while stationary or walking past an entrance.
     if ((input.movement.speedMps ?? 0) * 3.6 < aheadDiscovery.walkingHeadingThresholdKmh || candidate.distanceMeters <= aheadDiscovery.nearbyOmnidirectionalMeters) candidate.isAhead = true;
   }
-  const filtered = filterAheadCandidates(candidates);
+  // Provider candidates can remain cached while the journey crosses into another city.
+  // Keep city context only inside its context radius, regardless of the heading override.
+  const filtered = filterAheadCandidates(candidates.filter(candidate =>
+    candidate.targetType !== 'city' || candidate.distanceMeters <= aheadDiscovery.cityContextRadiusMeters));
+  if (input.state.selectedTarget?.targetType === 'city' &&
+      !filtered.included.some(candidate => candidate.providerId === input.state.selectedTarget?.providerId)) {
+    input.state.selectedTarget = undefined;
+  }
 
   for (const excluded of filtered.excluded) {
     logAheadDiscovery('ahead_discovery_candidate_filtered', {
