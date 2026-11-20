@@ -131,7 +131,8 @@ function drivingCameraReplay() {
   const turn = map.updateVehicle(fix(5500, 42.0006, 95), 5500);
   assert(turn && Math.abs(nearestHeading(1, turn.heading) - 1) <= 24);
   assert.equal(map.updateVehicle(fix(5600, 51, 180), 5600), undefined, 'one automatic camera command per tick');
-  assert(map.updateVehicle(fix(6000, 60, 180, 100, 500), 6000)?.center?.latitude !== 60);
+  assert((map.updateVehicle(fix(6000, 60, 180, 100, 500), 6000)?.center?.latitude ?? start.latitude) < 42.001,
+    'poor accuracy and an implausible accurate jump cannot move the camera far from the route');
   const stop = fix(7500, 42.0006, 220, 0);
   map.updateVehicle(stop, 7500);
   const stopped = map.updateVehicle(stop, 9500)?.center;

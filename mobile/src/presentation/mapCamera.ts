@@ -1,3 +1,5 @@
+import { distanceMeters } from '../demo/guidedTour/distance';
+
 export type MapOrientation = 'north-up' | 'course-up';
 export type CameraMotion = { heading: number | null; speedKmh: number | null; timestampMs: number; accuracyMeters?: number };
 export const cameraReliability = { maxCourseAgeMs: 20_000, minCourseSpeedKmh: 5, maxCourseAccuracyMeters: 100 } as const;
@@ -20,6 +22,16 @@ export function markersInViewport<T extends { coordinate: Coordinate }>(markers:
   ).slice(0, 8);
 }
 
+function isPlausibleVehicleFix(fix: VehicleCameraFix, previous: VehicleCameraFix | undefined): boolean {
+  if (!previous) return true;
+  const elapsedSeconds = (fix.timestampMs - previous.timestampMs) / 1000;
+  if (elapsedSeconds <= 0) return false;
+  if (elapsedSeconds > vehicleCamera.maxFixAgeMs / 1000) return true; // Re-anchor once after a genuine GPS gap.
+  const speedMps = Math.min(60, Math.max(fix.speedKmh ?? 0, previous.speedKmh ?? 0) / 3.6);
+  const errorAllowance = (fix.accuracyMeters ?? 0) + (previous.accuracyMeters ?? 0) + 15;
+  return distanceMeters(previous, fix) <= errorAllowance + 2 * speedMps * elapsedSeconds;
+}
+
 /** Camera state only. Speed gating is course reliability, never a movement classifier. */
 export class MapCameraController {
   orientation: MapOrientation = 'course-up';
@@ -39,9 +51,10 @@ export class MapCameraController {
 
   updateVehicle(fix: VehicleCameraFix | undefined, now: number) {
     const previous = this.vehicleFix;
-    if (fix && (!previous || fix.timestampMs > previous.timestampMs) && now >= fix.timestampMs &&
-        now - fix.timestampMs <= vehicleCamera.maxFixAgeMs && Number.isFinite(fix.latitude) && Number.isFinite(fix.longitude) &&
-        fix.accuracyMeters !== undefined && fix.accuracyMeters >= 0 && fix.accuracyMeters <= vehicleCamera.maxFixAccuracyMeters) {
+    if (fix && now >= fix.timestampMs &&
+        now - fix.timestampMs <= vehicleCamera.maxFixAgeMs && Math.abs(fix.latitude) <= 90 && Math.abs(fix.longitude) <= 180 &&
+        fix.accuracyMeters !== undefined && fix.accuracyMeters >= 0 && fix.accuracyMeters <= vehicleCamera.maxFixAccuracyMeters &&
+        isPlausibleVehicleFix(fix, previous)) {
       this.vehicleFix = fix;
       this.blendFrom = previous && this.lastVehicleCenter && fix.timestampMs - previous.timestampMs <= vehicleCamera.maxFixAgeMs
         ? this.lastVehicleCenter : fix;
