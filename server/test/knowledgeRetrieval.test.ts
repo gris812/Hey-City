@@ -50,7 +50,15 @@ async function run() {
                   pageprops: { disambiguation: '' },
                 },
               }
-            : { '1': page() },
+            : url.searchParams.has('pageids')
+              ? { '1': page('Doral, Florida', [
+                  page().extract,
+                  '== History ==',
+                  'A fictional fixture railway carried freight across the area for decades.',
+                  '== References ==',
+                  'A fabricated reference section should not be selected.',
+                ].join('\n')) }
+              : { '1': page() },
       },
     });
   }) as typeof fetch;
@@ -62,14 +70,17 @@ async function run() {
     ]);
     assert.equal(
       calls.length,
-      2,
-      'coalesced title -> text-search, no unnecessary fallback',
+      3,
+      'coalesced title, text search and one expanded extract for the verified city page',
     );
     assert.deepEqual(a, b);
     assert(storyAvailability(a.evidence!).short);
     assert.equal(a.entity?.name, 'Doral, Florida');
     assert.equal((await retrieveDiscoveryKnowledge(c)).attempts[0].level, 'L1');
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2].searchParams.get('pageids'), '1');
+    assert(a.evidence?.items.some(item => item.claim.includes('fixture railway')));
+    assert(!a.evidence?.items.some(item => item.claim.includes('fabricated reference section')));
     assert(!knowledgeNameMatches('Doral', 'Dortmund'));
     assert(knowledgeNameMatches('Knoxville', 'Knoxville, Tennessee'));
     calls = [];

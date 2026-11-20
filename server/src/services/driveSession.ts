@@ -10,6 +10,7 @@ import type {
   StoryFinishResult,
   SelectedStoryResult,
 } from '@heycity/shared';
+import { resolveStoryDiscoveries } from './storyDiscoveries';
 import { randomUUID } from 'node:crypto';
 import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings, journeyMemory } from '../config';
 import { discoveryEvidence } from './discoveryKnowledge';
@@ -29,6 +30,7 @@ import { prepareNarrative } from './narrativePlan';
 import { generateNarrationFromPlan } from './narration';
 import {
   clearAheadDiscoverySession,
+  sessionStoryDiscoveryCandidates,
   createMovementContext,
   evaluateAheadDiscovery,
 } from './aheadDiscovery';
@@ -500,6 +502,8 @@ export async function pingSession(
     transcriptText: narration.transcriptText,
     estimatedDurationSec: narration.estimatedDurationSec,
     attribution: publicAttribution(selectedEvidence),
+    storyDiscoveries: resolveStoryDiscoveries(brief, narration.transcriptText, { latitude: place.geometry.location.lat,
+      longitude: place.geometry.location.lng }, sessionStoryDiscoveryCandidates(sessionId), discoverySettings.cityContextRadiusMeters),
     aheadDiscovery,
   };
 }

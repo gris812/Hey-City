@@ -1,5 +1,7 @@
 import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from './driveSession';
-import { sessionDiscoveryCandidate } from './aheadDiscovery';
+import { resolveStoryDiscoveries } from './storyDiscoveries';
+import { aheadDiscovery as discoveryLimits } from '../config';
+import { sessionStoryDiscoveryCandidates, sessionDiscoveryCandidate } from './aheadDiscovery';
 import { discoveryEvidence, retrieveDiscoveryKnowledge } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
@@ -88,7 +90,10 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
       const retrievalStarted = Date.now();
       evidence = (await retrieveDiscoveryKnowledge(candidate)).evidence; check();
       await recordNarrativeStage({...trace,stage:'retrieval',status:evidence && storyAvailability(evidence).short ? 'ready' : 'unavailable',latencyMs:Date.now()-retrievalStarted},userId);
-      if (evidence) availability = storyAvailability(evidence, matchingContinuationGuide(session.storyContinuation, poiId, params.voiceId, params.language));
+      if (evidence) {
+        const previous = matchingContinuation(session.storyContinuation, poiId, params.voiceId, params.language);
+        availability = storyAvailability(evidence, previous?.guideId, previous?.selectedEvidenceRefs);
+      }
       if (!evidence || !(level === 'long' ? availability.long : availability.short)) {
         // Public provider place coordinates only, never the listener's position.
         console.info(JSON.stringify({ event: 'explicit_story_evidence_unavailable', poiId,
@@ -114,8 +119,8 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
     }
     check();
     if (level === 'short') {
-      session.storyContinuation = { poiId, guideId: canonicalGuideId(params.voiceId), language: params.language, previousLevel: 'short', previousTranscript: result.transcriptText };
-      if (evidence) availability = storyAvailability(evidence, session.storyContinuation.guideId);
+      session.storyContinuation = { poiId, guideId: canonicalGuideId(params.voiceId), language: params.language, previousLevel: 'short', previousTranscript: result.transcriptText, selectedEvidenceRefs: planned?.brief.selectedEvidenceRefs };
+      if (evidence) availability = storyAvailability(evidence, session.storyContinuation.guideId, session.storyContinuation.selectedEvidenceRefs);
     }
     // Generation succeeding starts an active factual moment; completion remains the finish endpoint's responsibility.
     // Identification is an orientation utterance, without evidence or callback memory.
@@ -147,7 +152,8 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
     (session.spokenProviderIds ??= new Set()).add(poiId);
     succeeded = true;
     const attribution = evidence ? publicAttribution(evidence) : undefined;
-    return {...result,poiId,name:candidate.name,guideId:canonicalGuideId(params.voiceId),level:level as SelectedStoryResult['level'],language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability};
+    return {...result,poiId,name:candidate.name,guideId:canonicalGuideId(params.voiceId),level:level as SelectedStoryResult['level'],language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability,
+      storyDiscoveries: planned ? resolveStoryDiscoveries(planned.brief, result.transcriptText, candidate, sessionStoryDiscoveryCandidates(id), discoveryLimits.cityContextRadiusMeters) : undefined };
   } catch (error) {
     await recordNarrativeStage({...trace,stage:'request',status:request.signal.aborted ? 'superseded' : error instanceof StorySelectionError && error.status === 422 ? 'unavailable' : 'failed',latencyMs:Date.now()-requestedAt},userId);
     throw error;
@@ -163,12 +169,13 @@ export async function selectedStoryAvailability(id: string, userId: string, poiI
   if (!candidate) throw new StorySelectionError(404, 'Object is no longer available');
   const evidence = await discoveryEvidence(candidate);
   if (getSession(id) !== session) throw new StorySelectionError(404, 'Session not found');
-  return evidence ? storyAvailability(evidence, matchingContinuationGuide(session.storyContinuation, poiId, session.params.voiceId, session.params.language)) : { short: false, long: false };
+  const previous = matchingContinuation(session.storyContinuation, poiId, session.params.voiceId, session.params.language);
+  return evidence ? storyAvailability(evidence, previous?.guideId, previous?.selectedEvidenceRefs) : { short: false, long: false };
 }
 
-function matchingContinuationGuide(continuation: NonNullable<ReturnType<typeof getSession>>['storyContinuation'], poiId: string, guideId: string, language: string): string | undefined {
+function matchingContinuation(continuation: NonNullable<ReturnType<typeof getSession>>['storyContinuation'], poiId: string, guideId: string, language: string) {
   const canonical = canonicalGuideId(guideId);
   return continuation?.poiId === poiId && continuation.guideId === canonical && continuation.language === language
-    ? canonical
+    ? continuation
     : undefined;
 }

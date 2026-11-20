@@ -94,6 +94,24 @@ export function randomEntities(seed: number, count = 10): BenchmarkEntity[] {
   if (out.length !== count) throw new Error('Insufficient sampling frame');
   return out;
 }
+export function cityDepthEntities(seed: number): BenchmarkEntity[] {
+  const fixed = [
+    ['Sioux City, Iowa', 42.499, -96.400], ['Dearborn, Michigan', 42.322, -83.176],
+    ['Doral, Florida', 25.820, -80.355], ['Knoxville, Tennessee', 35.962, -83.923],
+  ] as const;
+  const strata = [
+    { size: 'small', cities: [['Vardø', 70.371, 31.110], ['Arrowtown', -44.942, 168.835], ['Český Krumlov', 48.811, 14.315]] },
+    { size: 'medium', cities: [['Kanazawa', 36.561, 136.656], ['Valparaíso', -33.046, -71.620], ['Saint-Louis, Senegal', 16.033, -16.500]] },
+    { size: 'large', cities: [['Curitiba', -25.429, -49.272], ['Nairobi', -1.286, 36.817], ['Sydney', -33.869, 151.209]] },
+  ] as const;
+  const random = seededRandom(seed);
+  const entity = ([name, lat, lng]: readonly [string, number, number], group: BenchmarkEntity['group'], evidenceStratum?: string): BenchmarkEntity =>
+    ({ candidate: benchmarkCandidate(`benchmark:${name}`, name, 'city', lat, lng), group, evidenceStratum });
+  return [
+    ...fixed.map(row => entity(row, 'regression')),
+    ...strata.map(({ size, cities }) => entity(cities[Math.floor(random() * cities.length)], 'random', size)),
+  ];
+}
 export async function nearbyEntities(
   latitude: number,
   longitude: number,

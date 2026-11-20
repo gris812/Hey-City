@@ -422,7 +422,7 @@ export function useDriveDiscoverySession(input: {
         setSelectionAvailability({ poiId: result.poiId, availability: result.availability });
         await loadStoryPlayback({ sessionId: id, momentId: result.momentId, poiId: result.poiId,
           guideId: fromBackendGuideId(result.guideId), target: { id: result.poiId, name: result.name,
-            latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText }, result.audioUrl);
+            latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText, storyDiscoveries: result.storyDiscoveries }, result.audioUrl);
       },
       failed: (_choice, error, stage) => {
         if (activeSessionIdRef.current !== id) return;
@@ -525,7 +525,7 @@ export function useDriveDiscoverySession(input: {
             guideId: fromBackendGuideId(result.narrativePlan?.guideId),
             target: { id: result.poi.place_id, name: result.poi.name,
               latitude: result.poi.geometry.location.lat, longitude: result.poi.geometry.location.lng },
-            transcript: result.transcriptText ?? result.textPreview }, result.audioUrl);
+            transcript: result.transcriptText ?? result.textPreview, storyDiscoveries: result.storyDiscoveries }, result.audioUrl);
         }
       } catch (error) {
         if (!disposed && activeSessionIdRef.current === sessionId) {

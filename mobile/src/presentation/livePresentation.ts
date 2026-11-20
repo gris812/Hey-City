@@ -35,6 +35,7 @@ export type StoryPlaybackIdentity = {
   guideId: GuideId;
   target: DiscoveryTargetSummary;
   transcript?: string;
+  storyDiscoveries?: import('@heycity/shared').StoryDiscovery[];
 };
 
 export type LivePresentationState = {

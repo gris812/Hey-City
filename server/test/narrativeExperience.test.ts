@@ -9,7 +9,54 @@ import { normalizeEvidence, storyAvailability } from '../src/services/evidence';
 import { buildStoryBrief } from '../src/services/storyBrief';
 import corpus from '../../evaluation/golden/narrative-v2.json';
 
+import { prepareNarrative } from '../src/services/narrativePlan';
+import { resolveStoryDiscoveries } from '../src/services/storyDiscoveries';
+import { benchmarkCandidate } from './narrativeBenchmark';
+
+function cityDepth() {
+  // Synthetic evidence and model text test contracts only. They are never shipped as verified facts.
+  const subject = { id: 'city-fixture', name: 'Example City', category: 'city' };
+  const evidence = normalizeEvidence(subject, [
+    'A river confluence shaped the original settlement.',
+    'The settlement was incorporated in 1854.',
+    'Railroad connections helped expand the local market.',
+    'Local music traditions brought several communities together.',
+    'An indigenous community documented the area before incorporation.',
+    'Riverbend Museum preserves records of trade on the river.',
+    'The city grew along its valley rather than in a single grid.',
+    'The industrial trade brought several kinds of manufacturers to the city.',
+  ].join(' '), 'fixture');
+  const input = { poiId: subject.id, placeName: subject.name, mode: 'vehicle' as const,
+    guideId: 'dana', themeTags: ['mixed'], targetDurationSec: 30 };
+  const dana = prepareNarrative(input, evidence, { level: 'short', language: 'en' });
+  const arthur = prepareNarrative({ ...input, guideId: 'arthur' }, evidence, { level: 'short', language: 'en' });
+  assert.equal(dana.plan.targetDurationSec, 150);
+  assert.equal(dana.plan.safety.visualLoad, 'minimal');
+  assert(dana.brief.depth && dana.brief.depth.themes.length >= 4);
+  assert.deepEqual(dana.plan.evidenceRefs, arthur.plan.evidenceRefs, 'persona does not change city coverage');
+  assert.notDeepEqual(dana.policy.behavior, arthur.policy.behavior);
+  assert.match(dana.plan.beats.find(beat => beat.kind === 'reveal')!.objective, /complementary/);
+  assert.equal(prepareNarrative(input, { ...evidence, items: evidence.items.slice(0, 2) },
+    { level: 'auto', language: 'en' }).plan.targetDurationSec, 30);
+  const landmark = { ...evidence, category: 'museum' };
+  assert.equal(prepareNarrative({ ...input, mode: 'walking' }, landmark, { level: 'auto', language: 'en' }).plan.targetDurationSec, 120);
+  assert.equal(prepareNarrative(input, landmark, { level: 'auto', language: 'en' }).plan.targetDurationSec, 30);
+  assert.throws(() => prepareNarrative(input, evidence, { level: 'long', language: 'en',
+    continuation: { poiId: input.poiId, guideId: input.guideId, language: 'en', previousLevel: 'short',
+      previousTranscript: 'Earlier overview', selectedEvidenceRefs: dana.plan.evidenceRefs } }), /Not enough verified/);
+  const candidate = benchmarkCandidate('resolved-museum', 'Riverbend Museum', 'museum', 42.5, -96.4);
+  const other = benchmarkCandidate('other', 'Imaginary Park', 'park', 42.5, -96.4);
+  const text = 'Riverbend Museum preserves the trade records. Imaginary Park is a false suggestion.';
+  const center = { latitude: 42.49, longitude: -96.38 };
+  assert.deepEqual(resolveStoryDiscoveries(dana.brief, text, center, [candidate, other], 20000).map(entry => entry.providerId), [candidate.providerId]);
+  assert.deepEqual(resolveStoryDiscoveries(dana.brief, text, center, [candidate, { ...candidate, providerId: 'duplicate' }], 20000), []);
+  assert.deepEqual(resolveStoryDiscoveries(dana.brief, text, center, [{ ...candidate, latitude: 48 }], 20000), []);
+  assert.deepEqual(resolveStoryDiscoveries(dana.brief, 'No place mentioned.', center, [candidate], 20000), []);
+  console.log(JSON.stringify({ scenario: 'city-depth', fixture: true, durationBudgetSec: 150, themes: dana.brief.depth.themes, resolvedIds: [candidate.providerId] }));
+}
+
 async function run() {
+  cityDepth();
   const calls: GenerativeTaskRequest[] = [];
   const provider: GenerativeProvider = { id: 'quality', supports: () => true, generate: async request => {
     calls.push(request); return { text: 'The current building opened as a Custom House, long after the inauguration at this site.', providerId: 'quality', model: 'fixture' };

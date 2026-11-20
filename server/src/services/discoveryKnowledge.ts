@@ -1,3 +1,4 @@
+import { isCityNarrativeCategory } from '../policies/narrativeDepthPolicy';
 import { createHash } from 'node:crypto';
 import type { DiscoveryCandidate } from '@heycity/shared';
 import { aheadDiscovery } from '../config';
@@ -10,7 +11,7 @@ import {
   storyAvailability,
   verifiedItems,
 } from './evidence';
-import { knowledgePolicy } from '../policies/knowledgePolicy';
+import { cityContextExcerpt, knowledgePolicy } from '../policies/knowledgePolicy';
 import {
   KnowledgeResearchAdapter,
   ResolvedKnowledgeEntity,
@@ -188,13 +189,15 @@ async function acquire(
   };
   const enough = () => !!evidence && storyAvailability(evidence).long;
   const radius = knowledgePolicy.radius(
-    ['city', 'town', 'locality', 'region'].includes(candidate.targetType),
+    isCityNarrativeCategory(candidate.targetType),
   );
   const matchesCoordinates = (lat: number, lon: number) =>
     Number.isFinite(lat) &&
     Number.isFinite(lon) &&
     distanceMeters(candidate.latitude, candidate.longitude, lat, lon) <= radius;
-  const inspectPages = (data: { query?: { pages?: Record<string, Page> } }) => {
+  const city = isCityNarrativeCategory(candidate.targetType);
+  let extendedCityArticle = false;
+  const inspectPages = (data: { query?: { pages?: Record<string, Page> } }, extended = false) => {
     for (const page of Object.values(data.query?.pages ?? {})) {
       const coord = page.coordinates?.[0];
       const structuredBinding =
@@ -217,12 +220,13 @@ async function acquire(
         pageId: page.pageid,
         wikidataId: page.pageprops?.wikibase_item,
       };
+      extendedCityArticle ||= city && extended;
       if (
         page.extract &&
         page.extract.length >= aheadDiscovery.knowledgeMinChars
       )
         absorb(
-          page.extract,
+          city ? cityContextExcerpt(page.extract) : page.extract,
           'wikipedia',
           `https://en.wikipedia.org/?curid=${page.pageid}`,
         );
@@ -236,7 +240,9 @@ async function acquire(
       format: 'json',
       redirects: '1',
       prop: 'extracts|coordinates|pageprops',
-      exintro: '1',
+      ...(city && (params.titles || params.pageids)
+        ? { exsectionformat: 'wiki' }
+        : { exintro: '1' }),
       explaintext: '1',
       ...params,
     }).toString();
@@ -262,10 +268,10 @@ async function acquire(
         ggslimit: '10',
       }),
   ];
-  for (const query of queries) {
+  for (const [index, query] of queries.entries()) {
     if (enough()) break;
     try {
-      inspectPages(await json(query()));
+      inspectPages(await json(query()), index === 0);
     } catch {
       l2Error = true;
     }
@@ -314,13 +320,17 @@ async function acquire(
           };
           const article = item?.sitelinks?.enwiki?.title;
           if (typeof article === 'string')
-            inspectPages(await json(wiki({ titles: article })));
+            inspectPages(await json(wiki({ titles: article })), true);
           break;
         }
       }
     } catch {
       l2Error = true;
     }
+  }
+  if (city && entity?.pageId && !extendedCityArticle && requests < knowledgePolicy.maxRequests && !signal.aborted) {
+    try { inspectPages(await json(wiki({ pageids: String(entity.pageId) })), true); }
+    catch { l2Error = true; }
   }
   attempts.push({
     level: 'L2',

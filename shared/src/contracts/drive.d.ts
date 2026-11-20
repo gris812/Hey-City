@@ -185,7 +185,10 @@ export interface NarrativeAttribution {
   url?: string;
 }
 
+export type StoryDiscovery = Pick<DiscoveryCandidate, 'providerId' | 'name' | 'targetType' | 'latitude' | 'longitude'>;
+
 export interface DrivePingResult {
+  storyDiscoveries?: StoryDiscovery[];
   nextAction: 'PLAY' | 'NONE';
   /** Opaque playback identity required by the finish endpoint. */
   momentId?: string;
@@ -412,6 +415,7 @@ export interface RealtimeVoiceUsageReport {
 
 /** Existing /sessions/:id/select response; native uses the same NarrativePlan pipeline. */
 export interface SelectedStoryResult {
+  storyDiscoveries?: StoryDiscovery[];
   audioUrl: string;
   transcriptText: string;
   poiId: string;

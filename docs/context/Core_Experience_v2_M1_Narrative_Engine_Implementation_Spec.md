@@ -862,7 +862,7 @@ Expected:
 
 ### E5 — vehicle safety
 
-Core Experience v2 narrative improvements must not bypass current vehicle duration/safety constraints.
+Vehicle narration retains its ordinary duration cap. The planner may use a separate 120–180 second ceiling for a well-supported city-scale overview, with passive audio, minimal visual load and the existing interrupt and skip controls. Landmark and sparse city stories retain the ordinary vehicle cap.
 
 ---
 
@@ -956,3 +956,12 @@ Discovery passes its approved entity to knowledge retrieval. L1 reuses cached so
 Identification needs a known session entity and can state its name and type. A short needs at least one informative supported claim at the default thresholds. A detailed story needs at least three and a continuation needs at least two unused claims. Keep source references internal to planning and audit. If evidence remains insufficient, the explicit story request returns 422 before generation. Provider failures, insufficient evidence, text-only TTS delivery and native audio failure have distinct states. The native client clears preparation on terminal request failure. Playback reporting observes the existing moment owner and cannot complete a story.
 
 The existing narrative policy calls for one supported opening and one angle with local meaning, spoken through the selected guide. Conversational approximation is acceptable when it preserves meaning. Material falsehood, invented quotations and unsafe location instructions fail acceptance. See the golden corpus and evaluation README for the quality procedure.
+
+
+### Scale-aware overview and related places
+
+The M1 planner may allocate 60–120 seconds to a documented major landmark on foot and 120–180 seconds to a city, district or region with enough verified claims across several independent dimensions. Ordinary and sparse POIs keep the brief policy. These are planning ceilings. The generator stops when it runs out of useful evidence. Guide identity shapes delivery and both guides receive the same extended selection of evidence. A continuation excludes the claims allocated to the preceding segment.
+
+Story-to-Discovery emits up to three related entities as data. A place must have an unambiguous name in selected evidence and in the delivered narrative, and already be present in the session's eligible map candidates near the story subject. An unresolved mention stays in the story only. The map uses explicit POI selection and keeps navigation user-initiated. Vehicle mode adds no suggestions to interact with.
+
+The existing narrative benchmark accepts `--city-depth --seed 20261120` for the fixed field cities and a reproducible city-size sample. In live mode both guides are generated. Use `--heycity-only` for a benchmark without Gemini and `--tts` to record server-side MP3 latency and duration when ffprobe is available. Both use the explicit live benchmark budget. Review coverage of the supported themes alongside the existing rubric and gates, especially when a single topic dominates an overview.

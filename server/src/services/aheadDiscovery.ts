@@ -33,6 +33,14 @@ export function sessionDiscoveryCandidate(sessionId: string, providerId: string)
   return filterAheadCandidates([{ ...geometry, isAhead: true }]).included.length ? geometry : undefined;
 }
 
+/** Current map candidates eligible for explicit selection, without another provider call. */
+export function sessionStoryDiscoveryCandidates(sessionId: string): DiscoveryCandidate[] {
+  return (states.get(sessionId)?.candidates ?? []).flatMap(candidate => {
+    const eligible = sessionDiscoveryCandidate(sessionId, candidate.providerId);
+    return eligible ? [eligible] : [];
+  });
+}
+
 function getState(sessionId: string): AheadDiscoverySessionState {
   const existing = states.get(sessionId);
   if (existing) return existing;
