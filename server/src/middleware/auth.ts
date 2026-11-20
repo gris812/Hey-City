@@ -66,7 +66,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
     const payload = jwt.verify(token, jwtConfig.secret) as JwtPayload;
     if (payload.sessionId) {
       void isMobileSessionActive(payload.sessionId, payload.userId).then(active => {
-        if (!active) { res.status(401).json({ error: 'Invalid or expired session' }); return; }
+        if (!active) { res.status(401).json({ error: 'Invalid or expired session', code: 'session_rejected' }); return; }
         req.user = payload;
         requestContext.run({ userId: payload.userId }, next);
       }, () => { res.status(503).json({ error: 'Session service unavailable' }); });
@@ -75,6 +75,6 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
     req.user = payload;
     requestContext.run({ userId: payload.userId }, next);
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Invalid or expired token', code: 'session_rejected' });
   }
 }

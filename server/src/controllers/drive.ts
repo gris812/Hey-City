@@ -104,6 +104,10 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
   const speedKmh = observedSpeedKmh(speed, ts);
   const accuracy = typeof accuracyMeters === 'number' ? accuracyMeters : undefined;
 
+  const dismissed = req.body.dismissedPoiIds;
+  const dismissedPoiIds = new Set<string>(Array.isArray(dismissed)
+    ? dismissed.slice(0, 8).filter(id => typeof id === 'string' && id.length <= 200)
+    : []);
   const result = await pingSession(
     sessionId,
     lat,
@@ -113,7 +117,8 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
     ts,
     accuracy,
     forceAheadRefresh === true,
-    req.body.discoveryOnly === true
+    req.body.discoveryOnly === true,
+    dismissedPoiIds
   );
 
   res.json(result);

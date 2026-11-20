@@ -8,7 +8,7 @@ export function nearestHeading(previous: number, next: number): number {
 
 /** Camera state only. Speed gating is course reliability, never a movement classifier. */
 export class MapCameraController {
-  orientation: MapOrientation = 'north-up';
+  orientation: MapOrientation = 'course-up';
   following = true;
   heading = 0;
   reliableCourse = false;

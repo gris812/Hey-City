@@ -6,6 +6,7 @@ import {
   guestIdentity,
   initialRouteForSession,
   identityFromStoredToken,
+  returningGreeting,
 } from '../src/context/appIdentity';
 
 function assertEqual<T>(actual: T, expected: T, message: string): void {
@@ -49,8 +50,8 @@ assertEqual(
 );
 assertEqual(
   initialRouteForSession(authenticated, true, true, true),
-  'Welcome',
-  'authenticated returning user follows onboarding-at-launch preference'
+  'Main',
+  'authenticated returning user goes directly to Explore'
 );
 assertEqual(
   initialRouteForSession(guest, true, false, false),
@@ -62,6 +63,10 @@ assertEqual(
   null,
   'identity loading renders neutral temporary state'
 );
+
+assertEqual(returningGreeting(7), 'welcome.morning', 'local morning');
+assertEqual(returningGreeting(12), 'welcome.afternoon', 'local afternoon');
+assertEqual(returningGreeting(18), 'welcome.evening', 'local evening');
 
 const preferences = createInitialGuestPreferences('en');
 const completed = sanitizeGuestPreferences(

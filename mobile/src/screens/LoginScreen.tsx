@@ -31,7 +31,8 @@ export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [delivery, setDelivery] = useState<OtpDeliveryMode | null>(null);
-  const codeEntry = otpCodeEntry(delivery);
+  const [useTextKeyboard, setUseTextKeyboard] = useState(false);
+  const codeEntry = otpCodeEntry(delivery, useTextKeyboard);
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [loading, setLoading] = useState(false);
   const { login, preferences } = useAuth();
@@ -45,9 +46,10 @@ export function LoginScreen() {
     setLoading(true);
     try {
       const result = await sendOtp(e);
-      setStep('code');
       setDelivery(result.delivery);
+      setUseTextKeyboard(false);
       setCode('');
+      setStep('code');
       if (result.delivery === 'development_console') {
         Alert.alert('Hey City', t('auth.devConsoleCode'));
       } else if (showConfirmation && result.delivery === 'email') {
@@ -114,11 +116,13 @@ export function LoginScreen() {
             <Text style={styles.emailHint}>{email.trim().toLowerCase()}</Text>
             <Text style={styles.codeHint}>{t(delivery === 'admin_code' ? 'auth.adminCode' : 'auth.codeHint')}</Text>
             <TextInput
+              key={codeEntry.keyboardType}
               style={styles.input}
               placeholder={delivery === 'admin_code' ? t('auth.adminPlaceholder') : '123456'}
               placeholderTextColor={colors.textMuted}
               value={code}
               onChangeText={setCode}
+              autoFocus
               keyboardType={codeEntry.keyboardType}
               textContentType={delivery === 'admin_code' ? 'none' : 'oneTimeCode'}
               autoComplete={delivery === 'admin_code' ? 'off' : 'one-time-code'}
@@ -135,6 +139,16 @@ export function LoginScreen() {
               {loading ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.buttonText}>{t('auth.verify')}</Text>}
             </TouchableOpacity>
             <View style={styles.secondaryRow}>
+              {delivery === 'admin_code' && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  style={styles.secondaryAction}
+                  onPress={() => setUseTextKeyboard(current => !current)}
+                  disabled={loading}
+                >
+                  <Text style={styles.linkText}>{t(useTextKeyboard ? 'auth.numericKeyboard' : 'auth.textKeyboard')}</Text>
+                </TouchableOpacity>
+              )}
               {codeEntry.canResend && (
                 <TouchableOpacity style={styles.secondaryAction} onPress={() => void handleSendOtp(true)} disabled={loading}>
                   <Text style={styles.linkText}>{t('auth.resend')}</Text>

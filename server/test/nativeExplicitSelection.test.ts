@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../src/app';
-import { createSession, getSession, pingSession, stopSession } from '../src/services/driveSession';
+import { createSession, finishActiveStory, getSession, pingSession, stopSession } from '../src/services/driveSession';
 import { evaluateAheadDiscovery, sessionDiscoveryCandidate } from '../src/services/aheadDiscovery';
 import { selectStory } from '../src/services/selectedStory';
 import { narrativeGenerator, type NarrativeGenerationRequest } from '../src/services/narrativeGenerator';
@@ -139,6 +139,20 @@ async function run() {
       assert.equal(held.nextAction, 'NONE');
       assert.equal(session.journeyState.getActiveMoment()?.momentId, textOnly.momentId);
       assert.ok(!session.journeyState.getSnapshot().recent.outcomes.some(outcome => outcome.momentId === textOnly.momentId && outcome.reason === 'completed'));
+      await finishActiveStory(session.id, 'skipped', textOnly.momentId);
+      globalThis.fetch = async (url, options) => String(url).includes('api.openai.com')
+        ? new Response(new Uint8Array([73,68,51,4,5,6])) : savedFetch(url, options);
+      const finished = new Set<string>();
+      for (let i = 0; i < 5; i++) {
+        narrativeGenerator.generate = async () => ({ text: `Field replay ${i} after TTS failure.`, providerId: 'fixture', cached: false });
+        const next = await selectStory(session.id, owner, 'explicit-b', 'short', 'en', `sequential-${i}`);
+        assert(next.audioUrl && next.momentId && !finished.has(next.momentId));
+        assert.equal(session.journeyState.getActiveMoment()?.momentId, next.momentId);
+        finished.add(next.momentId);
+        assert.equal((await finishActiveStory(session.id, 'ended', next.momentId))?.ok, true);
+        assert.equal((await finishActiveStory(session.id, 'ended', next.momentId))?.stale, true);
+      }
+
     } finally { openai.apiKey = savedKey; globalThis.fetch = savedFetch; }
     const beforeBudget = calls.length;
     openCircuit(owner);

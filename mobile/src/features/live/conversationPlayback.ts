@@ -104,8 +104,7 @@ export class ConversationPlayback {
     const audio = this.current?.audio;
     this.current = undefined;
     const deps = this.deps;
-    this.unloading = this.unloading.then(async () => { if (audio) await audio.unloadAsync(); });
-    void this.unloading.catch(() => deps?.onError('audio_unload_failed', story));
+    void this.queueUnload(audio).catch(() => deps?.onError('audio_unload_failed', story));
   }
 
   async pause(): Promise<void> {
@@ -162,8 +161,13 @@ export class ConversationPlayback {
     this.suspended = undefined;
     const audio = this.current?.audio;
     this.current = undefined;
-    this.unloading = this.unloading.then(async () => { if (audio) await audio.unloadAsync(); });
-    await this.unloading;
+    await this.queueUnload(audio);
+  }
+
+  private queueUnload(audio?: StoryAudioPort): Promise<void> {
+    const operation = this.unloading.then(async () => { if (audio) await audio.unloadAsync(); });
+    this.unloading = operation.catch(() => {});
+    return operation;
   }
 }
 

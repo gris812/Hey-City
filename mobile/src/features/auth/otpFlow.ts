@@ -2,11 +2,11 @@ import type { OtpDeliveryMode } from '../../api/auth';
 import type { TranslationKey } from '../../localization/translations';
 
 /** Server's delivery contract determines field type; not every code is an email OTP. */
-export function otpCodeEntry(delivery: OtpDeliveryMode | null) {
+export function otpCodeEntry(delivery: OtpDeliveryMode | null, useTextKeyboard = false) {
   const admin = delivery === 'admin_code';
   return {
     maxLength: admin ? 128 : 6,
-    keyboardType: admin ? 'default' as const : 'number-pad' as const,
+    keyboardType: admin && useTextKeyboard ? 'default' as const : 'number-pad' as const,
     canVerify: (value: string) => admin ? value.trim().length > 0 : /^\d{6}$/.test(value.trim()),
     canResend: !admin,
   };

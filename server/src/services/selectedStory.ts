@@ -110,7 +110,7 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
         planned.plan.mustAvoid = forbidden;
         planned.brief.constraints.forbiddenPatterns = forbidden;
       }
-      result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal,trace});
+      result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal,completeAudio:true,trace});
     }
     check();
     if (level === 'short') {

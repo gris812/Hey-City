@@ -117,7 +117,10 @@ export async function apiFetch<T>(
   const body = options.body !== undefined ? JSON.stringify(options.body) : undefined;
   let response = await request(path, { ...options, headers, body });
 
-  if (token && shouldInvalidateStoredSession(path, response.status)) {
+  const rejected = token && response.status === 401
+    ? await response.clone().json().catch(() => undefined) as { code?: string; error?: string } | undefined
+    : undefined;
+  if (token && !options.signal?.aborted && shouldInvalidateStoredSession(path, response.status, rejected)) {
     const renewed = await session.recover(snapshot, refresh, invalidate);
     if (!renewed?.credentials || (await session.read()).generation !== snapshot.generation) {
       throw new AuthSessionExpiredError();
@@ -137,7 +140,7 @@ export async function apiFetch<T>(
     if (path.startsWith('/auth/') && [400, 401, 403, 429].includes(response.status)) {
       throw new Error(backendMessage || GENERIC_REQUEST_ERROR_MESSAGE);
     }
-    throw new ApiRequestError(response.status, toUserSafeRequestMessage(response.status, backendMessage));
+    throw new ApiRequestError(response.status, response.status === 401 ? GENERIC_REQUEST_ERROR_MESSAGE : toUserSafeRequestMessage(response.status, backendMessage));
   }
   return response.json() as Promise<T>;
 }

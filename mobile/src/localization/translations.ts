@@ -2,6 +2,12 @@ import type { SupportedLocale } from './locales';
 
 export const translations = {
   en: {
+    'welcome.morning': 'Good morning',
+    'welcome.afternoon': 'Good afternoon',
+    'welcome.evening': 'Good evening',
+    'walking.readStory': 'Open story',
+    'walking.stopTracking': 'Stop tracking',
+    'walking.targetSelected': 'Selected place',
     'app.loading': 'Loading',
     'tabs.live': 'Live',
     'tabs.explore': 'Map',
@@ -154,6 +160,8 @@ export const translations = {
     'auth.verify': 'Continue',
     'auth.resend': 'Resend code',
     'auth.changeEmail': 'Use a different email',
+    'auth.numericKeyboard': 'Numeric keypad',
+    'auth.textKeyboard': 'Letters and symbols',
     'auth.resendDone': 'A new code was sent.',
     'auth.devConsoleCode': 'Development mode: no email was sent. Use the code shown in the server terminal.',
     'auth.adminCode': 'Enter the administrator code for this server. It is not sent by email.',
@@ -256,6 +264,12 @@ export const translations = {
     'postValuePrompt': 'I hope you enjoyed the walk. Create an account to save the places you visited, return to this story later, and share the walk with friends.',
   },
   ru: {
+    'welcome.morning': 'Доброе утро',
+    'welcome.afternoon': 'Добрый день',
+    'welcome.evening': 'Добрый вечер',
+    'walking.readStory': 'Открыть рассказ',
+    'walking.stopTracking': 'Не отслеживать',
+    'walking.targetSelected': 'Выбранное место',
     'app.loading': 'Загрузка',
     'tabs.live': 'Live',
     'tabs.explore': 'Карта',
@@ -408,6 +422,8 @@ export const translations = {
     'auth.verify': 'Продолжить',
     'auth.resend': 'Отправить код ещё раз',
     'auth.changeEmail': 'Другой email',
+    'auth.numericKeyboard': 'Цифровая клавиатура',
+    'auth.textKeyboard': 'Буквы и символы',
     'auth.resendDone': 'Новый код отправлен.',
     'auth.devConsoleCode': 'Режим разработки: письмо не отправлялось. Используйте код из терминала сервера.',
     'auth.adminCode': 'Введите код администратора этого сервера. Этот код не отправляется по email.',

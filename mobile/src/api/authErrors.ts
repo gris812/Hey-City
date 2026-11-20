@@ -13,7 +13,9 @@ export function toUserSafeRequestMessage(status: number, message?: string): stri
 export function shouldInvalidateStoredSession(
   path: string,
   status: number,
+  payload?: { code?: string; error?: string },
 ): boolean {
-  if (path.startsWith('/auth/')) return false;
-  return isAuthenticationFailure(status);
+  if (path.startsWith('/auth/') || status !== 401) return false;
+  return payload?.code === 'session_rejected' ||
+    (path === '/me' && ['Invalid or expired token', 'Invalid or expired session'].includes(payload?.error ?? ''));
 }

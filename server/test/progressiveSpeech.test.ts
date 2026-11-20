@@ -78,6 +78,25 @@ async function run() {
     globalThis.fetch = async (url, options) => String(url).includes('api.openai.com')
       ? new Response(new Uint8Array()) : realFetch(url,options);
     assert.equal((await generate()).audioUrl,'','empty upstream must not announce playable audio');
+    // Real field delivery waits for the finalized MP3, including separate Range probes.
+    for (let i = 0; i < 5; i++) {
+      narrativeGenerator.generate = async () => ({text:`Field story ${i}`,providerId:'test',cached:false});
+      globalThis.fetch = async (url, options) => {
+        if (!String(url).includes('api.openai.com')) return realFetch(url, options);
+        calls++;
+        return new Response(new Uint8Array([73,68,51,4,5,6]));
+      };
+      const callCount: number = calls;
+      const [result, duplicate] = await Promise.all([
+        generateNarrationFromPlan(request.plan, {...request, completeAudio: true}),
+        generateNarrationFromPlan(request.plan, {...request, completeAudio: true}),
+      ]);
+      assert.equal(result.audioUrl, duplicate.audioUrl);
+      assert.equal(calls, callCount + 1);
+      const response = await realFetch(base+new URL(result.audioUrl).pathname,{headers:{Range:'bytes=0-1'}});
+      assert.equal(response.status,206);
+      assert.equal(response.headers.get('content-range'),'bytes 0-1/6');
+    }
     console.log('progressive speech: first-byte delivery, single flight, disconnect, cache, ranges and failure passed');
   } finally {
     globalThis.fetch = realFetch; narrativeGenerator.generate = realGenerate;

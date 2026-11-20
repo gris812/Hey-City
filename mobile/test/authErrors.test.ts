@@ -40,4 +40,7 @@ assertEqual(
 assertEqual(shouldInvalidateStoredSession('/me', 403), false, 'forbidden is not a session expiry');
 assertEqual(shouldInvalidateStoredSession('/auth/otp/verify', 401), false, 'OTP failure does not invalidate an existing session');
 
+assertEqual(shouldInvalidateStoredSession('/sessions/example', 401, { error: 'Unauthorized' }), false, 'unrelated rejection preserves account');
+assertEqual(shouldInvalidateStoredSession('/me', 401, { error: 'Invalid or expired token' }), true, 'legacy API startup reports expired credentials');
+assertEqual(shouldInvalidateStoredSession('/sessions/example', 401, { code: 'session_rejected' }), true, 'explicit backend rejection enables renewal');
 console.log('authErrors tests passed');

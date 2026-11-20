@@ -29,6 +29,7 @@ export async function recordNativeNarrativeEvent(
       sessionId,
       momentId: body.momentId,
       stage: 'playback',
+      failure: typeof body.failure === 'string' ? body.failure : undefined,
       status: body.status as 'playing' | 'paused' | 'failed',
       latencyMs:
         typeof body.latencyMs === 'number' ? body.latencyMs : undefined,
