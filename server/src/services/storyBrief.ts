@@ -3,10 +3,11 @@ import { narrativeV2 } from '../config';
 import { NARRATIVE_FORBIDDEN_PATTERNS, narrativeAngle, narrativeBeatKinds, narrativeBeatObjective } from '../policies/narrativeQualityPolicy';
 import { EvidenceBundle, InsufficientEvidenceError, selectedEvidenceItems, specificCallbackTopics, storyAvailability, verifiedItems } from './evidence';
 import { GuidePolicy } from './guidePolicy';
+import { isCityNarrativeCategory, selectNarrativeDepth } from '../policies/narrativeDepthPolicy';
 import type { JourneyContext, JourneyCallback } from './journeyContext';
 
 export interface StoryContinuationState {
-  poiId: string; guideId: string; language: string; previousLevel: 'short'; previousTranscript: string;
+  poiId: string; guideId: string; language: string; previousLevel: 'short'; previousTranscript: string; selectedEvidenceRefs?: string[];
 }
 export interface StoryBrief {
   subject: { id: string; name: string; category: string };
@@ -14,6 +15,7 @@ export interface StoryBrief {
   evidence: EvidenceBundle;
   /** Deterministically selected claims available to this segment; the full bundle stays server-only. */
   selectedEvidenceRefs: string[];
+  depth?: { scale: 'city' | 'landmark'; themes: string[] };
   journey?: {
     area?: JourneyContext['area'];
     recentEntityRefs: string[];
@@ -32,9 +34,9 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
   const prior = options.continuation;
   const continuation = options.level === 'long' && prior?.poiId === input.poiId && prior.guideId === policy.id && prior.language === options.language
     ? { previousLevel: 'short' as const, previousTranscript: prior.previousTranscript } : undefined;
-  const available = storyAvailability(evidence, continuation ? policy.id : undefined);
+  const available = storyAvailability(evidence, continuation ? policy.id : undefined, continuation ? prior?.selectedEvidenceRefs : undefined);
   if (!(options.level === 'long' ? available.long : available.short)) throw new InsufficientEvidenceError();
-  const city = evidence.category === 'city' || evidence.category === 'region';
+  const city = isCityNarrativeCategory(evidence.category);
   const journey = options.journey;
   const topics = specificCallbackTopics(evidence);
   const callback = continuation ? undefined : journey?.callbacks.find(item =>
@@ -51,20 +53,25 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
     repeatSignature: !continuation && !callback && journey?.recent.narrativeSignatures.at(-1) === signature });
   const items = verifiedItems(evidence);
   const used = new Set(journey?.usedEvidenceRefs ?? []);
-  const preferredItems = selectedEvidenceItems(evidence, policy.id, options.level, Boolean(continuation));
+  const preferredItems = selectedEvidenceItems(evidence, policy.id, options.level, Boolean(continuation), prior?.selectedEvidenceRefs);
+  const depth = continuation ? undefined : selectNarrativeDepth(evidence.category, items.filter(item => !used.has(item.id)));
   const unusedItems = (used.size && !continuation && options.level !== 'auto'
     ? verifiedItems(evidence).filter(item => !used.has(item.id)).slice(0, options.level === 'short' ? 2 : undefined)
     : preferredItems.filter(item => !used.has(item.id)));
   // An explicit user choice may replay an already-heard story; automatic narration may not.
   // A continuation always uses M1's strictly unused short-segment evidence selection.
-  const selectedItems = continuation ? preferredItems :
+  const selectedItems = depth?.items ?? (continuation ? preferredItems :
     unusedItems.length >= narrativeV2.shortMinClaims ? unusedItems :
-      options.level === 'auto' ? [] : preferredItems;
+      options.level === 'auto' ? [] : preferredItems);
   if (selectedItems.length < (continuation ? narrativeV2.continuationMinClaims : narrativeV2.shortMinClaims)) throw new InsufficientEvidenceError();
   return {
-    subject: { id: input.poiId, name: input.placeName, category: evidence.category }, moment, level: options.level,
+    subject: { id: input.poiId, name: input.placeName, category: evidence.category },
+    moment: depth ? { ...moment, delivery: 'deep_story' } : moment, level: options.level,
+    ...(depth ? { depth: { scale: depth.scale, themes: depth.themes } } : {}),
     narrativeAngle: narrativeAngle({ continuation: Boolean(continuation), city, category: evidence.category, guideId: policy.id, themeTags: input.themeTags }),
-    beats: kinds.map(kind => ({ kind, objective: narrativeBeatObjective(kind, options.level) })),
+    beats: kinds.map(kind => ({ kind, objective: depth && (kind === 'reveal' || kind === 'context')
+      ? 'Develop the central angle across complementary supported dimensions, connected by spoken transitions.'
+      : narrativeBeatObjective(kind, options.level) })),
     evidence: { ...evidence, items }, selectedEvidenceRefs: selectedItems.map(item => item.id), continuation,
     ...(journey ? { journey: {
       area: journey.area.source === 'unknown' ? undefined : journey.area,
@@ -73,6 +80,6 @@ export function buildStoryBrief(input: NarrativePlanInput, evidence: EvidenceBun
       usedEvidenceRefs: [...used], callback,
       recentNarrativeSignatures: [...journey.recent.narrativeSignatures],
     } } : {}),
-    constraints: { targetDurationSec: input.targetDurationSec, language: options.language, forbiddenPatterns: [...NARRATIVE_FORBIDDEN_PATTERNS] },
+    constraints: { targetDurationSec: depth && (input.mode !== 'vehicle' || depth.scale === 'city') ? depth.targetDurationSec : input.targetDurationSec, language: options.language, forbiddenPatterns: [...NARRATIVE_FORBIDDEN_PATTERNS] },
   };
 }

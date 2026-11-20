@@ -305,6 +305,13 @@ export function LiveScreen() {
     isAhead: candidate.isAhead,
     selected: candidate.providerId === aheadTarget?.providerId,
   }));
+  const storyPlaces: ExploreNearbyPlace[] = movementMode === 'vehicle' ? [] :
+    (presentation.playback?.storyDiscoveries ?? []).map(place => ({
+      id: place.providerId, title: place.name, targetType: place.targetType,
+      coordinate: { latitude: place.latitude, longitude: place.longitude },
+      distanceMeters: liveDistance(place.latitude, place.longitude, Number.NaN),
+    }));
+  const selectablePlaces = [...storyPlaces, ...exploreNearbyPlaces.filter(place => !storyPlaces.some(storyPlace => storyPlace.id === place.id))];
   const selectedNearbyTarget = explicitTarget
     ? exploreNearbyPlaces.find(place => place.id === explicitTarget.id)
     : undefined;
@@ -717,8 +724,8 @@ export function LiveScreen() {
           height={Math.max(520, windowHeight - tabBarHeight)}
           topInset={insets.top}
           region={exploreRegion}
-          markers={exploreNearbyPlaces}
-          nearbyPlaces={exploreNearbyPlaces}
+          markers={selectablePlaces}
+          nearbyPlaces={selectablePlaces}
           greeting={greeting && movementMode !== 'vehicle' && identity.status === 'authenticated' ? t(greeting) : undefined}
           mapTarget={mapTarget}
           vehicleCameraActive={focused && Boolean(sessionId)}

@@ -21,7 +21,7 @@ async function run() {
   const results = [];
   for (const row of run.results)
     for (const pair of row.comparisons ?? []) {
-      const id = `${row.entityId}:${pair.condition}`;
+      const id = `${row.entityId}:${row.guideId ? `${row.guideId}:` : ''}${pair.condition}`;
       const item = review.pairs?.find((r: { id: string }) => r.id === id);
       if (!item) throw new Error(`Missing blind review ${id}`);
       for (const label of ['A', 'B']) {

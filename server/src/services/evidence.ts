@@ -64,19 +64,19 @@ export function publicAttribution(bundle: EvidenceBundle): NarrativeAttribution 
   } catch { return { label }; }
 }
 
-export function selectedEvidenceItems(bundle: EvidenceBundle, guideId: string, level: 'short' | 'long' | 'auto', continuing = false): EvidenceItem[] {
+export function selectedEvidenceItems(bundle: EvidenceBundle, guideId: string, level: 'short' | 'long' | 'auto', continuing = false, previousRefs?: string[]): EvidenceItem[] {
   const items = verifiedItems(bundle);
   const canonicalGuide = guideId === 'artur' ? 'arthur' : guideId;
   const shortItems = items.length <= 2 ? items : canonicalGuide === 'arthur' ? [items[0], items[2]] : items.slice(0, 2);
   if (level === 'short') return shortItems;
-  if (level === 'long' && continuing) return items.filter(item => !shortItems.some(short => short.id === item.id));
+  if (level === 'long' && continuing) return items.filter(item => previousRefs ? !previousRefs.includes(item.id) : !shortItems.some(short => short.id === item.id));
   return items;
 }
 
-export function storyAvailability(bundle: EvidenceBundle, continuationGuideId?: string): StoryAvailability {
+export function storyAvailability(bundle: EvidenceBundle, continuationGuideId?: string, previousRefs?: string[]): StoryAvailability {
   const count = verifiedItems(bundle).length;
   const continuationCount = continuationGuideId
-    ? selectedEvidenceItems(bundle, continuationGuideId, 'long', true).length
+    ? selectedEvidenceItems(bundle, continuationGuideId, 'long', true, previousRefs).length
     : count;
   return {
     short: count >= narrativeV2.shortMinClaims,

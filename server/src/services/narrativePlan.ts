@@ -13,9 +13,11 @@ export interface MockNarration {
 
 export function createNarrativePlan(input: NarrativePlanInput, brief?: StoryBrief): NarrativePlan {
   const vehicleSafe = input.mode === 'vehicle';
-  const maxDurationSec = vehicleSafe
+  const targetDurationSec = brief?.constraints.targetDurationSec ?? input.targetDurationSec;
+  const longPassiveCity = vehicleSafe && brief?.depth?.scale === 'city';
+  const maxDurationSec = vehicleSafe && !longPassiveCity
     ? discoveryConfig.vehicleStoryMaxSeconds
-    : Math.max(input.targetDurationSec, discoveryConfig.vehicleStoryMaxSeconds);
+    : Math.max(targetDurationSec, discoveryConfig.vehicleStoryMaxSeconds);
 
   const { storySeed: _legacySource, ...publicInput } = input;
   return {
@@ -28,11 +30,11 @@ export function createNarrativePlan(input: NarrativePlanInput, brief?: StoryBrie
     evidenceRefs: brief?.selectedEvidenceRefs ?? [],
     targetDurationSec: vehicleSafe
       ? clamp(
-          input.targetDurationSec,
+          targetDurationSec,
           discoveryConfig.vehicleStoryMinSeconds,
-          discoveryConfig.vehicleStoryMaxSeconds
+          maxDurationSec
         )
-      : input.targetDurationSec,
+      : targetDurationSec,
     safety: {
       vehicleSafe,
       maxDurationSec,

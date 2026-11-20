@@ -1,9 +1,10 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import {
   randomEntities,
+  cityDepthEntities,
   nearbyEntities,
   samplingVersion,
   blindPair,
@@ -15,7 +16,8 @@ import { prepareNarrative } from '../src/services/narrativePlan';
 import { NarrativeGenerator } from '../src/services/narrativeGenerator';
 import { createDefaultAITaskRouter } from '../src/ai/aiTaskRouter';
 import { storyAvailability } from '../src/services/evidence';
-import { openai } from '../src/config';
+import { media, narrativeV2, openai } from '../src/config';
+import { generateVoiceSample } from '../src/services/narration';
 import { knowledgePolicy } from '../src/policies/knowledgePolicy';
 
 const args = process.argv.slice(2);
@@ -32,8 +34,32 @@ function positive(value: string | undefined, label: string): number {
 let seed = Number(arg('--seed', '20261109'));
 const language = arg('--language', 'en')!;
 const seconds = 30;
+const heyCityOnly = args.includes('--heycity-only');
+const measureTts = args.includes('--tts');
+const estimateTts = (characters: number) => Math.ceil(characters / 4) * openai.ttsInputUsdPerMillion / 1e6 +
+  Math.ceil(characters / 14 * 20) * openai.ttsOutputUsdPerMillion / 1e6;
+
+async function measureSpeech(text: string, guideId: string, language: string) {
+  reserve(estimateTts(4096));
+  const started = performance.now();
+  const result = await generateVoiceSample(text, guideId, language);
+  const latencyMs = performance.now() - started;
+  const filename = result.audioUrl.split('/').pop();
+  if (!filename || !/^[a-f0-9]{24}\.mp3$/.test(filename)) throw new Error('invalid_benchmark_audio');
+  const path = join(media.directory, filename);
+  const bytes = (await stat(path)).size;
+  let durationSec: number | undefined;
+  try {
+    durationSec = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim()) || undefined;
+  } catch { /* Audio file size and latency remain measurable without ffprobe. */ }
+  const estimatedCostUsd = estimateTts(Math.min(text.length, 4096));
+  metrics.push({ provider: 'openai_tts', model: openai.ttsModel, latencyMs, estimatedCostUsd });
+  return { latencyMs, bytes, durationSec, estimatedCostUsd };
+}
 const geminiModel = process.env.BENCHMARK_GEMINI_MODEL;
 const geminiKey = process.env.GEMINI_API_KEY;
+const geminiThinkingBudget = geminiModel?.startsWith('gemini-2.5-flash') ? 0 : undefined;
 let reserved = 0;
 const metrics: {
   provider: string;
@@ -70,7 +96,8 @@ async function gemini(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens },
+        generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens,
+          ...(geminiThinkingBudget === undefined ? {} : { thinkingConfig: { thinkingBudget: geminiThinkingBudget } }) },
       }),
     },
   );
@@ -116,13 +143,17 @@ async function run() {
     throw new Error('Invalid seed/language');
   const replay = arg('--replay');
   let entities: BenchmarkEntity[];
+  let cityDepth = args.includes('--city-depth');
   if (replay) {
     const recorded = JSON.parse(await readFile(replay, 'utf8'));
     if (arg('--seed') === undefined && Number.isSafeInteger(recorded.seed))
       seed = recorded.seed;
     entities = recorded.entities;
+    cityDepth ||= recorded.scenario === 'city-depth';
     if (!Array.isArray(entities) || !entities.length || entities.length > 20)
       throw new Error('Invalid replay manifest');
+  } else if (cityDepth) {
+    entities = cityDepthEntities(seed);
   } else {
     if (arg('--lat') === undefined || arg('--lng') === undefined)
       throw new Error(
@@ -146,6 +177,7 @@ async function run() {
   }).trim();
   const report: any = {
     schemaVersion: 1,
+    scenario: cityDepth ? 'city-depth' : 'default',
     seed,
     samplingVersion,
     sourceSha,
@@ -155,7 +187,7 @@ async function run() {
     dirty,
     language,
     durationSec: seconds,
-    samplingBias:
+    samplingBias: cityDepth ? 'Four fixed field cities and one seeded sample from each city-size stratum.' :
       'Nearby frame: geotagged English Wikipedia pages in supplied 10km test area; random frame: versioned worldwide catalog, stratified region/type/coverage. Coverage strata are hypotheses, not measured evidence.',
     entities,
     models: {
@@ -163,7 +195,7 @@ async function run() {
       gemini: geminiModel ?? 'not_configured',
     },
     configuration: {
-      gemini: { temperature: 0.7, maxOutputTokens: 900 },
+      gemini: { temperature: 0.7, maxOutputTokens: 900, thinkingBudget: geminiThinkingBudget },
       knowledgeResearch: 'disabled for benchmark cost isolation',
       heycity: 'production config/plan/guide; no benchmark generator',
     },
@@ -172,10 +204,7 @@ async function run() {
     metrics,
     status: 'SAMPLED_NOT_GENERATED',
     cost: { reservedUpperBoundUsd: 0 },
-    tts: {
-      status: 'not_run',
-      note: 'Narrative quality benchmark isolates text. Existing evaluate:m1 exercises production TTS; first audible audio requires native field telemetry.',
-    },
+    tts: { requested: measureTts, note: 'Server-side audio generation only. First audible audio requires native field telemetry.' },
   };
   const save = async () => {
     report.cost.reservedUpperBoundUsd = reserved;
@@ -228,22 +257,16 @@ async function run() {
   }
   if (
     !openai.apiKey ||
-    !geminiKey ||
-    !geminiModel ||
-    !/^[a-zA-Z0-9._-]+$/.test(geminiModel)
+    (!heyCityOnly && (!geminiKey || !geminiModel || !/^[a-zA-Z0-9._-]+$/.test(geminiModel)))
   )
     throw new Error(
-      'Live run requires OPENAI_API_KEY, GEMINI_API_KEY and explicit BENCHMARK_GEMINI_MODEL',
+      'Live comparison requires OPENAI_API_KEY, GEMINI_API_KEY and explicit BENCHMARK_GEMINI_MODEL; --heycity-only needs OpenAI access',
     );
   budget = positive(arg('--budget-usd'), '--budget-usd');
-  geminiInput = positive(
-    process.env.BENCHMARK_GEMINI_INPUT_USD_PER_MILLION,
-    'Gemini input price',
-  );
-  geminiOutput = positive(
-    process.env.BENCHMARK_GEMINI_OUTPUT_USD_PER_MILLION,
-    'Gemini output price',
-  );
+  if (!heyCityOnly) {
+    geminiInput = positive(process.env.BENCHMARK_GEMINI_INPUT_USD_PER_MILLION, 'Gemini input price');
+    geminiOutput = positive(process.env.BENCHMARK_GEMINI_OUTPUT_USD_PER_MILLION, 'Gemini output price');
+  }
   const router = createDefaultAITaskRouter();
   const routeGenerate = router.generate.bind(router);
   router.generate = async (request) => {
@@ -271,15 +294,18 @@ async function run() {
   await save();
   try {
     // Sequential is intentional bounded concurrency=1. No surprise paid retries.
-    for (const [index, item] of entities.entries()) {
+    const cases = entities.flatMap(item => (cityDepth ? ['dana', 'arthur'] : ['dana']).map(guideId => ({item, guideId})));
+    for (const [index, {item, guideId}] of cases.entries()) {
       if (reserved >= budget) break;
       const row: any = {
         entityId: item.candidate.providerId,
         name: item.candidate.name,
         group: item.group,
+        ...(cityDepth ? { guideId } : {}),
       };
       report.results.push(row);
       try {
+        row.stage = 'retrieval';
         let started = performance.now();
         const knowledge = await retrieveDiscoveryKnowledge(item.candidate);
         row.retrieval = {
@@ -303,12 +329,13 @@ async function run() {
             sourceUrl,
           }),
         );
+        row.stage = 'generation';
         const request = prepareNarrative(
           {
             poiId: evidence.subjectId,
             placeName: evidence.subjectName,
             mode: 'walking',
-            guideId: 'dana',
+            guideId,
             themeTags: ['mixed'],
             targetDurationSec: seconds,
           },
@@ -324,7 +351,19 @@ async function run() {
         });
         if (hey.providerId === 'deterministic')
           throw new Error('Demo output is not a measured story');
-        row.heycity = { ...hey, latencyMs: performance.now() - started };
+        row.heycity = { ...hey, latencyMs: performance.now() - started,
+          estimatedSpokenSeconds: Math.ceil(hey.text.split(/\s+/u).length / narrativeV2.wordsPerSecond) };
+        row.targetDurationSec = request.plan.targetDurationSec;
+        row.supportedThemes = request.brief.depth?.themes ?? [];
+        if (measureTts) {
+          row.stage = 'tts';
+          row.tts = await measureSpeech(hey.text, guideId, language);
+        }
+        if (heyCityOnly) {
+          row.status = 'heycity_generated';
+          continue;
+        }
+        row.stage = 'comparison';
         const context = {
           identity: item.candidate.name,
           type: item.candidate.targetType,
@@ -334,7 +373,7 @@ async function run() {
           selection:
             'Explicit request, not arrival; location is not current listener position',
           objectives:
-            'An intriguing opening, one angle, natural spoken storytelling, meaningful local context. No invented facts, quotes, lists, spoken citations, route instructions or padding.',
+            'An intriguing opening, one arc, natural spoken storytelling, meaningful local context. Connect complementary supported themes where the evidence and time allow. No invented facts, quotes, lists, spoken citations, route instructions or padding.',
         };
         const controlled = JSON.stringify({
           ...context,
@@ -365,25 +404,24 @@ async function run() {
         row.status = 'generated_review_pending';
       } catch (error) {
         row.status = 'failed';
-        row.errorCode =
-          error instanceof Error && error.message === 'benchmark_cost_limit'
-            ? 'cost_limit'
-            : 'benchmark_stage_failed';
-        if (row.errorCode === 'cost_limit') break;
+        const code = error instanceof Error ? error.message : '';
+        row.errorCode = code === 'benchmark_cost_limit' ? 'cost_limit' :
+          /^(gemini_http_[45]\d\d|gemini_incomplete)$/.test(code) ? code : 'benchmark_stage_failed';
+        if (row.errorCode === 'cost_limit' || /^gemini_http_(401|403|404|429)$/.test(code)) break;
       } finally {
         await save();
       }
     }
     report.status =
-      report.results.length === entities.length &&
-      report.results.every((r: any) => r.status === 'generated_review_pending')
-        ? 'GENERATED_REVIEW_PENDING'
+      report.results.length === cases.length &&
+      report.results.every((r: any) => r.status === (heyCityOnly ? 'heycity_generated' : 'generated_review_pending'))
+        ? (heyCityOnly ? 'HEYCITY_GENERATED_REVIEW_PENDING' : 'GENERATED_REVIEW_PENDING')
         : 'PARTIAL_NOT_ACCEPTED';
   } finally {
     await save();
   }
   // Separate blinded packet; mapping/source/provider identities are excluded from the judge input.
-  await writeFile(
+  if (!heyCityOnly) await writeFile(
     out.replace(/\.json$/, '') + '.blind.json',
     JSON.stringify(
       {
@@ -391,8 +429,8 @@ async function run() {
         pairs: report.results.flatMap(
           (r: any) =>
             r.comparisons?.map((c: any) => ({
-              id: `${r.entityId}:${c.condition}`,
-              context: { name: r.name, language, durationSec: seconds },
+              id: `${r.entityId}:${r.guideId ? `${r.guideId}:` : ''}${c.condition}`,
+              context: { name: r.name, language, durationSec: r.targetDurationSec ?? seconds, supportedThemes: r.supportedThemes },
               answers: c.blindAnswers,
             })) ?? [],
         ),
@@ -406,7 +444,7 @@ async function run() {
       status: report.status,
       out,
       cost: report.cost,
-      comparisons: metrics.length,
+      comparisons: metrics.filter(metric => metric.provider === 'gemini').length,
     }),
   );
 }
