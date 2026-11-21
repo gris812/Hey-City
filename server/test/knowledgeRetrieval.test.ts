@@ -33,6 +33,17 @@ const page = (
   coordinates: [{ lat: 25.82, lon: -80.35 }],
 });
 async function run() {
+  for (const [name, latitude, longitude] of [
+    ['Buffy the Cow', 43.662268, -92.989917],
+    ['Walnut Lake Wildlife Management Area', 43.65551, -93.776615],
+  ] as const) {
+    const place = { ...candidate('reviewed-' + name, name), latitude, longitude };
+    const reviewed = await retrieveDiscoveryKnowledge(place);
+    assert.equal(reviewed.attempts[0].level, 'L1');
+    assert(reviewed.evidence && storyAvailability(reviewed.evidence).short);
+    assert.equal(reviewed.evidence.subjectId, place.providerId);
+    assert(reviewed.evidence.items.every(item => item.sourceUrl?.startsWith('https://')));
+  }
   const original = global.fetch;
   let calls: URL[] = [];
   global.fetch = (async (value) => {
@@ -81,6 +92,8 @@ async function run() {
     assert.equal(calls[2].searchParams.get('pageids'), '1');
     assert(a.evidence?.items.some(item => item.claim.includes('fixture railway')));
     assert(!a.evidence?.items.some(item => item.claim.includes('fabricated reference section')));
+    assert.equal(await discoveryEvidence(candidate('wrong-buffy', 'Buffy the Cow')), null,
+      'the same name at another location never uses reviewed facts');
     assert(!knowledgeNameMatches('Doral', 'Dortmund'));
     assert(knowledgeNameMatches('Knoxville', 'Knoxville, Tennessee'));
     calls = [];

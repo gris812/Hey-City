@@ -55,3 +55,12 @@ export const guideLabels: Record<GuideId, string> = {
   dana: 'Dana',
   arthur: 'Arthur',
 };
+
+/** The main Explore card follows the current story while native audio owns playback. */
+export function explorePlaybackTarget(state: Pick<LivePresentationState, 'playback' | 'playbackState'>) {
+  const { playback, playbackState } = state;
+  if (!playback || !['loading', 'playing', 'paused'].includes(playbackState)) return undefined;
+  const { latitude, longitude, name } = playback.target;
+  if (latitude === undefined || longitude === undefined) return undefined;
+  return { id: playback.poiId, title: name, coordinate: { latitude, longitude } };
+}

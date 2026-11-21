@@ -142,6 +142,27 @@ async function run() {
       await finishActiveStory(session.id, 'skipped', textOnly.momentId);
       globalThis.fetch = async (url, options) => String(url).includes('api.openai.com')
         ? new Response(new Uint8Array([73,68,51,4,5,6])) : savedFetch(url, options);
+      const fieldSession = createSession(owner, { ...session.params, language: 'ru' });
+      try {
+        const fieldPlaces = [
+          { providerId: 'buffy-field', provider: 'google' as const, name: 'Buffy the Cow', latitude: 43.662268,
+            longitude: -92.989917, targetType: 'cultural_landmark' as const, providerTypes: ['tourist_attraction'] },
+          { providerId: 'walnut-field', provider: 'google' as const, name: 'Walnut Lake Wildlife Management Area',
+            latitude: 43.65551, longitude: -93.776615, targetType: 'natural_feature' as const, providerTypes: ['park'] },
+        ];
+        await evaluateAheadDiscovery({ sessionId: fieldSession.id,
+          movement: { latitude: 43.66, longitude: -93, headingDegrees: 0, speedMps: 25, accuracyMeters: 10,
+            timestamp: new Date().toISOString() },
+          provider: { name: 'google', searchAhead: async () => fieldPlaces },
+        });
+        for (const place of fieldPlaces) {
+          const story = await selectStory(fieldSession.id, owner, place.providerId, 'short', 'ru', place.providerId);
+          assert.equal(story.poiId, place.providerId);
+          assert(story.audioUrl && story.momentId, 'reviewed place reaches audio delivery');
+          assert(calls.at(-1)?.brief.evidence.items.every(item => item.sourceUrl?.startsWith('https://')));
+          await finishActiveStory(fieldSession.id, 'ended', story.momentId);
+        }
+      } finally { stopSession(fieldSession.id); }
       const finished = new Set<string>();
       for (let i = 0; i < 5; i++) {
         narrativeGenerator.generate = async () => ({ text: `Field replay ${i} after TTS failure.`, providerId: 'fixture', cached: false });

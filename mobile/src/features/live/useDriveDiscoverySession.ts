@@ -81,7 +81,7 @@ export function useDriveDiscoverySession(input: {
   const [storyNotice, setStoryNotice] = useState<string | null>(null);
   const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const discoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const dismissedTargets = useRef(new Map<string, number>());
+  const dismissedTargets = useRef(new Set<string>());
   const [dismissedPoiIds, setDismissedPoiIds] = useState<string[]>([]);
   const dismissDiscoveryNotice = useCallback(() => {
     clearTimeout(discoveryTimer.current);
@@ -383,6 +383,13 @@ export function useDriveDiscoverySession(input: {
     });
   }, [flushFinish, guestId, guideLanguage, notifyStoryFailure, reportPlaybackError]);
 
+  const suppressAutomaticTarget = useCallback((poiId: string) => {
+    const dismissed = dismissedTargets.current;
+    if (dismissed.has(poiId)) return;
+    dismissed.add(poiId);
+    setDismissedPoiIds([...dismissed]);
+  }, []);
+
   const tellPlaceNow = useCallback(async (place: { id: string; title: string; coordinate: { latitude: number; longitude: number } }, level: 'short' | 'long' = 'short') => {
     const id = activeSessionIdRef.current;
     if (!id) return;
@@ -424,7 +431,7 @@ export function useDriveDiscoverySession(input: {
           guideId: fromBackendGuideId(result.guideId), target: { id: result.poiId, name: result.name,
             latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText, storyDiscoveries: result.storyDiscoveries }, result.audioUrl);
       },
-      failed: (_choice, error, stage) => {
+      failed: (choice, error, stage) => {
         if (activeSessionIdRef.current !== id) return;
         // No audio exists for an evidence/generation rejection. Clear the preparation owner
         // instead of rendering a second, misleading playback error/loading transcript.
@@ -434,6 +441,8 @@ export function useDriveDiscoverySession(input: {
         setAudioProgress(undefined);
         const failure = selectionFailurePresentation(stage, error instanceof ApiRequestError ? error.status : undefined);
         setLocalPlaybackState(failure.playbackState);
+        setExplicitTarget(current => current?.id === choice.poiId ? undefined : current);
+        if (failure.kind === 'evidence') suppressAutomaticTarget(choice.poiId);
         // Endpoint errors are intentionally not logged; they can contain provider payloads.
         if (failure.kind === 'playback') {
           reportPlaybackError('audio_unload_failed');
@@ -444,7 +453,7 @@ export function useDriveDiscoverySession(input: {
           : (guideLanguage === 'ru' ? 'Рассказ временно недоступен. Попробуйте ещё раз.' : 'Story is temporarily unavailable. Try again.'));
       },
     });
-  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError, syncGuide, dismissStoryNotice, notifyStoryFailure]);
+  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError, syncGuide, dismissStoryNotice, notifyStoryFailure, suppressAutomaticTarget]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -503,9 +512,7 @@ export function useDriveDiscoverySession(input: {
         await syncGuide(sessionId, guestId);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
         const dismissed = dismissedTargets.current;
-        for (const [poiId, expiresAt] of dismissed) if (expiresAt <= Date.now()) dismissed.delete(poiId);
-        const exclusions = [...dismissed.keys()];
-        setDismissedPoiIds(previous => previous.length === exclusions.length && previous.every((id, index) => id === exclusions[index]) ? previous : exclusions);
+        const exclusions = [...dismissed].slice(-128);
         await flushFinish(sessionId);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
         const result = await pingDriveSession(sessionId, loc.coords.latitude, loc.coords.longitude,
@@ -591,11 +598,7 @@ export function useDriveDiscoverySession(input: {
   };
 
   const stopTracking = (poiId: string) => {
-    const dismissed = dismissedTargets.current;
-    dismissed.delete(poiId);
-    dismissed.set(poiId, Date.now() + config.dismissedTargetSuppressionMs);
-    if (dismissed.size > 8) dismissed.delete(dismissed.keys().next().value!);
-    setDismissedPoiIds([...dismissed.keys()]);
+    suppressAutomaticTarget(poiId);
     if (explicitTarget?.id === poiId || playback?.poiId === poiId) void finishStory('skipped');
     dismissStoryNotice();
   };
