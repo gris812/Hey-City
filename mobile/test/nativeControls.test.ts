@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { explorePlaybackTarget } from '../src/presentation/livePresentation';
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
 import { createMeasurementFormatter } from '../src/localization/measurements';
@@ -54,10 +55,22 @@ async function selections() {
     request: async () => { throw new Error('422'); },
     failed: (_selected, _error, stage) => assert.equal(stage, 'request'),
   });
-  assert.equal(controller.holdsAutomaticNarration, true, 'failed explicit target stays pinned until dismissal or a new request');
+  assert.equal(controller.holdsAutomaticNarration, false, 'a failed request without media releases automatic narration');
   controller.cancel();
   assert.equal(controller.holdsAutomaticNarration, false);
 }
+
+function exploreCardPlayback() {
+  const playback = {
+    sessionId: 'session', momentId: 'moment', poiId: 'new-story', guideId: 'dana' as const,
+    target: { name: 'Current story', latitude: 43.7, longitude: -93 },
+  };
+  assert.equal(explorePlaybackTarget({ playback, playbackState: 'playing' })?.id, 'new-story');
+  assert.equal(explorePlaybackTarget({ playback, playbackState: 'paused' })?.id, 'new-story');
+  assert.equal(explorePlaybackTarget({ playback, playbackState: 'completed' }), undefined);
+  assert.equal(explorePlaybackTarget({ playback, playbackState: 'error' }), undefined);
+}
+exploreCardPlayback();
 
 async function units() {
   const data = new Map<string, string>();

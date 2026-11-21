@@ -24,7 +24,7 @@ export class ExplicitStorySelection {
   private current?: { key: string; abort: AbortController; state: 'pending' | 'delivered' | 'error'; requestId: string; result?: SelectedStoryResult };
   get isPreparing(): boolean { return this.current?.state === 'pending'; }
   get holdsAutomaticNarration(): boolean {
-    return Boolean(this.current);
+    return this.current?.state === 'pending' || Boolean(this.current?.result);
   }
 
   async select(choice: StoryChoice, deps: SelectionDependencies): Promise<void> {
@@ -54,6 +54,7 @@ export class ExplicitStorySelection {
     } catch (error) {
       if (this.current !== current) return;
       this.current.state = 'error';
+      this.current.result = undefined;
       deps.failed(choice, error, stage);
     }
   }

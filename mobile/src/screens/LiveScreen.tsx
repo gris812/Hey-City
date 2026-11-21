@@ -1,3 +1,4 @@
+import { explorePlaybackTarget } from '../presentation/livePresentation';
 import { returningGreeting } from '../context/appIdentity';
 import { distanceMeters } from '../demo/guidedTour/distance';
 import { useMeasurements } from '../localization/useMeasurements';
@@ -312,34 +313,25 @@ export function LiveScreen() {
       distanceMeters: liveDistance(place.latitude, place.longitude, Number.NaN),
     }));
   const selectablePlaces = [...storyPlaces, ...exploreNearbyPlaces.filter(place => !storyPlaces.some(storyPlace => storyPlace.id === place.id))];
-  const selectedNearbyTarget = explicitTarget
-    ? exploreNearbyPlaces.find(place => place.id === explicitTarget.id)
-    : undefined;
-  const exploreActiveTarget: ExploreActiveTarget | undefined = explicitTarget ? {
-    ...selectedNearbyTarget,
-    ...explicitTarget,
-    targetType: selectedNearbyTarget?.targetType ?? 'other_significant_place',
-    distanceMeters: liveDistance(explicitTarget.coordinate.latitude, explicitTarget.coordinate.longitude, selectedNearbyTarget?.distanceMeters ?? Number.NaN),
-    isAhead: selectedNearbyTarget?.isAhead ?? false,
+  const cardTarget = explorePlaybackTarget(presentation) ?? explicitTarget ?? pinnedTarget;
+  const cardMetadata = cardTarget && (selectablePlaces.find(place => place.id === cardTarget.id) ??
+    (pinnedTarget?.id === cardTarget.id ? pinnedTarget : undefined));
+  const exploreActiveTarget: ExploreActiveTarget | undefined = cardTarget ? {
+    ...cardTarget,
+    targetType: cardMetadata?.targetType ?? 'other_significant_place',
+    distanceMeters: liveDistance(cardTarget.coordinate.latitude, cardTarget.coordinate.longitude, cardMetadata?.distanceMeters ?? Number.NaN),
+    isAhead: cardMetadata?.isAhead ?? false,
     selected: true,
-    isNarrating: presentation.playback?.poiId === explicitTarget.id && presentation.playbackState === 'playing',
-  } : pinnedTarget ? {
-    ...pinnedTarget,
-    selected: true,
-    distanceMeters: liveDistance(pinnedTarget.coordinate.latitude, pinnedTarget.coordinate.longitude, pinnedTarget.distanceMeters),
-    isNarrating: presentation.playback?.poiId === pinnedTarget.id && presentation.playbackState === 'playing',
+    isNarrating: presentation.playback?.poiId === cardTarget.id && presentation.playbackState === 'playing',
   } : aheadTarget ? {
     id: aheadTarget.providerId,
-    coordinate: {
-      latitude: aheadTarget.latitude,
-      longitude: aheadTarget.longitude,
-    },
+    coordinate: { latitude: aheadTarget.latitude, longitude: aheadTarget.longitude },
     title: aheadTarget.name,
     targetType: aheadTarget.targetType,
     distanceMeters: liveDistance(aheadTarget.latitude, aheadTarget.longitude, aheadTarget.distanceMeters),
     isAhead: aheadTarget.isAhead,
     selected: true,
-    isNarrating: presentation.playback?.poiId === aheadTarget.providerId && presentation.playbackState === 'playing',
+    isNarrating: false,
   } : undefined;
   const backendWalkingStoryVisible = Boolean(
     mode === 'city_explorer' &&
@@ -725,7 +717,7 @@ export function LiveScreen() {
           topInset={insets.top}
           region={exploreRegion}
           markers={selectablePlaces}
-          nearbyPlaces={selectablePlaces}
+          nearbyPlaces={selectablePlaces.filter(place => !dismissedPoiIds.includes(place.id))}
           greeting={greeting && movementMode !== 'vehicle' && identity.status === 'authenticated' ? t(greeting) : undefined}
           mapTarget={mapTarget}
           vehicleCameraActive={focused && Boolean(sessionId)}

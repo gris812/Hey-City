@@ -106,7 +106,7 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
 
   const dismissed = req.body.dismissedPoiIds;
   const dismissedPoiIds = new Set<string>(Array.isArray(dismissed)
-    ? dismissed.slice(0, 8).filter(id => typeof id === 'string' && id.length <= 200)
+    ? dismissed.slice(0, 128).filter(id => typeof id === 'string' && id.length <= 200)
     : []);
   const result = await pingSession(
     sessionId,

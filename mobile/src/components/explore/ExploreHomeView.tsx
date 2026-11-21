@@ -49,7 +49,7 @@ export type ExploreHomeViewProps = {
   height: number;
   topInset: number;
   region: Region;
-  markers: ExploreHomeMarker[];
+  markers: ExploreNearbyPlace[];
   nearbyPlaces: ExploreNearbyPlace[];
   activeTarget?: ExploreActiveTarget;
   greeting?: string;
@@ -198,10 +198,7 @@ export function ExploreHomeView({
             coordinate={marker.coordinate}
             title={marker.title}
             anchor={{ x: 0.5, y: 1 }}
-            onPress={() => {
-              const place = [mapTarget, activeTarget, ...nearbyPlaces].find((item) => item?.id === marker.id);
-              if (place) onSelectPlace(place);
-            }}
+            onPress={() => onSelectPlace(marker)}
           >
             <MapPin targetType={marker.targetType} selected={marker.selected} />
           </Marker>

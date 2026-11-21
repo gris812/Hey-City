@@ -4,6 +4,7 @@ import type { DiscoveryCandidate } from '@heycity/shared';
 import { aheadDiscovery } from '../config';
 import { cacheGet, cacheSet } from './cache';
 import { distanceMeters } from './geo';
+import { reviewedPlaceEvidence } from './reviewedPlaceEvidence';
 import { recordUsage } from './usage';
 import {
   EvidenceBundle,
@@ -79,6 +80,8 @@ export async function discoveryEvidence(
 export async function retrieveDiscoveryKnowledge(
   candidate: DiscoveryCandidate,
 ): Promise<KnowledgeResult> {
+  const reviewed = reviewedPlaceEvidence(candidate);
+  if (reviewed) return { evidence: reviewed, attempts: [{ level: 'L1', status: 'matched', latencyMs: 0 }] };
   const identity = JSON.stringify([
     candidate.providerId,
     candidate.name,
