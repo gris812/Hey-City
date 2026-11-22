@@ -6,6 +6,10 @@ export function shouldUseDrivePresentation(mode: LivePresentationState['movement
   return mode === 'vehicle' || (mode === undefined && sessionActive);
 }
 
+export function needsCompactDriveType(width: number, fontScale: number) {
+  return width / fontScale < 270;
+}
+
 export const driveStopFixAgeMs = 8_000;
 
 export function canOpenDriveDetails(fix: CameraMotion | null | undefined, now: number) {

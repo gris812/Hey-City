@@ -347,7 +347,7 @@ export function ExploreHomeView({
           {onToggleVoice && (
             <TouchableOpacity accessibilityRole="button" onPress={onToggleVoice}
               style={[styles.voiceButton, styles.driveVoiceButton, voiceState !== 'closed' && styles.voiceButtonActive]}>
-              <Text style={[styles.voiceLabel, voiceState !== 'closed' && styles.activeDriveVoiceLabel]}>{voiceLabel}</Text>
+              <Text style={[styles.driveVoiceLabel, voiceState !== 'closed' && styles.activeDriveVoiceLabel]}>{voiceLabel}</Text>
             </TouchableOpacity>
           )}
           <DriveView
@@ -684,6 +684,7 @@ const styles = StyleSheet.create({
     position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: spacing.sm, zIndex: 28, gap: spacing.sm,
   },
   driveVoiceButton: { position: 'relative', right: 0, bottom: 0, alignSelf: 'flex-end', minHeight: 56 },
+  driveVoiceLabel: { fontSize: 16, color: colors.foreground, fontWeight: '700' },
   activeDriveVoiceLabel: { color: colors.surface },
   voiceButton: {
     position: 'absolute',

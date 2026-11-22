@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { StoryAvailabilityCache } from '../src/features/live/storyAvailabilityCache';
-import { canOpenDriveDetails, driveCategory, drivePlace, drivePlaceAction, driveStory, shouldUseDrivePresentation } from '../src/presentation/driveView';
+import { canOpenDriveDetails, driveCategory, drivePlace, drivePlaceAction, driveStory, needsCompactDriveType, shouldUseDrivePresentation } from '../src/presentation/driveView';
 import { explorePlaybackTarget, type StoryPlaybackIdentity } from '../src/presentation/livePresentation';
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
@@ -210,6 +210,9 @@ async function wake() {
 }
 
 function drivePresentation() {
+  assert.equal(needsCompactDriveType(390, 1), false);
+  assert.equal(needsCompactDriveType(320, 1.6), true);
+  assert.equal(needsCompactDriveType(430, 2), true);
   assert.equal(shouldUseDrivePresentation('vehicle', true), true);
   assert.equal(shouldUseDrivePresentation('walking', true), false);
   assert.equal(shouldUseDrivePresentation(undefined, true), true, 'active session awaiting motion stays compact');

@@ -384,7 +384,7 @@ export const translations = {
     'drive.relation.ahead': 'Впереди',
     'drive.relation.selected': 'Выбранное место',
     'drive.relation.pinned': 'Отслеживается',
-    'drive.availability.unknown': 'Можно запросить рассказ',
+    'drive.availability.unknown': 'Рассказ по запросу',
     'drive.availability.checking': 'Проверяем, есть ли рассказ…',
     'drive.availability.ready': 'Рассказ доступен',
     'drive.availability.unavailable': 'Рассказ пока недоступен',
