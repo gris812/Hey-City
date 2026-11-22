@@ -21,6 +21,8 @@ import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
 import { MapCameraController, markersInViewport, vehicleCameraTickMs, type VehicleCameraFix } from '../../presentation/mapCamera';
+import { DriveView } from './DriveView';
+import { canOpenDriveDetails, type drivePlace, type driveStory } from '../../presentation/driveView';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
 
 export type ExploreHomeMarker = {
@@ -43,6 +45,12 @@ export type ExploreActiveTarget = ExploreNearbyPlace & {
 export type ExploreHomeViewProps = {
   vehicleMode?: boolean;
   vehicleCameraActive?: boolean;
+  driveCandidate?: ReturnType<typeof drivePlace<ExploreNearbyPlace>>;
+  vehicleStory?: ReturnType<typeof driveStory>;
+  onPauseDriveStory?: () => void;
+  onResumeDriveStory?: () => void;
+  onStopDriveStory?: () => void;
+  onDriveTranscript?: () => void;
   motion?: VehicleCameraFix | null;
   onTellNow?: (place: ExploreNearbyPlace) => void;
   storyAvailabilityFor?: (poiId: string) => StoryAvailabilityState;
@@ -78,6 +86,12 @@ export function ExploreHomeView({
   height,
   vehicleMode = false,
   vehicleCameraActive = false,
+  driveCandidate,
+  vehicleStory,
+  onPauseDriveStory,
+  onResumeDriveStory,
+  onStopDriveStory,
+  onDriveTranscript,
   motion = null,
   onTellNow,
   storyAvailabilityFor,
@@ -179,6 +193,11 @@ export function ExploreHomeView({
     if (command) mapRef.current?.animateCamera(command, { duration: smoothVehicleCamera ? 400 : 450 });
   }, [mapReady, appActive, region.latitude, region.longitude, motion, now, cameraVersion, smoothVehicleCamera]);
   const changeCamera = (action: () => void) => { action(); setCameraVersion(value => value + 1); };
+
+  const driveCandidatePlace = driveCandidate?.place;
+  const driveDetailsAllowed = canOpenDriveDetails(motion, now);
+  const allowClear = driveCandidate && (driveCandidate.relation === 'selected' || driveCandidate.relation === 'pinned' ||
+    (driveCandidate.relation === 'ahead' && driveDetailsAllowed));
 
   return (
     <View style={[styles.stage, { height }]}>
@@ -311,7 +330,7 @@ export function ExploreHomeView({
       )}
       {children}
 
-      {onToggleVoice && (
+      {!vehicleMode && onToggleVoice && (
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={voiceLabel ?? 'Talk to guide'}
@@ -323,6 +342,29 @@ export function ExploreHomeView({
         </TouchableOpacity>
       )}
 
+      {vehicleMode && onPauseDriveStory && onResumeDriveStory && onStopDriveStory ? (
+        <View pointerEvents="box-none" style={styles.driveDock}>
+          {onToggleVoice && (
+            <TouchableOpacity accessibilityRole="button" onPress={onToggleVoice}
+              style={[styles.voiceButton, styles.driveVoiceButton, voiceState !== 'closed' && styles.voiceButtonActive]}>
+              <Text style={[styles.driveVoiceLabel, voiceState !== 'closed' && styles.activeDriveVoiceLabel]}>{voiceLabel}</Text>
+            </TouchableOpacity>
+          )}
+          <DriveView
+            candidate={driveCandidate}
+            availability={driveCandidatePlace ? storyAvailabilityFor?.(driveCandidatePlace.id) ?? 'unknown' : 'unknown'}
+            distance={driveCandidatePlace && Number.isFinite(driveCandidatePlace.distanceMeters) ? measurements.distance(driveCandidatePlace.distanceMeters) : undefined}
+            story={vehicleStory}
+            onDetails={driveCandidatePlace && driveDetailsAllowed ? onSelectPlace : undefined}
+            onTellNow={driveCandidatePlace && onTellNow ? onTellNow : undefined}
+            onClear={allowClear && driveCandidatePlace && onStopTracking ? onStopTracking : undefined}
+            onPause={onPauseDriveStory}
+            onResume={onResumeDriveStory}
+            onStop={onStopDriveStory}
+            onTranscript={driveDetailsAllowed ? onDriveTranscript : undefined}
+          />
+        </View>
+      ) : (
       <View style={styles.bottomSheet} onLayout={event => setSheetHeight(event.nativeEvent.layout.height)}>
         <TouchableOpacity {...sheetPan.panHandlers} accessibilityRole="button" accessibilityState={{ expanded }}
           accessibilityLabel={t('walking.nearby')} onPress={() => setExpanded(value => !value)}>
@@ -439,6 +481,7 @@ export function ExploreHomeView({
         ) : null}
         </>}
       </View>
+      )}
     </View>
   );
 }
@@ -637,6 +680,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   retryText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  driveDock: {
+    position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: spacing.sm, zIndex: 28, gap: spacing.sm,
+  },
+  driveVoiceButton: { position: 'relative', right: 0, bottom: 0, alignSelf: 'flex-end', minHeight: 56 },
+  driveVoiceLabel: { fontSize: 16, color: colors.foreground, fontWeight: '700' },
+  activeDriveVoiceLabel: { color: colors.surface },
   voiceButton: {
     position: 'absolute',
     right: spacing.md,

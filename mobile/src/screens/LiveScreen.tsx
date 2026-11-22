@@ -45,6 +45,7 @@ import {
   type ExploreActiveTarget,
   type ExploreNearbyPlace,
 } from '../components/explore/ExploreHomeView';
+import { canOpenDriveDetails, drivePlace, driveStopFixAgeMs, driveStory, isDriveMapSelectionRelevant, shouldUseDrivePresentation } from '../presentation/driveView';
 import { DiscoveryPlaceSheet } from '../components/explore/DiscoveryPlaceSheet';
 import { GuideQuickPreviewSheet } from '../components/explore/GuideQuickPreviewSheet';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
@@ -307,7 +308,23 @@ export function LiveScreen() {
     isAhead: candidate.isAhead,
     selected: candidate.providerId === aheadTarget?.providerId,
   }));
-  const storyPlaces: ExploreNearbyPlace[] = movementMode === 'vehicle' ? [] :
+  const driveView = shouldUseDrivePresentation(movementMode, Boolean(sessionId));
+  const driveDetailsAllowed = !driveView || canOpenDriveDetails(lastMotion, Date.now());
+  const driveDetailsOpen = Boolean(selectedExplorePlace || liveOverlay?.kind === 'transcript');
+  useEffect(() => {
+    if (!driveView || !driveDetailsOpen) return;
+    const closeUnsafeDetails = () => {
+      setSelectedExplorePlace(null);
+      setLiveOverlay(current => current?.kind === 'transcript' ? null : current);
+    };
+    if (!lastMotion || !canOpenDriveDetails(lastMotion, Date.now())) {
+      closeUnsafeDetails();
+      return;
+    }
+    const timeout = setTimeout(closeUnsafeDetails, lastMotion.timestampMs + driveStopFixAgeMs - Date.now());
+    return () => clearTimeout(timeout);
+  }, [driveView, driveDetailsOpen, lastMotion]);
+  const storyPlaces: ExploreNearbyPlace[] = driveView ? [] :
     (presentation.playback?.storyDiscoveries ?? []).map(place => ({
       id: place.providerId, title: place.name, targetType: place.targetType,
       coordinate: { latitude: place.latitude, longitude: place.longitude },
@@ -334,6 +351,31 @@ export function LiveScreen() {
     selected: true,
     isNarrating: false,
   } : undefined;
+  const forDrive = (place: ExploreNearbyPlace | undefined) => place ? {
+    ...place, distanceMeters: liveDistance(place.coordinate.latitude, place.coordinate.longitude, place.distanceMeters),
+  } : undefined;
+  const expiredMapTarget = driveView && mapTarget &&
+    !isDriveMapSelectionRelevant(mapTarget.id, selectedExplorePlace?.id, exploreNearbyPlaces, aheadTarget?.providerId)
+    ? mapTarget : undefined;
+  useEffect(() => {
+    if (expiredMapTarget) setMapTarget(current => current === expiredMapTarget ? undefined : current);
+  }, [expiredMapTarget]);
+  const visibleMapTarget = expiredMapTarget ? undefined : mapTarget;
+  const ownedTarget = explicitTarget ?? visibleMapTarget;
+  const selectedMetadata = ownedTarget && (selectablePlaces.find(place => place.id === ownedTarget.id) ??
+    (visibleMapTarget?.id === ownedTarget.id ? visibleMapTarget : undefined));
+  const vehicleCandidate = driveView ? drivePlace({
+    selected: forDrive(ownedTarget ? {
+      ...ownedTarget, targetType: selectedMetadata?.targetType, distanceMeters: selectedMetadata?.distanceMeters ?? Number.NaN,
+    } : undefined),
+    pinned: forDrive(pinnedTarget),
+    ahead: aheadTarget && exploreActiveTarget?.id === aheadTarget.providerId ? exploreActiveTarget : undefined,
+    nearby: exploreNearbyPlaces.find(place => !dismissedPoiIds.includes(place.id) &&
+      storyAvailabilityFor(place.id) !== 'unavailable') ??
+      exploreNearbyPlaces.find(place => !dismissedPoiIds.includes(place.id)),
+  }) : undefined;
+  const vehicleStory = driveView ? driveStory(presentation) : undefined;
+  const showStoryNotice = storyNotice && vehicleStory?.phase !== 'error' && vehicleStory?.phase !== 'text_only';
   const backendWalkingStoryVisible = Boolean(
     mode === 'city_explorer' &&
     presentation.activeTarget &&
@@ -372,7 +414,7 @@ export function LiveScreen() {
     primaryStatusLabel: sessionError
       ? t('common.error')
       : sessionId
-        ? t(movementMode === 'vehicle' ? 'vehicle.modeStatus' : 'walking.modeStatus')
+        ? t(driveView ? 'vehicle.modeStatus' : 'walking.modeStatus')
         : t('app.loading'),
     secondaryActionLabel: t('walking.chooseWalk'),
   });
@@ -714,13 +756,13 @@ export function LiveScreen() {
       >
       {mode === 'city_explorer' && (
         <ExploreHomeView
-          height={Math.max(520, windowHeight - tabBarHeight)}
+          height={Math.max(driveView ? 0 : 520, windowHeight - tabBarHeight)}
           topInset={insets.top}
           region={exploreRegion}
           markers={selectablePlaces}
           nearbyPlaces={selectablePlaces.filter(place => !dismissedPoiIds.includes(place.id))}
-          greeting={greeting && movementMode !== 'vehicle' && identity.status === 'authenticated' ? t(greeting) : undefined}
-          mapTarget={mapTarget}
+          greeting={greeting && !driveView && identity.status === 'authenticated' ? t(greeting) : undefined}
+          mapTarget={visibleMapTarget}
           vehicleCameraActive={focused && Boolean(sessionId)}
           currentLocation={deviceLocation ?? undefined}
           onStopTracking={place => {
@@ -730,13 +772,23 @@ export function LiveScreen() {
             stopTracking(place.id);
           }}
           activeTarget={exploreActiveTarget}
-          guideImage={guideImages[preferences.preferredGuideId]}
+          guideImage={guideImages[vehicleStory?.guideId ?? preferences.preferredGuideId]}
           viewModel={exploreHomeViewModel}
           onOpenMenu={() => navigation.navigate('Settings' as never)}
           onOpenGuide={() => openGuideQuickPreview(preferences.preferredGuideId, 'explore')}
           onChooseGuidedWalk={openTourPreferences}
-          vehicleMode={movementMode === 'vehicle'}
-          onSelectPlace={place => { dismissStoryNotice(); setMapTarget(place); setSelectedExplorePlace(place); }}
+          vehicleMode={driveView}
+          driveCandidate={vehicleCandidate}
+          vehicleStory={vehicleStory}
+          onPauseDriveStory={pausePlayback}
+          onResumeDriveStory={resumePlayback}
+          onStopDriveStory={() => void finishStory('skipped')}
+          onDriveTranscript={() => { if (canOpenDriveDetails(lastMotion, Date.now())) openTranscript(); }}
+          onSelectPlace={place => {
+            dismissStoryNotice();
+            setMapTarget(place);
+            setSelectedExplorePlace(!driveView || canOpenDriveDetails(lastMotion, Date.now()) ? place : null);
+          }}
           motion={lastMotion}
           onTellNow={selectStoryForPlace}
           storyAvailabilityFor={storyAvailabilityFor}
@@ -752,9 +804,9 @@ export function LiveScreen() {
               void closeRealtimeVoiceSession();
             }
           } : undefined}
-          storyNotice={focused ? storyNotice ?? discoveryNotice ?? undefined : undefined}
-          onDismissStoryNotice={storyNotice ? dismissStoryNotice : dismissDiscoveryNotice}
-          onRetryNotice={!storyNotice && discoveryNotice ? retryExploration : undefined}
+          storyNotice={focused ? (showStoryNotice ? storyNotice : discoveryNotice) ?? undefined : undefined}
+          onDismissStoryNotice={showStoryNotice ? dismissStoryNotice : dismissDiscoveryNotice}
+          onRetryNotice={!showStoryNotice && discoveryNotice ? retryExploration : undefined}
           statusMessage={explorationStopped ? t('walking.explorationStopped') : sessionError ?? undefined}
           onRetry={explorationStopped ? () => { setExplorationStopped(false); void startSession(); } : sessionError ? (locationSettingsRequired ? () => void openLocationSettings() : retryExploration) : undefined}
         >
@@ -768,13 +820,12 @@ export function LiveScreen() {
               <Text style={styles.benchmarkFabText}>M4</Text>
             </TouchableOpacity>
           )}
-          {backendWalkingStoryVisible && presentation.activeTarget ? (
+          {!driveView && backendWalkingStoryVisible && presentation.activeTarget ? (
             <NarrativeOverlay
               title={presentation.activeTarget.name}
               guideName={t(`guide.${presentation.activeGuideId}`)}
               guideImage={guideImages[presentation.activeGuideId]}
               text={backendWalkingStoryText}
-              vehicleMode={movementMode === 'vehicle'}
               playbackState={presentation.playbackState}
               progress={presentation.audioProgress}
               continueLabel={t('walking.finishStory')}
@@ -784,7 +835,7 @@ export function LiveScreen() {
               onSkip={() => void finishStory('skipped')}
               onTranscript={openTranscript}
             />
-          ) : exploreNarrative.narrative && exploreNarrative.target ? (
+          ) : !driveView && exploreNarrative.narrative && exploreNarrative.target ? (
             <NarrativeOverlay
               title={exploreNarrative.narrative.title}
               guideName={t(`guide.${preferences.preferredGuideId}`)}
@@ -1314,7 +1365,7 @@ export function LiveScreen() {
       />
 
       <TranscriptSheet
-        visible={liveOverlay?.kind === 'transcript'}
+        visible={driveDetailsAllowed && liveOverlay?.kind === 'transcript'}
         topInset={insets.top}
         title={
           presentation.activeTarget?.name ??
@@ -1332,7 +1383,7 @@ export function LiveScreen() {
       />
 
       <DiscoveryPlaceSheet
-        visible={Boolean(selectedExplorePlace)}
+        visible={driveDetailsAllowed && Boolean(selectedExplorePlace)}
         bottomInset={insets.bottom}
         place={selectedExplorePlace ? { ...selectedExplorePlace, distanceMeters: liveDistance(selectedExplorePlace.coordinate.latitude, selectedExplorePlace.coordinate.longitude, selectedExplorePlace.distanceMeters) } : undefined}
         guideName={t(`guide.${preferences.preferredGuideId}`)}
@@ -1354,7 +1405,7 @@ export function LiveScreen() {
           storyAvailabilityFor(selectedExplorePlace.id, 'long') !== 'unavailable'
           ? () => selectStoryForPlace(selectedExplorePlace, 'long') : undefined}
         storyAvailability={selectedExplorePlace ? storyAvailabilityFor(selectedExplorePlace.id) : 'unknown'}
-        vehicleMode={movementMode === 'vehicle'}
+        vehicleMode={driveView}
         onOpenMaps={(place) => void openPlaceInMaps(place)}
         onOpenStory={() => { setSelectedExplorePlace(null); setMapTarget(undefined); }}
       />
