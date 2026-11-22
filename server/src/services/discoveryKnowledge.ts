@@ -187,7 +187,11 @@ async function acquire(
     }
     return Buffer.concat(chunks).toString('utf8');
   };
-  const json = async (url: URL) => JSON.parse(await read(await get(url)));
+  const json = async (url: URL) => {
+    const data = JSON.parse(await read(await get(url)));
+    if (!data || typeof data !== 'object' || data.error) throw new Error('knowledge_provider_invalid_response');
+    return data;
+  };
   let evidence: EvidenceBundle | null = null;
   let entity: ResolvedKnowledgeEntity | undefined;
   const absorb = (text: string, type: string, url: string) => {
