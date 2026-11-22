@@ -113,12 +113,19 @@ export async function generateNarration(input: GenerateNarrationInput): Promise<
   });
 }
 
+export async function resolveCompletedNarrationAudio(url: string): Promise<string | null> {
+  const filename = url.split('/').pop();
+  return filename && /^[a-f0-9]{24}\.mp3$/.test(filename) && await access(join(media.directory, filename)).then(() => true, () => false)
+    ? `${media.publicApiUrl}/media/${filename}` : null;
+}
+
 export async function generateNarrationFromPlan(
   plan: NarrativePlan,
-  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; completeAudio?: boolean; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string} }
+  input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; completeAudio?: boolean; textOnly?: boolean;
+    onTextReady?: (cached: boolean) => Promise<void>; preparedText?: string; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string} }
 ): Promise<GenerateNarrationResult> {
   const generationStarted = Date.now();
-  const generated = await narrativeGenerator.generate({
+  const generated = input.preparedText ? { text: input.preparedText, cached: true } : await narrativeGenerator.generate({
     plan,
     brief: input.brief,
     policy: input.policy,
@@ -133,15 +140,15 @@ export async function generateNarrationFromPlan(
   await recordNarrativeStage({...input.trace,stage:'generation',status:'ready',latencyMs:Date.now()-generationStarted},input.userId);
   const text = generated.text;
   input.signal?.throwIfAborted();
+  await input.onTextReady?.(generated.cached);
+  if (input.textOnly) return { audioUrl: '', transcriptText: text, estimatedDurationSec: plan.targetDurationSec, cached: generated.cached };
 
   const storyHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
   const audioKey = ttsAudioCacheKey(storyHash, `${openai.ttsModel}:${input.language}:${plan.guideId}:${guideVersion(await getGuide(plan.guideId))}`);
   let audioUrl = await cacheGet<string>(audioKey);
   // A cache URL can survive an expired file or a change to the serving origin.
   if (audioUrl && input.completeAudio) {
-    const filename = /^[a-f0-9]{24}\.mp3$/.test(audioUrl.split('/').pop() ?? '') ? audioUrl.split('/').pop()! : undefined;
-    audioUrl = filename && await access(join(media.directory, filename)).then(() => true, () => false)
-      ? `${media.publicApiUrl}/media/${filename}` : null;
+    audioUrl = await resolveCompletedNarrationAudio(audioUrl);
   }
   let audioCached = !!audioUrl;
 

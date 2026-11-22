@@ -42,6 +42,7 @@ type Page = {
   coordinates?: Array<{ lat: number; lon: number }>;
 };
 const pending = new Map<string, Promise<KnowledgeResult>>();
+const pendingWarm = new Map<string, Promise<KnowledgeResult>>();
 let research: KnowledgeResearchAdapter = new RoutedKnowledgeResearch();
 let researchWindow = { at: 0, calls: 0 };
 export function setKnowledgeResearchAdapter(
@@ -103,20 +104,44 @@ export function unavailableEvidenceTtl(result: KnowledgeResult): number {
 }
 
 /** Observe existing retrieval only; this never calls an evidence provider. */
-export async function cachedStoryEvidenceHint(candidate: DiscoveryCandidate) {
+export async function cachedDiscoveryKnowledge(candidate: DiscoveryCandidate): Promise<KnowledgeResult | null> {
   const reviewed = reviewedPlaceEvidence(candidate);
-  const cached = reviewed ? undefined : await cacheGet<KnowledgeResult>(knowledgeKey(candidate));
-  const evidence = reviewed ?? cached?.evidence;
-  if (evidence && storyAvailability(evidence).short)
+  if (reviewed) return { evidence: reviewed, definitive: true, checkedAt: Date.now(), attempts: [] };
+  return cacheGet<KnowledgeResult>(knowledgeKey(candidate));
+}
+
+export async function cachedStoryEvidenceHint(candidate: DiscoveryCandidate) {
+  const cached = await cachedDiscoveryKnowledge(candidate);
+  if (cached?.evidence && storyAvailability(cached.evidence).short)
     return { poiId: candidate.providerId, status: 'ready' as const, ttlMs: 300_000 };
   const ttlMs = cached ? unavailableEvidenceTtl(cached) : 0;
   return ttlMs ? { poiId: candidate.providerId, status: 'unavailable' as const, ttlMs } : undefined;
+}
+
+/** One free, verified L2 title lookup. Partial negatives never enter the canonical cache. */
+export async function warmDiscoveryKnowledge(candidate: DiscoveryCandidate) {
+  const key = knowledgeKey(candidate);
+  const cached = await cachedDiscoveryKnowledge(candidate);
+  if (cached) return cached;
+  const inFlight = pending.get(key) ?? pendingWarm.get(key);
+  if (inFlight) return inFlight;
+  const task = (async () => {
+    const result = await acquire(candidate, true);
+    if (result.evidence && storyAvailability(result.evidence).long) {
+      await cacheSet(key, result, aheadDiscovery.knowledgeCacheSeconds);
+    }
+    return result;
+  })();
+  pendingWarm.set(key, task);
+  try { return await task; }
+  finally { pendingWarm.delete(key); }
 }
 
 export async function retrieveDiscoveryKnowledge(candidate: DiscoveryCandidate): Promise<KnowledgeResult> {
   const reviewed = reviewedPlaceEvidence(candidate);
   if (reviewed) return { evidence: reviewed, definitive: true, checkedAt: Date.now(), attempts: [{ level: 'L1', status: 'matched', latencyMs: 0 }] };
   const key = knowledgeKey(candidate);
+  await pendingWarm.get(key)?.catch(() => undefined);
   const cached = await cacheGet<KnowledgeResult>(key);
   if (cached)
     return {
@@ -149,6 +174,7 @@ export async function retrieveDiscoveryKnowledge(candidate: DiscoveryCandidate):
 
 async function acquire(
   candidate: DiscoveryCandidate,
+  warm = false,
 ): Promise<KnowledgeResult> {
   const attempts: KnowledgeAttempt[] = [];
   const signal = AbortSignal.timeout(knowledgePolicy.overallTimeoutMs);
@@ -306,7 +332,7 @@ async function acquire(
         ggslimit: '10',
       }),
   ];
-  for (const [index, query] of queries.entries()) {
+  for (const [index, query] of (warm ? queries.slice(0, 1) : queries).entries()) {
     if (enough()) break;
     try {
       inspectPages(await json(query()), index === 0);
@@ -316,6 +342,11 @@ async function acquire(
   }
   // A missing Wikipedia match is not proof of absent knowledge. Resolve a structured
   // Wikidata entity independently, still requiring matching name and coordinates.
+  if (warm) {
+    return { evidence: ambiguous ? null : evidence, definitive: false, checkedAt: Date.now(), attempts: [
+      { level: 'L2', status: l2Error ? 'error' : evidence ? 'matched' : 'no_match', latencyMs: Date.now() - started },
+    ] };
+  }
   if (!entity) {
     try {
       const searchUrl = new URL('https://www.wikidata.org/w/api.php');

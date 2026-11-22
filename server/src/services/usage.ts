@@ -5,6 +5,7 @@ import type { RealtimeTransport, RealtimeUsage } from '../voice/contracts';
 
 export interface UsageEvent {
   userId?: string;
+  anonymous?: boolean;
   category: 'auth' | 'google_maps' | 'openai_text' | 'openai_tts' | 'realtime_voice' | 'ai' | 'product';
   operation: string;
   quantity?: number;
@@ -17,6 +18,7 @@ export interface UsageEvent {
 export type ExperienceTelemetryOperation =
   | 'experience_decision'
   | 'story_started'
+  | 'story_delivered'
   | 'story_outcome'
   | 'callback_used';
 
@@ -64,6 +66,8 @@ export interface ConversationTelemetryEvent {
 
 export interface ExperienceDecisionEvent {
   sessionId: string;
+  momentId?: string;
+  offerId?: string;
   at: string;
   context: {
     movementMode: 'walking' | 'vehicle';
@@ -101,8 +105,12 @@ export interface ExperienceDecisionEvent {
 const memoryEvents: Array<UsageEvent & { createdAt: string }> = [];
 
 export async function recordUsage(event: UsageEvent): Promise<void> {
-  const userId = event.userId ?? requestContext.getStore()?.userId;
-  event = { ...event, userId: isGuestUserId(userId) ? undefined : userId };
+  const context = requestContext.getStore();
+  const userId = event.anonymous ? undefined : event.userId ?? context?.userId;
+  const correlationId = context?.storyCorrelationId;
+  const providerWork = event.category === 'openai_text' || event.category === 'openai_tts' || event.category === 'ai';
+  event = { ...event, userId: isGuestUserId(userId) ? undefined : userId,
+    metadata: providerWork && correlationId ? { ...event.metadata, storyCorrelationId: correlationId } : event.metadata };
   if (!databaseEnabled()) {
     memoryEvents.push({ ...event, createdAt: new Date().toISOString() });
     return;
@@ -293,6 +301,8 @@ function sanitizeExperienceDecisionEvent(event: ExperienceDecisionEvent): Record
     candidates,
     decision,
   };
+  optional('momentId', text(event.momentId), metadata);
+  optional('offerId', text(event.offerId), metadata);
   if (event.outcome) {
     const outcome: Record<string, unknown> = {};
     for (const key of ['completed', 'skipped', 'paused', 'superseded', 'askedMore', 'askedQuestion'] as const) {
@@ -347,13 +357,15 @@ export interface NarrativeStageEvent {
   sessionId?: string; momentId?: string; requestId?: string;
   stage: 'request' | 'retrieval' | 'generation' | 'tts' | 'playback';
   status: 'started' | 'ready' | 'failed' | 'unavailable' | 'text_only' | 'playing' | 'paused' | 'completed' | 'skipped' | 'superseded';
-  latencyMs?: number; objectType?: string; clientSha?: string; failure?: string;
+  latencyMs?: number; tellLatencyMs?: number; objectType?: string; clientSha?: string; failure?: string;
 }
 /** Whitelist only. No coordinates, URL, transcript, error messages or arbitrary client metadata. */
 export function narrativeStageMetadata(event: NarrativeStageEvent): Record<string, unknown> {
   const out: Record<string,unknown> = {stage:event.stage,status:event.status,sourceSha:/^[a-f0-9]{40}$/.test(process.env.GIT_SHA??'')?process.env.GIT_SHA:'unknown'};
   for(const key of ['sessionId','momentId','requestId','objectType'] as const) if(typeof event[key]==='string')out[key]=event[key]!.slice(0,160);
   if(typeof event.latencyMs==='number' && Number.isFinite(event.latencyMs))out.latencyMs=Math.max(0,Math.min(600000,Math.round(event.latencyMs)));
+  if (typeof event.tellLatencyMs === 'number' && Number.isFinite(event.tellLatencyMs))
+    out.tellLatencyMs = Math.max(0, Math.min(600000, Math.round(event.tellLatencyMs)));
   if(/^[a-f0-9]{40}$/.test(event.clientSha??''))out.clientSha=event.clientSha;
   if (/^audio_(missing|url_invalid|load_failed|status_failed|ended_before_start|pause_failed|resume_failed|unload_failed)$/.test(event.failure ?? '')) out.failure = event.failure;
   return out;

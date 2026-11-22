@@ -145,7 +145,7 @@ export interface StoryEvidenceHint { poiId: string; status: 'ready' | 'unavailab
 
 export interface NarrativePlan extends NarrativePlanInput {
   /** Explicit request context, without coordinates; not an automatic ranking input. */
-  selectionContext?: { distanceMeters: number; isAhead: boolean };
+  selectionContext?: { distanceMeters: number; isAhead: boolean } | { proximity: 'unspecified' };
   level: NarrativeLevel;
   moment: MomentPlan;
   narrativeAngle: string;
@@ -433,3 +433,5 @@ export interface SelectedStoryResult {
   attribution?: NarrativeAttribution;
   availability: StoryAvailability;
 }
+
+export type StoryRating = 'liked' | 'disliked';

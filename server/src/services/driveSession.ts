@@ -12,7 +12,7 @@ import type {
 } from '@heycity/shared';
 import { resolveStoryDiscoveries } from './storyDiscoveries';
 import { randomUUID } from 'node:crypto';
-import { discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings, journeyMemory } from '../config';
+import { storyPreparation, discoveryConfig, driveDiscovery, poi, aheadDiscovery as discoverySettings, journeyMemory } from '../config';
 import { discoveryEvidence } from './discoveryKnowledge';
 import { EvidenceBundle, InsufficientEvidenceError, normalizeEvidence, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import type { StoryContinuationState } from './storyBrief';
@@ -23,11 +23,13 @@ import { wasPoiListenedRecently } from './history';
 import { recordJourneyHistory } from './history';
 import { createJourneyState, JourneyState } from './journeyContext';
 import { distanceMeters, encodeGeohash, headingBucket, speedBucket } from './geo';
-import { recordExperienceDecision, recordExperienceEvent, ExperienceDecisionEvent } from './usage';
+import { recordExperienceDecision, recordExperienceEvent, ExperienceDecisionEvent, recordUsage } from './usage';
 import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
 import { prepareNarrative } from './narrativePlan';
 import { generateNarrationFromPlan } from './narration';
+import { invalidateStoryPreparation, offerStoryPreparation } from './storyPreparation';
+import { requestContext } from './requestContext';
 import {
   clearAheadDiscoverySession,
   sessionStoryDiscoveryCandidates,
@@ -66,6 +68,9 @@ export interface DriveSession {
   selectionRequests?: Map<string, { key: string; result: Promise<SelectedStoryResult> }>;
   selectionRevision?: number;
   storyContinuation?: StoryContinuationState;
+  experienceOffer?: { id: string; poiId: string };
+  experienceOffers?: number;
+  deliveredArtifact?: { momentId: string; artifactId: string; guideId: string };
   journeyState: JourneyState;
   /** Exactly one M3 runtime is owned by this DriveSession. */
   conversationRuntime: ConversationRuntime;
@@ -163,6 +168,7 @@ export function getSession(sessionId: string): DriveSession | null {
 export function stopSession(sessionId: string): boolean {
   const session = sessions.get(sessionId);
   session?.storyRequest?.abort();
+  invalidateStoryPreparation(session);
   // Invalidate synchronously inside close before releasing DriveSession. The
   // provider cleanup remains best-effort so this legacy synchronous API stays compatible.
   if (session?.realtimeVoiceSession) void session.realtimeVoiceSession.close('drive_session_ended');
@@ -175,6 +181,7 @@ export function stopSession(sessionId: string): boolean {
 export function setMuted(sessionId: string, muted: boolean): void {
   const s = sessions.get(sessionId);
   if (s) s.muted = muted;
+  if (muted) invalidateStoryPreparation(s);
 }
 
 export async function finishActiveStory(
@@ -208,7 +215,9 @@ export async function finishActiveStory(
         theme: session.params.themeTags[0], style: session.params.narrationStyle,
         metadata: { momentId: moment.momentId, storyLevel: moment.level, outcome: 'completed',
           topicKeys: [...moment.topicKeys], evidenceRefs: [...moment.evidenceRefs],
-          guideId: session.params.voiceId,
+          guideId: session.deliveredArtifact?.momentId === momentId ? session.deliveredArtifact.guideId : session.params.voiceId,
+          artifactId: session.deliveredArtifact?.momentId === momentId ? session.deliveredArtifact.artifactId : undefined,
+          placeName: moment.entityName,
           area: snap.area.source === 'unknown' ? undefined : { ...snap.area },
         },
       });
@@ -216,7 +225,7 @@ export async function finishActiveStory(
     await recordExperienceEvent('story_outcome', experienceEvent(session, {
       type: 'trigger_story', selectedTargetId: moment.entityId,
       outcome: reason,
-    }, 0, new Date().toISOString(), listenedSeconds), session.userId);
+    }, 0, new Date().toISOString(), listenedSeconds, momentId), session.userId);
     if (reason === 'ended' && moment.callbackId) await recordExperienceEvent('callback_used',
       experienceEvent(session, {type:'trigger_story',selectedTargetId:moment.entityId,
         momentRelationship:'callback'}), session.userId);
@@ -287,6 +296,21 @@ export async function pingSession(
     session.journeyState.updateArea({source:'unknown'}, at);
     session.areaAnchor = undefined;
   }
+  const target = aheadDiscovery.decision.type === 'target_selected' ? aheadDiscovery.decision.target : undefined;
+  if (storyPreparation.enabled && target && !forceAheadRefresh && !dismissedPoiIds.has(target.providerId) &&
+      session.experienceOffer?.poiId !== target.providerId &&
+      (session.experienceOffers ?? 0) < storyPreparation.sessionOffers) {
+    const id = randomUUID();
+    session.experienceOffer = { id, poiId: target.providerId };
+    session.experienceOffers = (session.experienceOffers ?? 0) + 1;
+    void recordUsage({ anonymous: true, category: 'product', operation: 'story_offer',
+      metadata: { offerId: id, poiId: target.providerId, source: 'ahead_discovery',
+        objectType: target.targetType, movementMode: activeMode, sourceSha: process.env.GIT_SHA ?? 'unknown' },
+    }).catch(() => console.warn('story_offer_telemetry_unavailable'));
+  }
+  offerStoryPreparation(session, target && !forceAheadRefresh && !session.pendingMode &&
+    !dismissedPoiIds.has(target.providerId) && !session.spokenProviderIds?.has(target.providerId) &&
+    !isCircuitOpen(session.userId) ? target : undefined, speedKmh);
   if (discoveryOnly) {
     const suggested = !session.alreadyListening && !session.conversationRuntime.blocksNarration() && !session.storyRequest &&
       !session.muted && !isCircuitOpen(session.userId) &&
@@ -434,6 +458,7 @@ export async function pingSession(
     return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
       decision:{type:'hold',reason:'already_listening'}};
   }
+  invalidateStoryPreparation(session);
   // The public decision carries product fields, never legacy source prose.
   delete decision.narrativePlanInput.storySeed;
   const request = new AbortController();
@@ -442,11 +467,11 @@ export async function pingSession(
   const momentId = `moment_${randomUUID()}`;
   let narration;
   try {
-    narration = await generateNarrationFromPlan(narrativePlan, {
+    narration = await requestContext.run({ userId, storyCorrelationId: momentId }, () => generateNarrationFromPlan(narrativePlan, {
       brief, policy, language: session.params.language,
       narrationStyle: session.params.narrationStyle, userId, signal: request.signal, completeAudio: true,
       trace: { sessionId, momentId, objectType: selectedEvidence.category },
-    });
+    }));
     request.signal.throwIfAborted();
     if (sessions.get(sessionId) !== session || session.storyRequest !== request) throw new Error('Story request superseded');
   } catch (error) {
@@ -483,8 +508,8 @@ export async function pingSession(
 
   await recordDecisionIfChanged(session, {type:'trigger_story',selectedTargetId:decision.poiId,
     triggerReason:decision.triggerReason,momentRelationship:brief.moment.relationship},now,storyCandidates.length);
-  await recordExperienceEvent('story_started', experienceEvent(session,
-    {type:'trigger_story',selectedTargetId:decision.poiId}), userId);
+  session.deliveredArtifact = narration.audioUrl ? { momentId, artifactId: momentId, guideId: policy.id } : undefined;
+  await recordSessionStoryStarted(session, decision.poiId, momentId);
   if (sessions.get(sessionId) !== session || session.journeyState.getActiveMoment()?.momentId !== momentId)
     return {nextAction:'NONE',mode:activeMode,speedKmh,aheadDiscovery,
       decision:{type:'hold',reason:'already_listening'}};
@@ -511,10 +536,11 @@ export async function pingSession(
 function experienceEvent(session: DriveSession, decision: {
   type: 'hold' | 'trigger_story'; selectedTargetId?: string; triggerReason?: string;
   holdReason?: string; momentRelationship?: string; outcome?: StoryFinishReason | 'superseded';
-}, candidateDensity = 0, at = new Date().toISOString(), listenedSeconds?: number): ExperienceDecisionEvent {
+}, candidateDensity = 0, at = new Date().toISOString(), listenedSeconds?: number, momentId?: string): ExperienceDecisionEvent {
   const movement = session.journeyState.getSnapshot(at).movement;
   return {
-    sessionId: session.id, at,
+    sessionId: session.id, at, momentId,
+    offerId: decision.selectedTargetId && decision.selectedTargetId === session.experienceOffer?.poiId ? session.experienceOffer?.id : undefined,
     context: {
       movementMode: movement?.mode ?? session.params.mode ?? 'vehicle',
       locationBucket: movement ? encodeGeohash(movement.latitude, movement.longitude, 5) : 'unknown',
@@ -548,12 +574,12 @@ async function recordDecisionIfChanged(session: DriveSession, decision: Paramete
 }
 
 /** Explicit selection shares the same bounded product telemetry boundary as automatic narration. */
-export async function recordSessionStoryStarted(session: DriveSession, poiId: string): Promise<void> {
-  await recordExperienceEvent('story_started', experienceEvent(session,
-    {type:'trigger_story',selectedTargetId:poiId}), session.userId);
+export async function recordSessionStoryStarted(session: DriveSession, poiId: string, momentId: string): Promise<void> {
+  await recordExperienceEvent('story_delivered', experienceEvent(session,
+    {type:'trigger_story',selectedTargetId:poiId}, 0, undefined, undefined, momentId), session.userId);
 }
 
-export async function recordSessionSuperseded(session: DriveSession, entityId: string): Promise<void> {
+export async function recordSessionSuperseded(session: DriveSession, entityId: string, momentId: string): Promise<void> {
   await recordExperienceEvent('story_outcome', experienceEvent(session,
-    {type:'trigger_story',selectedTargetId:entityId,outcome:'superseded'}), session.userId);
+    {type:'trigger_story',selectedTargetId:entityId,outcome:'superseded'}, 0, undefined, undefined, momentId), session.userId);
 }

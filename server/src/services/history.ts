@@ -1,3 +1,4 @@
+import type { StoryRating } from '@heycity/shared';
 import { randomUUID } from 'node:crypto';
 import { databaseEnabled, query } from './database';
 import { recordUsage } from './usage';
@@ -23,6 +24,8 @@ export interface HistoryItem {
 /** Structured M2 fields stored on the existing compatible poi_listened record. */
 export interface JourneyHistoryMetadata extends Record<string, unknown> {
   momentId: string;
+  artifactId?: string;
+  placeName?: string;
   storyLevel?: string;
   outcome?: string;
   topicKeys?: string[];
@@ -148,6 +151,31 @@ export async function getRecentJourneyHistory(userId: string, limit = 20): Promi
   });
 }
 
+/** A rating lives on the completed instance and follows normal history deletion. */
+export async function rateHistoryStory(userId: string, id: string, rating: StoryRating): Promise<boolean> {
+  if (isGuestUserId(userId)) return false;
+  if (databaseEnabled()) {
+    const rows = await query<{ id: string }>(`
+      UPDATE history_items h
+      SET metadata = CASE WHEN h.metadata->>'rating' = $3::text THEN h.metadata
+        ELSE h.metadata || jsonb_build_object('rating', $3::text, 'ratedAt', now()) END
+      WHERE h.id = $1 AND h.user_id = $2 AND h.type = 'poi_listened'
+        AND h.metadata->>'outcome' = 'completed' AND h.metadata ? 'artifactId'
+        AND EXISTS (SELECT 1 FROM users u WHERE u.id = $2 AND u.history_enabled)
+      RETURNING h.id
+    `, [id, userId, rating]);
+    return rows.length === 1;
+  }
+  if (!(await getUserById(userId))?.historyEnabled) return false;
+  const item = items.get(id);
+  if (!item || item.userId !== userId || item.type !== 'poi_listened' ||
+      item.metadata?.outcome !== 'completed' || typeof item.metadata.artifactId !== 'string') return false;
+  if (item.metadata.rating !== rating) {
+    item.metadata = { ...item.metadata, rating, ratedAt: new Date().toISOString() };
+  }
+  return true;
+}
+
 export async function deleteAllHistory(userId: string): Promise<void> {
   if (databaseEnabled()) {
     await query('DELETE FROM history_items WHERE user_id=$1', [userId]);
@@ -232,6 +260,8 @@ function sanitizeJourneyHistoryMetadata(input: JourneyHistoryMetadata): JourneyH
   const momentId = text(input.momentId);
   if (!momentId) return undefined;
   const metadata: JourneyHistoryMetadata = { momentId };
+  if (input.artifactId) metadata.artifactId = text(input.artifactId);
+  if (input.placeName) metadata.placeName = text(input.placeName);
   const storyLevel = text(input.storyLevel);
   const outcome = text(input.outcome);
   const topicKeys = textList(input.topicKeys, MAX_HISTORY_TOPICS);

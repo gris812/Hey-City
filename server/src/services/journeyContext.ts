@@ -304,6 +304,14 @@ export class JourneyState {
   }
 
   selectCallback(input: SelectJourneyCallbackInput): JourneyCallback | undefined {
+    const callback = this.previewCallback(input);
+    if (callback && !this.callbacks.some(item => item.id === callback.id)) {
+      this.callbacks = trimNewest([...this.callbacks, callback], this.limits.callbacks);
+    }
+    return callback;
+  }
+
+  previewCallback(input: SelectJourneyCallbackInput): JourneyCallback | undefined {
     const topics = normalizeTopics(input.topicKeys).filter(isSpecificCallbackTopic);
     if (!input.entityId || !topics.length) return undefined;
     if (!this.callbackGapSatisfied()) return undefined;
@@ -330,7 +338,6 @@ export class JourneyState {
       evidenceRefs: [...source.evidenceRefs],
       createdAt: input.at ?? nowIso(),
     };
-    this.callbacks = trimNewest([...this.callbacks, callback], this.limits.callbacks);
     return freezeCopy(callback);
   }
 

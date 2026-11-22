@@ -33,6 +33,7 @@ export async function recordNativeNarrativeEvent(
       status: body.status as 'playing' | 'paused' | 'failed',
       latencyMs:
         typeof body.latencyMs === 'number' ? body.latencyMs : undefined,
+      tellLatencyMs: body.status === 'playing' && typeof body.tellLatencyMs === 'number' ? body.tellLatencyMs : undefined,
       clientSha:
         typeof body.clientSha === 'string' ? body.clientSha : undefined,
     },
