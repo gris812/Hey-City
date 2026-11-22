@@ -28,10 +28,10 @@ async function run() {
   try {
     const identify = await selectStory(session.id,'m1-user','m1-weak','identify','ru');
     assert.match(identify.transcriptText,/Unknown Monument/); assert.doesNotMatch(identify.transcriptText,/Рассказать/);
-    assert.deepEqual(await selectedStoryAvailability(session.id,'m1-user','m1-weak'),{short:false,long:false});
+    assert.deepEqual(await selectedStoryAvailability(session.id,'m1-user','m1-weak'),{short:false,long:false,evidenceStatus:'unknown'});
     await assert.rejects(selectStory(session.id,'m1-user','m1-weak','short'),(e:any)=>e.status===422);
     assert.equal(calls.length,0);
-    assert.deepEqual(await selectedStoryAvailability(session.id,'m1-user','m1-one'),{short:true,long:true});
+    assert.deepEqual(await selectedStoryAvailability(session.id,'m1-user','m1-one'),{short:true,long:true,evidenceStatus:'ready'});
     await assert.rejects(selectedStoryAvailability(session.id,'someone-else','m1-one'),(e:any)=>e.status===404);
     await selectStory(session.id,'m1-user','m1-one','long');
     assert.equal(calls.at(-1)!.brief.continuation,undefined,'T7 direct long');

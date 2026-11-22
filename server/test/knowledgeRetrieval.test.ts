@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import type { DiscoveryCandidate } from '@heycity/shared';
 import {
+  cachedStoryEvidenceHint,
+  unavailableEvidenceTtl,
   discoveryEvidence,
   retrieveDiscoveryKnowledge,
   knowledgeNameMatches,
@@ -133,6 +135,21 @@ async function run() {
       })) as typeof fetch;
     const weak = await retrieveDiscoveryKnowledge(candidate('weak'));
     assert(!weak.evidence || !storyAvailability(weak.evidence).short);
+    assert(unavailableEvidenceTtl(weak) > 0, 'resolved sparse evidence has an expiring verdict');
+    assert.equal(unavailableEvidenceTtl({ ...weak, checkedAt: Date.now() - 301_000 }), 0);
+    const sparse = candidate('weak');
+    assert.equal((await cachedStoryEvidenceHint(sparse))?.status, 'unavailable');
+    assert.equal(await cachedStoryEvidenceHint(candidate('cache-only-miss')), undefined);
+    global.fetch = (async () => { throw new Error('provider timeout'); }) as typeof fetch;
+    const timeout = candidate('timeout-verdict');
+    assert.equal(unavailableEvidenceTtl(await retrieveDiscoveryKnowledge(timeout)), 0);
+    assert.equal(await cachedStoryEvidenceHint(timeout), undefined);
+    global.fetch = (async () => Response.json({ query: { pages: {
+      '1': page('Doral, Florida', 'Doral city.'),
+      '2': { ...page('Doral, Florida', 'Doral city.'), pageid: 2 },
+    } } })) as typeof fetch;
+    assert.equal(unavailableEvidenceTtl(await retrieveDiscoveryKnowledge(candidate('ambiguous-verdict'))), 0);
+
     assert.equal(officialSourceUrl('https://127.0.0.1/private'), null);
     assert.equal(officialSourceUrl('file:///etc/passwd'), null);
     knowledgePolicy.officialHosts = ['city.example'];

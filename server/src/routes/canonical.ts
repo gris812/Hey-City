@@ -1,3 +1,4 @@
+import { storyEvidenceRevision } from '../services/discoveryKnowledge';
 import { selectStory, selectedStoryAvailability, StorySelectionError } from '../services/selectedStory';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -52,7 +53,7 @@ sessionsRouter.post('/:sessionId/select', rateLimit({ windowMs: 15 * 60 * 1000, 
   });
   try { res.json(await selectStory(req.params.sessionId,req.user!.userId,String(req.body.poiId),req.body.level ?? 'short',req.body.language,req.body.clientRequestId,req.body.guideId)); }
   catch (error) {
-    if (error instanceof StorySelectionError) {res.status(error.status).json({error:error.message});return;}
+    if (error instanceof StorySelectionError) {res.status(error.status).json({error:error.message, ...(error.evidenceTtlMs ? { evidenceTtlMs: error.evidenceTtlMs, storyEvidenceRevision } : {})});return;}
     if (error instanceof Error && error.name === 'AbortError') {res.status(409).json({error:'Selection superseded'});return;}
     res.status(503).json({error:req.body.language === 'en' ? 'Story is temporarily unavailable. Try again.' : 'Рассказ временно недоступен. Попробуйте ещё раз.'});
   }

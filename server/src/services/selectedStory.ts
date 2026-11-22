@@ -2,7 +2,7 @@ import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from '
 import { resolveStoryDiscoveries } from './storyDiscoveries';
 import { aheadDiscovery as discoveryLimits } from '../config';
 import { sessionStoryDiscoveryCandidates, sessionDiscoveryCandidate } from './aheadDiscovery';
-import { discoveryEvidence, retrieveDiscoveryKnowledge } from './discoveryKnowledge';
+import { retrieveDiscoveryKnowledge, unavailableEvidenceTtl } from './discoveryKnowledge';
 import { prepareNarrative } from './narrativePlan';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
@@ -15,7 +15,7 @@ import { recordNarrativeStage } from './usage';
 let selectedMomentSequence = 0;
 
 export class StorySelectionError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public evidenceTtlMs?: number) { super(message); }
 }
 
 const categories: Record<string, [string,string]> = {city:['город','city'],museum:['музей','museum'],park:['парк','park'],national_park:['национальный парк','national park'],historical_landmark:['историческое место','historic landmark'],cultural_landmark:['достопримечательность','landmark'],monument:['памятник','monument'],university:['университет','university'],region:['регион','region']};
@@ -88,7 +88,8 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
       // Availability is resolved separately so identifying a place never waits for knowledge lookup.
     } else {
       const retrievalStarted = Date.now();
-      evidence = (await retrieveDiscoveryKnowledge(candidate)).evidence; check();
+      const knowledge = await retrieveDiscoveryKnowledge(candidate);
+      evidence = knowledge.evidence; check();
       await recordNarrativeStage({...trace,stage:'retrieval',status:evidence && storyAvailability(evidence).short ? 'ready' : 'unavailable',latencyMs:Date.now()-retrievalStarted},userId);
       if (evidence) {
         const previous = matchingContinuation(session.storyContinuation, poiId, params.voiceId, params.language);
@@ -99,7 +100,7 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
         console.info(JSON.stringify({ event: 'explicit_story_evidence_unavailable', poiId,
           name: candidate.name, latitude: candidate.latitude, longitude: candidate.longitude,
           targetType: candidate.targetType, buildSha: process.env.GIT_SHA }));
-        throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.');
+        throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.', unavailableEvidenceTtl(knowledge) || undefined);
       }
       const duration = level === 'long' ? narration.detailedSeconds : narration.briefSeconds;
       const journey = session.journeyState;
@@ -167,10 +168,12 @@ export async function selectedStoryAvailability(id: string, userId: string, poiI
   if (!session || session.userId !== userId) throw new StorySelectionError(404, 'Session not found');
   const candidate = sessionDiscoveryCandidate(id, poiId);
   if (!candidate) throw new StorySelectionError(404, 'Object is no longer available');
-  const evidence = await discoveryEvidence(candidate);
+  const knowledge = await retrieveDiscoveryKnowledge(candidate);
+  const evidence = knowledge.evidence;
   if (getSession(id) !== session) throw new StorySelectionError(404, 'Session not found');
   const previous = matchingContinuation(session.storyContinuation, poiId, session.params.voiceId, session.params.language);
-  return evidence ? storyAvailability(evidence, previous?.guideId, previous?.selectedEvidenceRefs) : { short: false, long: false };
+  const availability = evidence ? storyAvailability(evidence, previous?.guideId, previous?.selectedEvidenceRefs) : { short: false, long: false };
+  return { ...availability, evidenceStatus: availability.short ? 'ready' : unavailableEvidenceTtl(knowledge) ? 'unavailable' : 'unknown' };
 }
 
 function matchingContinuation(continuation: NonNullable<ReturnType<typeof getSession>>['storyContinuation'], poiId: string, guideId: string, language: string) {

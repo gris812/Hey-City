@@ -1,3 +1,4 @@
+import { StoryAvailabilityCache } from './storyAvailabilityCache';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Linking } from 'react-native';
 import * as Location from 'expo-location';
@@ -81,6 +82,9 @@ export function useDriveDiscoverySession(input: {
   const [storyNotice, setStoryNotice] = useState<string | null>(null);
   const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const discoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const storyAvailabilityCache = useRef(new StoryAvailabilityCache());
+  const [, refreshStoryAvailability] = useState(0);
+  const checkingLevel = useRef<'short' | 'long'>('short');
   const dismissedTargets = useRef(new Set<string>());
   const [dismissedPoiIds, setDismissedPoiIds] = useState<string[]>([]);
   const dismissDiscoveryNotice = useCallback(() => {
@@ -293,6 +297,7 @@ export function useDriveDiscoverySession(input: {
     activeSessionIdRef.current = null;
     pendingFinish.current = undefined;
     dismissedTargets.current.clear();
+    storyAvailabilityCache.current.clear();
     setDismissedPoiIds([]);
     dismissDiscoveryNotice();
     explicitSelectionRef.current.cancel();
@@ -392,12 +397,13 @@ export function useDriveDiscoverySession(input: {
 
   const tellPlaceNow = useCallback(async (place: { id: string; title: string; coordinate: { latitude: number; longitude: number } }, level: 'short' | 'long' = 'short') => {
     const id = activeSessionIdRef.current;
-    if (!id) return;
+    if (!id || storyAvailabilityCache.current.state(place.id, level) === 'unavailable') return;
     const choice = { sessionId: id, poiId: place.id, name: place.title,
       latitude: place.coordinate.latitude, longitude: place.coordinate.longitude,
       level, language: guideLanguage, guideId };
     await explicitSelectionRef.current.select(choice, {
       preparing: selected => {
+        checkingLevel.current = selected.level;
         dismissStoryNotice();
         setExplicitTarget(place);
         ++requestRevisionRef.current;
@@ -426,6 +432,11 @@ export function useDriveDiscoverySession(input: {
       selected: async (selected, result) => {
         if (activeSessionIdRef.current !== id) return;
         if (!result.momentId || result.poiId !== selected.poiId) throw new Error('Invalid selection response');
+        if (selected.level === 'short') {
+          storyAvailabilityCache.current.resetContinuation(selected.poiId);
+          storyAvailabilityCache.current.record(selected.poiId, 'short', 'ready');
+        }
+        if (result.availability.long) storyAvailabilityCache.current.record(selected.poiId, 'long', 'ready');
         setSelectionAvailability({ poiId: result.poiId, availability: result.availability });
         await loadStoryPlayback({ sessionId: id, momentId: result.momentId, poiId: result.poiId,
           guideId: fromBackendGuideId(result.guideId), target: { id: result.poiId, name: result.name,
@@ -439,10 +450,18 @@ export function useDriveDiscoverySession(input: {
         setPlayback(undefined);
         setPlayingName(null);
         setAudioProgress(undefined);
-        const failure = selectionFailurePresentation(stage, error instanceof ApiRequestError ? error.status : undefined);
+        const definitiveEvidence = error instanceof ApiRequestError && error.status === 422 &&
+          Boolean(error.evidenceTtlMs && error.storyEvidenceRevision);
+        const failure = selectionFailurePresentation(stage, definitiveEvidence ? 422 : undefined);
         setLocalPlaybackState(failure.playbackState);
         setExplicitTarget(current => current?.id === choice.poiId ? undefined : current);
-        if (failure.kind === 'evidence') suppressAutomaticTarget(choice.poiId);
+        if (failure.kind === 'evidence' && error instanceof ApiRequestError &&
+            error.evidenceTtlMs && error.storyEvidenceRevision) {
+          const cache = storyAvailabilityCache.current;
+          cache.observeRevision(error.storyEvidenceRevision);
+          cache.record(choice.poiId, choice.level, 'unavailable', error.evidenceTtlMs);
+          refreshStoryAvailability(count => count + 1);
+        }
         // Endpoint errors are intentionally not logged; they can contain provider payloads.
         if (failure.kind === 'playback') {
           reportPlaybackError('audio_unload_failed');
@@ -453,7 +472,7 @@ export function useDriveDiscoverySession(input: {
           : (guideLanguage === 'ru' ? 'Рассказ временно недоступен. Попробуйте ещё раз.' : 'Story is temporarily unavailable. Try again.'));
       },
     });
-  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError, syncGuide, dismissStoryNotice, notifyStoryFailure, suppressAutomaticTarget]);
+  }, [clearConversationPlayback, guestId, guideId, guideLanguage, loadStoryPlayback, reportPlaybackError, syncGuide, dismissStoryNotice, notifyStoryFailure]);
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -512,15 +531,22 @@ export function useDriveDiscoverySession(input: {
         await syncGuide(sessionId, guestId);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
         const dismissed = dismissedTargets.current;
-        const exclusions = [...dismissed].slice(-128);
+        const availability = storyAvailabilityCache.current;
+        const exclusions = [...new Set([...dismissed, ...availability.unavailableIds()])].slice(-128);
         await flushFinish(sessionId);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
         const result = await pingDriveSession(sessionId, loc.coords.latitude, loc.coords.longitude,
           heading, speedKmh, loc.timestamp, accuracy, false, guestId, muted || !!activeMomentIdRef.current || explicitSelectionRef.current.holdsAutomaticNarration, exclusions);
         if (disposed || activeSessionIdRef.current !== sessionId) return;
+        if (revision === requestRevisionRef.current) {
+          const changed = availability.observeRevision(result.storyEvidenceRevision);
+          const hint = result.storyEvidenceHint;
+          if (hint) availability.record(hint.poiId, 'short', hint.status, hint.ttlMs);
+          if (changed || hint) refreshStoryAvailability(count => count + 1);
+        }
         dismissDiscoveryNotice();
         if (result.mode) setMovementMode(result.mode);
-        if (result.nextAction === 'PLAY' && result.poi && result.momentId && dismissed.has(result.poi.place_id)) {
+        if (result.nextAction === 'PLAY' && result.poi && result.momentId && (dismissed.has(result.poi.place_id) || availability.state(result.poi.place_id) === 'unavailable')) {
           void finishDriveStory(sessionId, 'skipped', guestId, result.momentId).catch(() => console.warn('dismissed_story_release_failed'));
           setLastResult({ ...result, nextAction: 'NONE' });
           return;
@@ -917,6 +943,19 @@ export function useDriveDiscoverySession(input: {
     }
   };
 
+  useEffect(() => {
+    if (!sessionId) return;
+    const timer = setInterval(() => {
+      if (storyAvailabilityCache.current.expire()) refreshStoryAvailability(count => count + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [sessionId]);
+
+  const storyAvailabilityFor = (poiId: string, level: 'short' | 'long' = 'short') =>
+    playback?.poiId === poiId && checkingLevel.current === level &&
+    (localPlaybackState === 'preparing' || localPlaybackState === 'loading')
+      ? 'checking' as const : storyAvailabilityCache.current.state(poiId, level);
+
   const presentation = mapDriveSessionToPresentation(lastResult, {
     sessionActive: Boolean(sessionId),
     playbackState: localPlaybackState,
@@ -957,6 +996,7 @@ export function useDriveDiscoverySession(input: {
     presentation,
     tellPlaceNow,
     selectionAvailability,
+    storyAvailabilityFor,
     startSession,
     stopSession,
     toggleTheme,

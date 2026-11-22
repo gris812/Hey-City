@@ -1,3 +1,4 @@
+import { cachedStoryEvidenceHint, storyEvidenceRevision } from '../services/discoveryKnowledge';
 import { discoveryConfig } from '../config';
 import type { StoryFinishReason } from '@heycity/shared';
 import { Response } from 'express';
@@ -121,7 +122,10 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
     dismissedPoiIds
   );
 
-  res.json(result);
+  const decision = result.aheadDiscovery?.decision;
+  const storyEvidenceHint = decision?.type === 'target_selected'
+    ? await cachedStoryEvidenceHint(decision.target).catch(() => undefined) : undefined;
+  res.json({ ...result, storyEvidenceRevision, storyEvidenceHint });
 }
 
 export async function forceAheadDiscoveryRefresh(req: AuthRequest, res: Response): Promise<void> {

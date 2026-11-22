@@ -201,7 +201,7 @@ export function LiveScreen() {
     aheadRefreshStatus,
     presentation,
     tellPlaceNow,
-    selectionAvailability,
+    selectionAvailability, storyAvailabilityFor,
     startSession,
     stopSession,
     toggleTheme,
@@ -290,7 +290,8 @@ export function LiveScreen() {
   );
   const aheadDecision = lastResult?.aheadDiscovery?.decision;
   const automaticTarget = aheadDecision?.type === 'target_selected' ? aheadDecision.target : null;
-  const aheadTarget = automaticTarget && !dismissedPoiIds.includes(automaticTarget.providerId) ? automaticTarget : null;
+  const aheadTarget = automaticTarget && !dismissedPoiIds.includes(automaticTarget.providerId) &&
+    storyAvailabilityFor(automaticTarget.providerId) !== 'unavailable' ? automaticTarget : null;
   const liveDistance = (latitude: number, longitude: number, fallback: number) =>
     deviceLocation ? distanceMeters(deviceLocation, { latitude, longitude }) : fallback;
   const aheadCandidates = lastResult?.aheadDiscovery?.topCandidates ?? [];
@@ -738,7 +739,7 @@ export function LiveScreen() {
           onSelectPlace={place => { dismissStoryNotice(); setMapTarget(place); setSelectedExplorePlace(place); }}
           motion={lastMotion}
           onTellNow={selectStoryForPlace}
-          selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === exploreActiveTarget?.id}
+          storyAvailabilityFor={storyAvailabilityFor}
           onEndExploration={() => { setExplorationStopped(true); setMapTarget(undefined); setPinnedTarget(undefined); void stopSession(); }}
           voiceState={realtimeVoiceState}
           voiceLabel={preferences.appLanguage === 'ru'
@@ -1349,9 +1350,10 @@ export function LiveScreen() {
           setSelectedExplorePlace(null);
         }}
         onTellNow={() => { if (selectedExplorePlace) selectStoryForPlace(selectedExplorePlace); }}
-        onTellMore={selectedExplorePlace && selectionAvailability?.poiId === selectedExplorePlace.id && selectionAvailability.availability.long
+        onTellMore={selectedExplorePlace && selectionAvailability?.poiId === selectedExplorePlace.id && selectionAvailability.availability.long &&
+          storyAvailabilityFor(selectedExplorePlace.id, 'long') !== 'unavailable'
           ? () => selectStoryForPlace(selectedExplorePlace, 'long') : undefined}
-        selectionBusy={(presentation.playbackState === 'preparing' || presentation.playbackState === 'loading') && presentation.playback?.poiId === selectedExplorePlace?.id}
+        storyAvailability={selectedExplorePlace ? storyAvailabilityFor(selectedExplorePlace.id) : 'unknown'}
         vehicleMode={movementMode === 'vehicle'}
         onOpenMaps={(place) => void openPlaceInMaps(place)}
         onOpenStory={() => { setSelectedExplorePlace(null); setMapTarget(undefined); }}
