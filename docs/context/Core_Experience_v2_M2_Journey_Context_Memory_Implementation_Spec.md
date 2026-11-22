@@ -916,3 +916,9 @@ Do not silently expand scope.
 > Work in a separate branch and open a Draft PR. Do not merge it.
 >
 > Use checkpoint commits after coherent phases. Run all required tests/replays and report failures honestly.
+
+### Story experience dataset and feedback (v1)
+
+Reuse `usage_events` for bounded staging offer and preparation transitions, and the existing native playback and Journey finish events for audible starts and outcomes. A server offer is an Ahead target selected for presentation, not proof it was seen by the driver. Delivery, playback start, completion, skip, supersession and lack of evidence have distinct meanings. Tell Now latency uses native elapsed time from the accepted tap to confirmed playing. An absent event during a connection failure is unknown. Use `ops/reports/story-experience.sql` for read-only summaries. Provider tokens and estimated USD remain in the usage ledger, with synthetic fixture timing reported separately from live provider measurements.
+
+Feedback is optional and available in Story History to authenticated users who keep history enabled. `PUT /me/history/items/:id/rating` accepts `liked` or `disliked` only for an owned, completed entry with an audio artifact reference. The history row holds one current rating, which can be corrected and is removed with the entry. No vehicle prompt is shown. For an enabled staging cohort, prefetch and offer events contain stable place IDs, opaque event identifiers and versions with no coordinates or transcript. Correlation with delivery events can still disclose what places a listener was offered. Before wider use, review the Privacy Policy, App Store privacy disclosure and any required opt-in for place-linked analytics. Existing usage retention applies. History retention and deletion continue to follow existing user settings.

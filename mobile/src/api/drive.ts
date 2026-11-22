@@ -113,8 +113,8 @@ export async function selectDriveStory(params: {
   });
 }
 
-export async function reportNarrativePlayback(sessionId:string,momentId:string,status:'playing'|'paused'|'failed',clientSha:string,latencyMs:number,guestId?:string,failure?:string):Promise<void> {
-  await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/narrative-events`,{method:'POST',headers:guestHeaders(guestId),body:{momentId,status,clientSha,latencyMs,failure}});
+export async function reportNarrativePlayback(sessionId:string,momentId:string,status:'playing'|'paused'|'failed',clientSha:string,latencyMs:number,guestId?:string,failure?:string,tellLatencyMs?:number):Promise<void> {
+  await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/narrative-events`,{method:'POST',headers:guestHeaders(guestId),body:{momentId,status,clientSha,latencyMs,failure,tellLatencyMs}});
 }
 
 

@@ -3,13 +3,14 @@ import { resolveStoryDiscoveries } from './storyDiscoveries';
 import { aheadDiscovery as discoveryLimits } from '../config';
 import { sessionStoryDiscoveryCandidates, sessionDiscoveryCandidate } from './aheadDiscovery';
 import { retrieveDiscoveryKnowledge, unavailableEvidenceTtl } from './discoveryKnowledge';
-import { prepareNarrative } from './narrativePlan';
+import { selectedStoryPlan } from './selectedStoryPlan';
+import { invalidateStoryPreparation, reuseStoryPreparation } from './storyPreparation';
+import { requestContext } from './requestContext';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
 import { isCircuitOpen } from './budget';
 import type { SelectedStoryResult, StoryAvailability } from '@heycity/shared';
-import { generateIdentification, generateNarrationFromPlan } from './narration';
-import { narration, driveDiscovery } from '../config';
+import { generateIdentification, generateNarrationFromPlan, resolveCompletedNarrationAudio } from './narration';
 import { recordNarrativeStage } from './usage';
 
 let selectedMomentSequence = 0;
@@ -52,6 +53,7 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
   if (!['identify','short','long'].includes(level)) throw new StorySelectionError(400,'Invalid story level');
   if (language !== undefined && !['ru','en'].includes(language)) throw new StorySelectionError(400,'Invalid language');
   if (isCircuitOpen(userId)) throw new StorySelectionError(429, 'Story budget temporarily unavailable');
+  invalidateStoryPreparation(session, level === 'short' ? poiId : undefined);
   session.selectionRevision = (session.selectionRevision ?? 0) + 1;
   // A new explicit choice invalidates any unfinished delivered moment before work begins.
   // A superseded short segment was never confirmed as heard, so it cannot feed M1 continuation.
@@ -70,17 +72,18 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
   if (prior && (prior.poiId !== poiId || prior.guideId !== canonicalGuideId(params.voiceId) || prior.language !== params.language)) session.storyContinuation = undefined;
   session.alreadyListening = true;
   let succeeded = false;
+  let artifactId = momentId;
   const check = () => { request.signal.throwIfAborted(); if (getSession(id) !== session) throw new StorySelectionError(404,'Session not found'); };
   const trace = {sessionId:id,momentId,requestId:clientRequestId,objectType:candidate.targetType};
   const requestedAt = Date.now();
   try {
     await recordNarrativeStage({...trace,stage:'request',status:'started'},userId);
-    if (activeMoment) await recordSessionSuperseded(session, activeMoment.entityId);
+    if (activeMoment) await recordSessionSuperseded(session, activeMoment.entityId, activeMoment.momentId);
     check();
     let result;
     let evidence: EvidenceBundle | null = null;
     let availability: StoryAvailability = { short: false, long: false };
-    let planned: ReturnType<typeof prepareNarrative> | undefined;
+    let planned: ReturnType<typeof selectedStoryPlan> | undefined;
     if (level === 'identify') {
       const category = (categories[candidate.targetType] ?? ['место','place'])[params.language === 'ru' ? 0 : 1];
       const text = params.language === 'ru' ? `${candidate.name} — ${category}.` : `${candidate.name}, a ${category}.`;
@@ -102,21 +105,19 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
           targetType: candidate.targetType, buildSha: process.env.GIT_SHA }));
         throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.', unavailableEvidenceTtl(knowledge) || undefined);
       }
-      const duration = level === 'long' ? narration.detailedSeconds : narration.briefSeconds;
-      const journey = session.journeyState;
-      const topicKeys = [...params.themeTags, evidence.category, ...specificCallbackTopics(evidence)];
-      // Callbacks are validated only against previously completed moments.
-      journey?.selectCallback({ entityId: poiId, topicKeys });
-      planned = prepareNarrative({poiId,placeName:candidate.name,mode:params.mode ?? 'walking',guideId:params.voiceId,themeTags:params.themeTags,targetDurationSec:duration}, evidence,
-        { level: level as 'short' | 'long', language: params.language, continuation: session.storyContinuation, journey: journey?.getSnapshot() });
-      planned.plan.selectionContext = { distanceMeters: candidate.distanceMeters, isAhead: candidate.isAhead };
-      if (candidate.distanceMeters > driveDiscovery.fallbackDistanceM) {
-        const forbidden = [...planned.plan.mustAvoid,
-          'right (?:here|in front of (?:us|you))|прямо (?:перед (?:нами|вами)|здесь)|мы (?:стоим|находимся) (?:у|около)'];
-        planned.plan.mustAvoid = forbidden;
-        planned.brief.constraints.forbiddenPatterns = forbidden;
-      }
-      result = await generateNarrationFromPlan(planned.plan,{brief:planned.brief,policy:planned.policy,language:params.language,narrationStyle:params.narrationStyle,userId,signal:request.signal,completeAudio:true,trace});
+      planned = selectedStoryPlan(session, params, candidate, evidence, level as 'short' | 'long', true);
+      const prepared = level === 'short' ? await reuseStoryPreparation(session, candidate, planned,
+        params.language, params.narrationStyle, request.signal, momentId) : undefined;
+      if (prepared) artifactId = prepared.id;
+      const options = { ...planned, language: params.language, narrationStyle: params.narrationStyle,
+        userId, signal: request.signal, completeAudio: true, trace };
+      const readyAudio = prepared?.result.audioUrl ? await resolveCompletedNarrationAudio(prepared.result.audioUrl) : undefined;
+      check();
+      const textOnlyFallback = prepared?.audioAttempted && !prepared.result.audioUrl;
+      result = prepared && (readyAudio || textOnlyFallback) ? { ...prepared.result, audioUrl: readyAudio ?? '' } : await requestContext.run({ userId, storyCorrelationId: momentId },
+        () => generateNarrationFromPlan(planned!.plan, { ...options, preparedText: prepared?.result.transcriptText }));
+      check();
+      invalidateStoryPreparation(session);
     }
     check();
     if (level === 'short') {
@@ -143,7 +144,8 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
           evidence, guideId: canonicalGuideId(params.voiceId), language: params.language,
         });
       }
-      await recordSessionStoryStarted(session, poiId);
+      session.deliveredArtifact = result.audioUrl ? { momentId, artifactId, guideId: canonicalGuideId(params.voiceId) } : undefined;
+      await recordSessionStoryStarted(session, poiId, momentId);
       check();
     }
     // This is delivery ownership, not proof of audible start. Text-only explicit choices

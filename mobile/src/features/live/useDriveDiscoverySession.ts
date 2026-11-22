@@ -326,7 +326,7 @@ export function useDriveDiscoverySession(input: {
     if (activeSessionIdRef.current && sessionOwnerRef.current !== ownerKey) void stopSession();
   }, [ownerKey, stopSession]);
 
-  const loadStoryPlayback = useCallback(async (story: StoryPlaybackIdentity, audioUrl?: string) => {
+  const loadStoryPlayback = useCallback(async (story: StoryPlaybackIdentity, audioUrl?: string, tellStartedAt?: number) => {
     if (activeSessionIdRef.current !== story.sessionId || activeMomentIdRef.current === story.momentId) return;
     activeMomentIdRef.current = story.momentId;
     setPlayback(story);
@@ -338,7 +338,7 @@ export function useDriveDiscoverySession(input: {
     const report = async (status: 'playing' | 'paused' | 'failed', failure?: string) => {
       if (reported.has(status)) return;
       reported.add(status);
-      await reportNarrativePlayback(story.sessionId, story.momentId, status, config.buildSha, Date.now() - loadStarted, guestId, failure)
+      await reportNarrativePlayback(story.sessionId, story.momentId, status, config.buildSha, Date.now() - loadStarted, guestId, failure, tellStartedAt === undefined ? undefined : Date.now() - tellStartedAt)
         .catch(() => console.warn('native_narrative_telemetry_unavailable'));
     };
     const fail = (code: string) => {
@@ -401,6 +401,7 @@ export function useDriveDiscoverySession(input: {
     const choice = { sessionId: id, poiId: place.id, name: place.title,
       latitude: place.coordinate.latitude, longitude: place.coordinate.longitude,
       level, language: guideLanguage, guideId };
+    const tellStartedAt = Date.now();
     await explicitSelectionRef.current.select(choice, {
       preparing: selected => {
         checkingLevel.current = selected.level;
@@ -440,7 +441,7 @@ export function useDriveDiscoverySession(input: {
         setSelectionAvailability({ poiId: result.poiId, availability: result.availability });
         await loadStoryPlayback({ sessionId: id, momentId: result.momentId, poiId: result.poiId,
           guideId: fromBackendGuideId(result.guideId), target: { id: result.poiId, name: result.name,
-            latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText, storyDiscoveries: result.storyDiscoveries }, result.audioUrl);
+            latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText, storyDiscoveries: result.storyDiscoveries }, result.audioUrl, tellStartedAt);
       },
       failed: (choice, error, stage) => {
         if (activeSessionIdRef.current !== id) return;

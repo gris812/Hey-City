@@ -84,7 +84,7 @@ export class NarrativeGenerator {
           (policy.id === 'arthur' ? 'Arthur calmly explains why the supported historical or architectural distinctions matter; he does not ask “Did you know?”. ' : '') +
           (brief.continuation ? 'Continue from ALREADY HEARD as shared context. Do not repeat its opening, subject introduction, or facts already stated. Lead with a transition into unused evidence and add only new supported context. ' : 'This is a standalone spoken moment. ') +
           (brief.journey?.callback ? 'A validated earlier delivered moment is supplied as a callback opportunity. Mention it briefly only through the allowed relationship and shared topic, without adding earlier factual claims or suggesting an unheard story occurred. ' : 'Do not claim we discussed a previous place. ') +
-          (plan.selectionContext ? 'This is an explicit request about a selected place at the supplied distance, not an arrival announcement. Do not imply that we are at the place or right in front of it. If it is distant, describe it by name without claiming proximity. ' : '') +
+          (plan.selectionContext ? 'This is an explicit request about a selected place and is not an arrival announcement. Do not imply that we are at the place or right in front of it. If it is distant, describe it by name without claiming proximity. ' : '') +
           'For city context describe the city without claiming its centre is ahead or giving directions.',
         input:
           `Language: ${request.language}\n` +
@@ -135,7 +135,10 @@ export function narrativeFingerprint(request: NarrativeGenerationRequest): strin
     plan, depth: brief.depth, selectedEvidenceRefs: brief.selectedEvidenceRefs, language: request.language, style: request.narrationStyle,
     evidence: [brief.evidence.sourceVersion, brief.evidence.items],
     continuation: brief.continuation ? hash(brief.continuation.previousTranscript) : null,
-    journey: brief.journey ? {area: brief.journey.area, callback: brief.journey.callback,
+    journey: brief.journey ? {area: brief.journey.area, callback: brief.journey.callback && {
+      id: brief.journey.callback.id, sourceEntityName: brief.journey.callback.sourceEntityName,
+      topicKey: brief.journey.callback.topicKey, relationship: brief.journey.callback.relationship,
+    },
       selectedEvidenceRefs: brief.selectedEvidenceRefs} : null }));
 }
 

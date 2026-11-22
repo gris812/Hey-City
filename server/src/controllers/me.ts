@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { getUserById, updateUser } from '../services/user';
-import { addToHistory, deleteAllHistory, deleteHistoryByIds, getHistory } from '../services/history';
+import { addToHistory, deleteAllHistory, deleteHistoryByIds, getHistory, rateHistoryStory } from '../services/history';
 
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true' || process.env.NODE_ENV === 'development';
 
@@ -94,4 +94,17 @@ export async function deleteHistoryItems(req: AuthRequest, res: Response): Promi
   }
   await deleteHistoryByIds(req.user.userId, ids);
   res.json({ ok: true });
+}
+
+export async function rateCompletedStory(req: AuthRequest, res: Response): Promise<void> {
+  const rating = req.body?.rating;
+  if (rating !== 'liked' && rating !== 'disliked') {
+    res.status(400).json({ error: 'A valid story rating is required' });
+    return;
+  }
+  if (!await rateHistoryStory(req.user!.userId, req.params.id, rating)) {
+    res.status(404).json({ error: 'Completed story not found' });
+    return;
+  }
+  res.json({ rating });
 }

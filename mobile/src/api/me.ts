@@ -1,3 +1,4 @@
+import type { StoryRating } from '@heycity/shared';
 import { apiFetch } from './client';
 
 export interface DriveDiscoverySettings {
@@ -32,6 +33,7 @@ export interface HistoryItem {
   completedAt?: string;
   guideId?: 'dana' | 'arthur';
   guideLanguage?: 'en' | 'ru';
+  metadata?: { artifactId?: string; placeName?: string; outcome?: string; rating?: StoryRating };
   completionStatus?: 'completed' | 'partial' | 'stopped';
 }
 
@@ -53,4 +55,10 @@ export async function deleteAllHistory(): Promise<void> {
 
 export async function deleteHistoryItems(ids: string[]): Promise<void> {
   await apiFetch('/me/history/items', { method: 'DELETE', body: { ids } });
+}
+
+export async function rateCompletedStory(id: string, rating: StoryRating): Promise<StoryRating> {
+  const result = await apiFetch<{ rating: StoryRating }>(`/me/history/items/${encodeURIComponent(id)}/rating`,
+    { method: 'PUT', body: { rating } });
+  return result.rating;
 }

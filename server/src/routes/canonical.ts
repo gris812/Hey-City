@@ -6,6 +6,7 @@ import { requireAuth, requireAuthOrGuest } from '../middleware/auth';
 import type { AuthRequest } from '../middleware/auth';
 import { getGuide } from '../services/guides';
 import { getSession } from '../services/driveSession';
+import { invalidateStoryPreparation } from '../services/storyPreparation';
 import { recordNativeNarrativeEvent } from '../services/narrativeTelemetry';
 import {
   canonicalStoryEnd,
@@ -69,6 +70,7 @@ sessionsRouter.put('/:sessionId/guide', requireAuthOrGuest, async (req: AuthRequ
       const reason = guide.id !== session.params.voiceId ? 'guide_changed' : 'language_changed';
       session.selectionRevision = (session.selectionRevision ?? 0) + 1;
       session.storyRequest?.abort();
+      invalidateStoryPreparation(session);
       session.storyContinuation = undefined;
       // The delivered moment retains its original guide and ownership until completion.
       if (!session.journeyState?.getActiveMoment()) {

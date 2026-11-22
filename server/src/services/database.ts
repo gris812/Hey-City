@@ -87,6 +87,10 @@ export async function initializeDatabase(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS usage_events_created_idx ON usage_events(created_at DESC);
     CREATE INDEX IF NOT EXISTS usage_events_user_idx ON usage_events(user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS story_preparation_budget (
+      day date PRIMARY KEY,
+      jobs integer NOT NULL CHECK (jobs > 0)
+    );
     CREATE TABLE IF NOT EXISTS guides (
       id text PRIMARY KEY, document jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -102,9 +106,21 @@ export async function initializeDatabase(): Promise<void> {
     );
     ALTER TABLE activity_state ADD COLUMN IF NOT EXISTS listening_guide_id text;
   `);
+  await pool.query("DELETE FROM story_preparation_budget WHERE day < (now() AT TIME ZONE 'UTC')::date - 7");
   await pool.query("DELETE FROM otp_challenges WHERE expires_at < now()");
   await pool.query("DELETE FROM usage_events WHERE created_at < now() - ($1 * interval '1 day')", [privacy.usageRetentionDays]);
   await pool.query("DELETE FROM activity_daily WHERE day < (now() AT TIME ZONE 'UTC')::date - $1::int", [privacy.usageRetentionDays]);
+}
+
+export async function pruneStoryExperience(): Promise<void> {
+  if (!pool) return;
+  await pool.query(`
+    DELETE FROM usage_events WHERE id IN (
+      SELECT id FROM usage_events WHERE created_at < now() - ($1 * interval '1 day')
+        AND operation IN ('story_preparation','story_offer','story_delivered')
+      ORDER BY created_at LIMIT 5000
+    )
+  `, [privacy.usageRetentionDays]);
 }
 
 export async function closeDatabase(): Promise<void> {

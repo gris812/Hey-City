@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getProfile, updateProfile, updatePrivacy, deleteHistory, deleteHistoryItems } from '../controllers/me';
+import { getProfile, updateProfile, updatePrivacy, deleteHistory, deleteHistoryItems, rateCompletedStory } from '../controllers/me';
 import { requireAuth } from '../middleware/auth';
 
 export const meRouter = Router();
@@ -11,3 +11,5 @@ meRouter.put('/', updateProfile);
 meRouter.put('/privacy', updatePrivacy);
 meRouter.delete('/history', deleteHistory);
 meRouter.delete('/history/items', deleteHistoryItems);
+
+meRouter.put('/history/items/:id/rating', rateCompletedStory);

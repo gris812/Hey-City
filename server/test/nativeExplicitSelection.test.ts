@@ -84,7 +84,8 @@ async function run() {
     const retry = await post(session.id, { poiId: 'explicit-a', level: 'short', language: 'en', clientRequestId: 'mobile-request' });
     assert.equal(retry.body.momentId, selected.body.momentId); assert.equal(calls.length, beforeRetry);
     const plan = calls.at(-1)!;
-    assert.ok(plan.plan.selectionContext!.distanceMeters > 9000, 'explicit request can bypass automatic timing');
+    assert.ok(sessionDiscoveryCandidate(session.id, 'explicit-a')!.distanceMeters > 9000, 'explicit request can bypass automatic timing');
+    assert.deepEqual(plan.plan.selectionContext, { proximity: 'unspecified' }, 'prepared short stories avoid arrival claims');
     assert.ok(plan.plan.safety.vehicleSafe); assert.ok(plan.plan.targetDurationSec <= plan.plan.safety.maxDurationSec);
     assert.throws(() => validateStory('It is right in front of us.', plan.brief), /Forbidden/);
     assert.equal((await post(session.id, { poiId: 'explicit-a', clientRequestId: 'foreign-user' }, 'guest_foreign123_abcdefg')).status, 404);

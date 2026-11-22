@@ -2,6 +2,10 @@ import type { SupportedLocale } from './locales';
 
 export const translations = {
   en: {
+    'history.liked': 'Liked',
+    'history.disliked': 'Disliked',
+    'history.completedStory': 'Completed story',
+    'history.ratingError': 'Could not save your rating. Please try again.',
     'welcome.morning': 'Good morning',
     'welcome.afternoon': 'Good afternoon',
     'welcome.evening': 'Good evening',
@@ -293,6 +297,10 @@ export const translations = {
     'postValuePrompt': 'I hope you enjoyed the walk. Create an account to save the places you visited, return to this story later, and share the walk with friends.',
   },
   ru: {
+    'history.liked': 'Понравилось',
+    'history.disliked': 'Не понравилось',
+    'history.completedStory': 'Прослушанный рассказ',
+    'history.ratingError': 'Не удалось сохранить оценку. Попробуйте ещё раз.',
     'welcome.morning': 'Доброе утро',
     'welcome.afternoon': 'Добрый день',
     'welcome.evening': 'Добрый вечер',

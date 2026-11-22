@@ -75,7 +75,7 @@ export async function stopSessionHandler(req: AuthRequest, res: Response): Promi
   }
   const active = session.journeyState.getActiveMoment();
   stopSession(sessionId);
-  if (active) await recordSessionSuperseded(session, active.entityId);
+  if (active) await recordSessionSuperseded(session, active.entityId, active.momentId);
   await recordUsage({ userId: req.user.userId, category: 'product', operation: 'session_ended' });
   res.json({ ok: true });
 }

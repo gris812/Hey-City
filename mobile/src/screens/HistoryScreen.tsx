@@ -1,10 +1,11 @@
 import { useMeasurements } from '../localization/useMeasurements';
-import React, { useState, useEffect } from 'react';
+import type { StoryRating } from '@heycity/shared';
+import React, { useState, useEffect, useRef } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { deleteAllHistory, getProfile, HistoryItem } from '../api/me';
+import { deleteAllHistory, getProfile, HistoryItem, rateCompletedStory } from '../api/me';
 import { useAuth } from '../context/AuthContext';
 import { shouldLoadProfile } from '../context/appIdentity';
 import { useAppTranslation } from '../localization';
@@ -26,6 +27,10 @@ export function HistoryScreen() {
   const navigation = useNavigation();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [historyEnabled, setHistoryEnabled] = useState(true);
+  const [ratingId, setRatingId] = useState<string>();
+  const pendingRating = useRef<string | undefined>(undefined);
+  const requestScope = useRef(0);
+  const focused = useIsFocused();
 
   useEffect(() => {
     if (!shouldLoadProfile(identity)) {
@@ -34,11 +39,33 @@ export function HistoryScreen() {
       return;
     }
 
+    if (!focused) return;
+    const scope = ++requestScope.current;
     getProfile().then((p) => {
+      if (requestScope.current !== scope) return;
       setHistoryEnabled(p.historyEnabled);
       setItems(p.history ?? []);
-    });
-  }, [identity]);
+    }).catch(() => console.warn('history_load_failed'));
+    return () => { requestScope.current++; };
+  }, [identity, focused]);
+
+  const rate = async (item: HistoryItem, value: StoryRating) => {
+    if (!shouldLoadProfile(identity) || pendingRating.current || item.metadata?.rating === value) return;
+    const scope = requestScope.current;
+    pendingRating.current = item.id;
+    setRatingId(item.id);
+    try {
+      const rating = await rateCompletedStory(item.id, value);
+      if (scope !== requestScope.current) return;
+      setItems(current => current.map(story => story.id === item.id
+        ? { ...story, metadata: { ...story.metadata, rating } } : story));
+    } catch {
+      if (scope === requestScope.current) Alert.alert(t('common.error'), t('history.ratingError'));
+    } finally {
+      pendingRating.current = undefined;
+      setRatingId(undefined);
+    }
+  };
 
   const handleDeleteHistory = () => {
     if (!shouldLoadProfile(identity)) {
@@ -93,6 +120,26 @@ export function HistoryScreen() {
   );
 
   const renderItem = ({ item }: { item: HistoryItem }) => {
+    if (item.type === 'poi_listened') {
+      const canRate = item.metadata?.outcome === 'completed' && Boolean(item.metadata.artifactId);
+      return (
+        <View style={styles.storyEntry}>
+          <Text style={styles.itemPlace}>{item.metadata?.placeName ?? item.placeId ?? t('history.completedStory')}</Text>
+          <Text style={styles.itemTime}>{new Date(item.timestamp).toLocaleDateString()}</Text>
+          {canRate && <View style={styles.ratings}>
+            {(['liked', 'disliked'] as const).map(value => {
+              const selected = item.metadata?.rating === value;
+              return <TouchableOpacity key={value} accessibilityRole="button"
+                accessibilityState={{ selected, disabled: ratingId !== undefined }}
+                disabled={ratingId !== undefined} onPress={() => void rate(item, value)}
+                style={[styles.rating, selected && styles.selectedRating]}>
+                <Text style={styles.ratingLabel}>{t(`history.${value}`)}</Text>
+              </TouchableOpacity>;
+            })}
+          </View>}
+        </View>
+      );
+    }
     const guideName = item.guideId ? t(`guide.${item.guideId}`) : 'Dana or Arthur';
     const stops = item.visitedTargetIds?.length || 4;
     const title = item.placeId ?? 'Downtown Manhattan Walk';
@@ -163,6 +210,12 @@ export function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  storyEntry: { padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.surface, borderRadius: radius.lg },
+  ratings: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  rating: { minHeight: 48, justifyContent: 'center', borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, borderRadius: radius.md },
+  selectedRating: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  ratingLabel: { ...typography.body, color: colors.foreground },
   container: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   title: { ...typography.title, color: colors.foreground, marginBottom: spacing.md },

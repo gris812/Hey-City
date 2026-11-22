@@ -391,3 +391,21 @@ export const narrationStyles = [
 
 export type ThemeTag = (typeof themeTags)[number];
 export type NarrationStyle = (typeof narrationStyles)[number];
+
+export const storyPreparation = {
+  enabled: server.nodeEnv === 'staging' && process.env.STORY_PREPARATION_ENABLED === 'true',
+  concurrency: Math.max(1, Math.min(2, Math.trunc(num('STORY_PREPARATION_CONCURRENCY', 1)))),
+  dailyJobs: Math.max(0, Math.min(100, Math.trunc(num('STORY_PREPARATION_DAILY_JOBS', 20)))),
+  dailyEstimatedBudgetUsd: Math.max(0, num('STORY_PREPARATION_DAILY_ESTIMATED_USD', 0.50)),
+  textReservationUsd: Math.max(0.001, num('STORY_PREPARATION_TEXT_RESERVATION_USD', 0.01)),
+  audioReservationUsd: Math.max(0.001, num('STORY_PREPARATION_AUDIO_RESERVATION_USD', 0.04)),
+  minFreeMediaBytes: Math.max(128, num('STORY_PREPARATION_MIN_FREE_MEDIA_MIB', 1024)) * 1024 ** 2,
+  dailyAudioJobs: Math.max(0, Math.min(40, Math.trunc(num('STORY_PREPARATION_DAILY_AUDIO_JOBS', 5)))),
+  freeLookupsPerMinute: Math.max(0, Math.min(12, Math.trunc(num('STORY_PREPARATION_LOOKUPS_PER_MINUTE', 4)))),
+  sessionOffers: Math.max(1, Math.min(50, Math.trunc(num('STORY_PREPARATION_SESSION_OFFERS', 20)))),
+  sessionJobs: Math.max(1, Math.min(5, Math.trunc(num('STORY_PREPARATION_SESSION_JOBS', 2)))),
+  estimatedTextMs: num('STORY_PREPARATION_INITIAL_TEXT_MS', 12000),
+  estimatedAudioMs: num('STORY_PREPARATION_INITIAL_AUDIO_MS', 8000),
+  maxLeadSeconds: num('STORY_PREPARATION_MAX_LEAD_SECONDS', 150),
+  ttlMs: Math.max(1000, Math.min(300000, num('STORY_PREPARATION_TTL_MS', 180000))),
+};
