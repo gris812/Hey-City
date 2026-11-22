@@ -39,6 +39,10 @@ export function drivePlaceAction(availability: StoryAvailabilityState) {
   return availability === 'ready' || availability === 'unknown';
 }
 
+export function isDriveMapSelectionRelevant(id: string, detailId: string | undefined, nearby: readonly { id: string }[], aheadId?: string) {
+  return id === detailId || id === aheadId || nearby.some(place => place.id === id);
+}
+
 export function drivePlace<T>(options: { selected?: T; pinned?: T; ahead?: T; nearby?: T }) {
   if (options.selected) return { place: options.selected, relation: 'selected' } as const;
   if (options.pinned) return { place: options.pinned, relation: 'pinned' } as const;

@@ -45,7 +45,7 @@ import {
   type ExploreActiveTarget,
   type ExploreNearbyPlace,
 } from '../components/explore/ExploreHomeView';
-import { canOpenDriveDetails, drivePlace, driveStopFixAgeMs, driveStory, shouldUseDrivePresentation } from '../presentation/driveView';
+import { canOpenDriveDetails, drivePlace, driveStopFixAgeMs, driveStory, isDriveMapSelectionRelevant, shouldUseDrivePresentation } from '../presentation/driveView';
 import { DiscoveryPlaceSheet } from '../components/explore/DiscoveryPlaceSheet';
 import { GuideQuickPreviewSheet } from '../components/explore/GuideQuickPreviewSheet';
 import { GuideProfileModal } from '../components/explore/GuideProfileModal';
@@ -354,13 +354,20 @@ export function LiveScreen() {
   const forDrive = (place: ExploreNearbyPlace | undefined) => place ? {
     ...place, distanceMeters: liveDistance(place.coordinate.latitude, place.coordinate.longitude, place.distanceMeters),
   } : undefined;
-  const ownedTarget = explicitTarget ?? mapTarget;
+  const expiredMapTarget = driveView && mapTarget &&
+    !isDriveMapSelectionRelevant(mapTarget.id, selectedExplorePlace?.id, exploreNearbyPlaces, aheadTarget?.providerId)
+    ? mapTarget : undefined;
+  useEffect(() => {
+    if (expiredMapTarget) setMapTarget(current => current === expiredMapTarget ? undefined : current);
+  }, [expiredMapTarget]);
+  const visibleMapTarget = expiredMapTarget ? undefined : mapTarget;
+  const ownedTarget = explicitTarget ?? visibleMapTarget;
+  const selectedMetadata = ownedTarget && (selectablePlaces.find(place => place.id === ownedTarget.id) ??
+    (visibleMapTarget?.id === ownedTarget.id ? visibleMapTarget : undefined));
   const vehicleCandidate = driveView ? drivePlace({
-    selected: forDrive(ownedTarget && !dismissedPoiIds.includes(ownedTarget.id)
-      ? { ...ownedTarget, targetType: selectablePlaces.find(place => place.id === ownedTarget.id)?.targetType ??
-            (mapTarget?.id === ownedTarget.id ? mapTarget.targetType : undefined),
-          distanceMeters: mapTarget?.id === ownedTarget.id ? mapTarget.distanceMeters : Number.NaN }
-      : undefined),
+    selected: forDrive(ownedTarget ? {
+      ...ownedTarget, targetType: selectedMetadata?.targetType, distanceMeters: selectedMetadata?.distanceMeters ?? Number.NaN,
+    } : undefined),
     pinned: forDrive(pinnedTarget),
     ahead: aheadTarget && exploreActiveTarget?.id === aheadTarget.providerId ? exploreActiveTarget : undefined,
     nearby: exploreNearbyPlaces.find(place => !dismissedPoiIds.includes(place.id) &&
@@ -755,7 +762,7 @@ export function LiveScreen() {
           markers={selectablePlaces}
           nearbyPlaces={selectablePlaces.filter(place => !dismissedPoiIds.includes(place.id))}
           greeting={greeting && !driveView && identity.status === 'authenticated' ? t(greeting) : undefined}
-          mapTarget={mapTarget}
+          mapTarget={visibleMapTarget}
           vehicleCameraActive={focused && Boolean(sessionId)}
           currentLocation={deviceLocation ?? undefined}
           onStopTracking={place => {

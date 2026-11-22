@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { StoryAvailabilityCache } from '../src/features/live/storyAvailabilityCache';
-import { canOpenDriveDetails, driveCategory, drivePlace, drivePlaceAction, driveStory, needsCompactDriveType, shouldUseDrivePresentation } from '../src/presentation/driveView';
+import { canOpenDriveDetails, driveCategory, drivePlace, drivePlaceAction, driveStory, isDriveMapSelectionRelevant, needsCompactDriveType, shouldUseDrivePresentation } from '../src/presentation/driveView';
 import { explorePlaybackTarget, type StoryPlaybackIdentity } from '../src/presentation/livePresentation';
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
@@ -222,6 +222,10 @@ function drivePresentation() {
   assert.deepEqual(drivePlace({ ahead: 'A', nearby: 'B' }), { relation: 'ahead', place: 'A' });
   assert.deepEqual(drivePlace({ pinned: 'B', ahead: 'A' }), { relation: 'pinned', place: 'B' });
   assert.deepEqual(drivePlace({ selected: 'C', pinned: 'B', ahead: 'A' }), { relation: 'selected', place: 'C' });
+  assert.equal(isDriveMapSelectionRelevant('C', undefined, [{ id: 'C' }]), true, 'an independent nearby marker can be selected');
+  assert.equal(isDriveMapSelectionRelevant('C', 'C', [{ id: 'B' }]), true, 'details can stay open while inspecting a stopped map');
+  assert.equal(isDriveMapSelectionRelevant('C', undefined, [{ id: 'B' }], 'A'), false, 'transient selection expires when the place leaves discovery');
+  assert.deepEqual(drivePlace({ pinned: 'C', nearby: 'B' }), { relation: 'pinned', place: 'C' }, 'a pin survives discovery changes');
   assert.equal(driveCategory('historical_landmark'), 'historic');
   assert.equal(driveCategory('unsupported_place_type'), 'place');
   assert.equal(drivePlaceAction('unknown'), true);
