@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { StoryAvailabilityCache } from '../src/features/live/storyAvailabilityCache';
-import { explorePlaybackTarget } from '../src/presentation/livePresentation';
+import { canOpenDriveDetails, driveCategory, drivePlace, drivePlaceAction, driveStory, shouldUseDrivePresentation } from '../src/presentation/driveView';
+import { explorePlaybackTarget, type StoryPlaybackIdentity } from '../src/presentation/livePresentation';
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
 import { createMeasurementFormatter } from '../src/localization/measurements';
@@ -207,4 +208,48 @@ async function wake() {
   await other.setEnabled(true); await other.setEnabled(true); await other.setEnabled(false); await other.dispose();
   assert.deepEqual(normal, ['on', 'off'], 'stop/background releases exactly once');
 }
-void (async () => { await selections(); await units(); camera(); drivingCameraReplay(); await wake(); console.log('native selection, units persistence, camera and keep-awake behavioral regressions passed'); })();
+
+function drivePresentation() {
+  assert.equal(shouldUseDrivePresentation('vehicle', true), true);
+  assert.equal(shouldUseDrivePresentation('walking', true), false);
+  assert.equal(shouldUseDrivePresentation(undefined, true), true, 'active session awaiting motion stays compact');
+  assert.equal(shouldUseDrivePresentation(undefined, false), false);
+  assert.equal(drivePlace({}), undefined);
+  assert.deepEqual(drivePlace({ nearby: 'marker' }), { relation: 'nearby', place: 'marker' });
+  assert.deepEqual(drivePlace({ ahead: 'A', nearby: 'B' }), { relation: 'ahead', place: 'A' });
+  assert.deepEqual(drivePlace({ pinned: 'B', ahead: 'A' }), { relation: 'pinned', place: 'B' });
+  assert.deepEqual(drivePlace({ selected: 'C', pinned: 'B', ahead: 'A' }), { relation: 'selected', place: 'C' });
+  assert.equal(driveCategory('historical_landmark'), 'historic');
+  assert.equal(driveCategory('unsupported_place_type'), 'place');
+  assert.equal(drivePlaceAction('unknown'), true);
+  assert.equal(drivePlaceAction('ready'), true);
+  assert.equal(drivePlaceAction('checking'), false);
+  assert.equal(drivePlaceAction('unavailable'), false);
+
+  const title = 'Национальный историко-культурный музей-заповедник промышленной истории';
+  const playback: StoryPlaybackIdentity = {
+    sessionId: 'session', poiId: 'B', momentId: 'moment', guideId: 'dana',
+    target: { name: title }, transcript: 'Story B',
+  };
+  assert.equal(driveStory({ playbackState: 'playing' }), undefined, 'no playback identity means no audio card');
+  assert.equal(driveStory({ playbackState: 'preparing', playback, audioProgress: 0.77 })?.progress, undefined);
+  assert.equal(driveStory({ playbackState: 'loading', playback })?.transportActive, false);
+  assert.deepEqual(driveStory({ playbackState: 'playing', playback, audioProgress: 0.61 }), {
+    title, guideId: 'dana', phase: 'playing', transportActive: true, hasText: true, progress: 61,
+  });
+  assert.equal(driveStory({ playbackState: 'paused', playback })?.transportActive, true);
+  assert.equal(driveStory({ playbackState: 'error', playback, audioProgress: 0.61 })?.progress, undefined);
+  assert.equal(driveStory({ playbackState: 'text_only', playback })?.hasText, true);
+  assert.equal(driveStory({ playbackState: 'completed', playback }), undefined, 'old moment cannot keep the card');
+  assert.equal(driveStory({ playbackState: 'playing', playback: { ...playback, guideId: 'arthur' } })?.guideId, 'arthur');
+
+  const fix = { heading: null, speedKmh: 0, timestampMs: 10_000, accuracyMeters: 12 };
+  assert.equal(canOpenDriveDetails(null, 10_001), false);
+  assert.equal(canOpenDriveDetails(fix, 10_001), true, 'stationary does not require course');
+  assert.equal(canOpenDriveDetails(fix, 18_000), false);
+  assert.equal(canOpenDriveDetails({ ...fix, speedKmh: null }, 10_001), false);
+  assert.equal(canOpenDriveDetails({ ...fix, speedKmh: 3 }, 10_001), false);
+  assert.equal(canOpenDriveDetails({ ...fix, accuracyMeters: 32 }, 10_001), false);
+}
+
+void (async () => { drivePresentation(); await selections(); await units(); camera(); drivingCameraReplay(); await wake(); console.log('native selection, units persistence, camera and keep-awake behavioral regressions passed'); })();
