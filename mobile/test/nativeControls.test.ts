@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { StoryAvailabilityCache } from '../src/features/live/storyAvailabilityCache';
 import { explorePlaybackTarget } from '../src/presentation/livePresentation';
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
@@ -59,6 +60,26 @@ async function selections() {
   controller.cancel();
   assert.equal(controller.holdsAutomaticNarration, false);
 }
+
+function availabilityCache() {
+  const cache = new StoryAvailabilityCache();
+  assert.equal(cache.state('a'), 'unknown');
+  assert(cache.observeRevision('v1'));
+  cache.record('a', 'short', 'unavailable', 100, 1000);
+  assert.equal(cache.state('a', 'short', 1099), 'unavailable');
+  assert.equal(cache.state('b', 'short', 1099), 'unknown');
+  assert.equal(cache.state('a', 'long', 1099), 'unknown');
+  assert.equal(cache.state('a', 'short', 1100), 'unknown');
+  assert(cache.expire(1100));
+  cache.record('a', 'short', 'ready');
+  cache.record('a', 'long', 'unavailable');
+  assert.equal(cache.state('a'), 'ready');
+  assert.equal(cache.state('a', 'long'), 'unavailable');
+  assert(!cache.observeRevision('v1'));
+  assert(cache.observeRevision('v2'));
+  assert.equal(cache.state('a'), 'unknown');
+}
+availabilityCache();
 
 function exploreCardPlayback() {
   const playback = {

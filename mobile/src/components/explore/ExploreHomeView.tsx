@@ -1,3 +1,4 @@
+import type { StoryAvailabilityState } from '@heycity/shared';
 import { useMeasurements } from '../../localization/useMeasurements';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -44,7 +45,7 @@ export type ExploreHomeViewProps = {
   vehicleCameraActive?: boolean;
   motion?: VehicleCameraFix | null;
   onTellNow?: (place: ExploreNearbyPlace) => void;
-  selectionBusy?: boolean;
+  storyAvailabilityFor?: (poiId: string) => StoryAvailabilityState;
   onEndExploration?: () => void;
   height: number;
   topInset: number;
@@ -79,7 +80,7 @@ export function ExploreHomeView({
   vehicleCameraActive = false,
   motion = null,
   onTellNow,
-  selectionBusy = false,
+  storyAvailabilityFor,
   onEndExploration,
   topInset,
   region,
@@ -156,6 +157,8 @@ export function ExploreHomeView({
       animated: true,
     });
   }, [mapReady, sheetHeight, mapTarget, currentLocation, statusTop, height, vehicleMode]);
+  const storyAvailability = activeTarget ? storyAvailabilityFor?.(activeTarget.id) : undefined;
+  const selectionBusy = storyAvailability === 'checking';
   const highlightedPlace = mapTarget ?? activeTarget;
   const viewportMarkers = markersInViewport(markers, viewport);
   const visibleMarkers = highlightedPlace
@@ -385,11 +388,14 @@ export function ExploreHomeView({
           </View>
         )}
 
-        {activeTarget && onTellNow && (
+        {activeTarget && storyAvailability === 'unavailable' && (
+          <Text accessibilityLiveRegion="polite" style={styles.placeMeta}>{t('walking.storyUnavailable')}</Text>
+        )}
+        {activeTarget && onTellNow && storyAvailability !== 'unavailable' && (
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
             accessibilityState={{ disabled: selectionBusy }} disabled={selectionBusy}
             style={styles.guidedButton} onPress={() => onTellNow(activeTarget)}>
-            <Text style={styles.guidedButtonText}>{selectionBusy ? t('playback.preparing') : t('walking.tellNow')}</Text>
+            <Text style={styles.guidedButtonText}>{selectionBusy ? t('walking.storyChecking') : t('walking.tellNow')}</Text>
           </TouchableOpacity>
         )}
 
@@ -416,7 +422,7 @@ export function ExploreHomeView({
                   <Text style={styles.nearbyName} numberOfLines={2}>
                     {place.title}
                   </Text>
-                  <Text style={styles.nearbyDistance}>{measurements.distance(place.distanceMeters)}</Text>
+                  <Text style={styles.nearbyDistance}>{storyAvailabilityFor?.(place.id) === 'unavailable' ? t('walking.storyUnavailable') : measurements.distance(place.distanceMeters)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

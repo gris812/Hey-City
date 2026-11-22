@@ -139,7 +139,9 @@ export interface MomentPlan {
   attentionCue?: { relativeDirection?: 'ahead' | 'left' | 'right' };
 }
 export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }
-export interface StoryAvailability { short: boolean; long: boolean }
+export interface StoryAvailability { short: boolean; long: boolean; evidenceStatus?: 'ready' | 'unknown' | 'unavailable' }
+export type StoryAvailabilityState = 'unknown' | 'checking' | 'ready' | 'unavailable';
+export interface StoryEvidenceHint { poiId: string; status: 'ready' | 'unavailable'; ttlMs: number }
 
 export interface NarrativePlan extends NarrativePlanInput {
   /** Explicit request context, without coordinates; not an automatic ranking input. */
@@ -188,6 +190,8 @@ export interface NarrativeAttribution {
 export type StoryDiscovery = Pick<DiscoveryCandidate, 'providerId' | 'name' | 'targetType' | 'latitude' | 'longitude'>;
 
 export interface DrivePingResult {
+  storyEvidenceRevision?: string;
+  storyEvidenceHint?: StoryEvidenceHint;
   storyDiscoveries?: StoryDiscovery[];
   nextAction: 'PLAY' | 'NONE';
   /** Opaque playback identity required by the finish endpoint. */

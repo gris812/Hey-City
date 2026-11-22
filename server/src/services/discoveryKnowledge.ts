@@ -1,7 +1,7 @@
 import { isCityNarrativeCategory } from '../policies/narrativeDepthPolicy';
 import { createHash } from 'node:crypto';
 import type { DiscoveryCandidate } from '@heycity/shared';
-import { aheadDiscovery } from '../config';
+import { aheadDiscovery, narrativeV2 } from '../config';
 import { cacheGet, cacheSet } from './cache';
 import { distanceMeters } from './geo';
 import { reviewedPlaceEvidence } from './reviewedPlaceEvidence';
@@ -31,6 +31,8 @@ export interface KnowledgeResult {
   evidence: EvidenceBundle | null;
   attempts: KnowledgeAttempt[];
   entity?: ResolvedKnowledgeEntity;
+  definitive?: boolean;
+  checkedAt?: number;
 }
 type Page = {
   pageid?: number;
@@ -77,11 +79,14 @@ export async function discoveryEvidence(
   return (await retrieveDiscoveryKnowledge(candidate)).evidence;
 }
 
-export async function retrieveDiscoveryKnowledge(
-  candidate: DiscoveryCandidate,
-): Promise<KnowledgeResult> {
-  const reviewed = reviewedPlaceEvidence(candidate);
-  if (reviewed) return { evidence: reviewed, attempts: [{ level: 'L1', status: 'matched', latencyMs: 0 }] };
+export const storyEvidenceRevision = createHash('sha256').update(JSON.stringify([
+  knowledgePolicy.version, process.env.GIT_SHA ?? 'local', knowledgePolicy.officialHosts, knowledgePolicy.researchEnabled,
+  narrativeV2.evidenceVersion, narrativeV2.shortMinClaims, narrativeV2.longMinClaims, narrativeV2.minConfidence,
+  narrativeV2.minClaimChars, aheadDiscovery.knowledgeMinChars,
+])).digest('hex');
+const negativeTtlMs = Math.min(300_000, aheadDiscovery.providerErrorBackoffSeconds * 1000);
+
+function knowledgeKey(candidate: DiscoveryCandidate) {
   const identity = JSON.stringify([
     candidate.providerId,
     candidate.name,
@@ -89,7 +94,29 @@ export async function retrieveDiscoveryKnowledge(
     candidate.latitude,
     candidate.longitude,
   ]);
-  const key = `discovery-knowledge:${knowledgePolicy.version}:${createHash('sha256').update(identity).digest('hex')}`;
+  return `discovery-knowledge:${storyEvidenceRevision}:${createHash('sha256').update(identity).digest('hex')}`;
+}
+
+export function unavailableEvidenceTtl(result: KnowledgeResult): number {
+  return result.definitive && result.checkedAt !== undefined
+    ? Math.max(0, Math.min(negativeTtlMs, result.checkedAt + negativeTtlMs - Date.now())) : 0;
+}
+
+/** Observe existing retrieval only; this never calls an evidence provider. */
+export async function cachedStoryEvidenceHint(candidate: DiscoveryCandidate) {
+  const reviewed = reviewedPlaceEvidence(candidate);
+  const cached = reviewed ? undefined : await cacheGet<KnowledgeResult>(knowledgeKey(candidate));
+  const evidence = reviewed ?? cached?.evidence;
+  if (evidence && storyAvailability(evidence).short)
+    return { poiId: candidate.providerId, status: 'ready' as const, ttlMs: 300_000 };
+  const ttlMs = cached ? unavailableEvidenceTtl(cached) : 0;
+  return ttlMs ? { poiId: candidate.providerId, status: 'unavailable' as const, ttlMs } : undefined;
+}
+
+export async function retrieveDiscoveryKnowledge(candidate: DiscoveryCandidate): Promise<KnowledgeResult> {
+  const reviewed = reviewedPlaceEvidence(candidate);
+  if (reviewed) return { evidence: reviewed, definitive: true, checkedAt: Date.now(), attempts: [{ level: 'L1', status: 'matched', latencyMs: 0 }] };
+  const key = knowledgeKey(candidate);
   const cached = await cacheGet<KnowledgeResult>(key);
   if (cached)
     return {
@@ -112,7 +139,7 @@ export async function retrieveDiscoveryKnowledge(
       result,
       result.evidence && storyAvailability(result.evidence).short
         ? aheadDiscovery.knowledgeCacheSeconds
-        : aheadDiscovery.providerErrorBackoffSeconds,
+        : Math.min(300, aheadDiscovery.providerErrorBackoffSeconds),
     );
     return result;
   } finally {
@@ -160,7 +187,11 @@ async function acquire(
     }
     return Buffer.concat(chunks).toString('utf8');
   };
-  const json = async (url: URL) => JSON.parse(await read(await get(url)));
+  const json = async (url: URL) => {
+    const data = JSON.parse(await read(await get(url)));
+    if (!data || typeof data !== 'object' || data.error) throw new Error('knowledge_provider_invalid_response');
+    return data;
+  };
   let evidence: EvidenceBundle | null = null;
   let entity: ResolvedKnowledgeEntity | undefined;
   const absorb = (text: string, type: string, url: string) => {
@@ -200,8 +231,12 @@ async function acquire(
     distanceMeters(candidate.latitude, candidate.longitude, lat, lon) <= radius;
   const city = isCityNarrativeCategory(candidate.targetType);
   let extendedCityArticle = false;
+  let ambiguous = false;
   const inspectPages = (data: { query?: { pages?: Record<string, Page> } }, extended = false) => {
-    for (const page of Object.values(data.query?.pages ?? {})) {
+    const pages = Object.values(data.query?.pages ?? {});
+    ambiguous ||= pages.filter(page => page.pageid && page.coordinates?.some(coord => matchesCoordinates(coord.lat, coord.lon)) &&
+      knowledgeNameMatches(candidate.name, page.title ?? '')).length > 1;
+    for (const page of pages) {
       const coord = page.coordinates?.[0];
       const structuredBinding =
         entity?.wikidataId &&
@@ -430,6 +465,15 @@ async function acquire(
     } else attempts.push({ level: 'L4', status: 'disabled', latencyMs: 0 });
   }
   const finalEvidence: EvidenceBundle | null = evidence;
+  const candidateWords = words(candidate.name.split(',')[0]);
+  const entityWords = words(entity?.name.split(/[,()]/)[0] ?? '');
+  const exactName = candidateWords.size > 0 && candidateWords.size === entityWords.size &&
+    [...candidateWords].every(word => entityWords.has(word));
+  const researchDeferred = knowledgePolicy.researchEnabled && knowledgePolicy.officialHosts.length > 0 &&
+    attempts.some(attempt => attempt.level === 'L4' && attempt.status === 'disabled');
+  const definitive = Boolean(entity) && exactName && !ambiguous && !l2Error && !signal.aborted && !researchDeferred &&
+    !attempts.some(attempt => attempt.status === 'error');
+  const checkedAt = Date.now();
   await recordUsage({
     category: 'product',
     operation:
@@ -443,7 +487,7 @@ async function acquire(
       requestCount: requests,
     },
   }).catch(() => console.warn('knowledge_telemetry_unavailable'));
-  return { evidence: finalEvidence, attempts, entity };
+  return { evidence: finalEvidence, attempts, entity, definitive, checkedAt };
 }
 
 export async function discoveryStorySeed(

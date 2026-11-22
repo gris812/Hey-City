@@ -1,3 +1,4 @@
+import type { StoryAvailabilityState } from '@heycity/shared';
 import { useMeasurements } from '../../localization/useMeasurements';
 import React from 'react';
 import {
@@ -33,7 +34,7 @@ export type DiscoveryPlaceSheetProps = {
   onTellNow: () => void;
   onTellMore?: () => void;
   onPin?: () => void;
-  selectionBusy?: boolean;
+  storyAvailability?: StoryAvailabilityState;
   vehicleMode?: boolean;
 };
 
@@ -50,7 +51,7 @@ export function DiscoveryPlaceSheet({
   onTellNow,
   onTellMore,
   onPin,
-  selectionBusy = false,
+  storyAvailability = 'unknown',
   vehicleMode = false,
 }: DiscoveryPlaceSheetProps) {
   const { locale, t } = useAppTranslation();
@@ -124,15 +125,15 @@ export function DiscoveryPlaceSheet({
               <View style={styles.guideCopy}>
                 <Text style={styles.guideName}>{guideName}</Text>
                 <Text style={styles.guideStatus}>
-                  {hasActiveStory ? t('walking.readStory') : t('walking.tellNow')}
+                  {storyAvailability === 'unavailable' ? t('walking.storyUnavailable') : hasActiveStory ? t('walking.readStory') : t('walking.tellNow')}
                 </Text>
               </View>
             </View>
 
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
-              disabled={selectionBusy} accessibilityState={{ disabled: selectionBusy }} style={styles.primaryButton} onPress={onTellNow}>
-              <Text style={styles.primaryButtonText}>{selectionBusy ? t('playback.preparing') : t('walking.tellNow')}</Text>
-            </TouchableOpacity>
+            {storyAvailability !== 'unavailable' && <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
+              disabled={storyAvailability === 'checking'} accessibilityState={{ disabled: storyAvailability === 'checking' }} style={styles.primaryButton} onPress={onTellNow}>
+              <Text style={styles.primaryButtonText}>{storyAvailability === 'checking' ? t('walking.storyChecking') : t('walking.tellNow')}</Text>
+            </TouchableOpacity>}
             {onTellMore && !vehicleMode && <TouchableOpacity accessibilityRole="button" style={styles.secondaryButton} onPress={onTellMore}>
               <Text style={styles.secondaryButtonText}>{t('walking.tellMore')}</Text>
             </TouchableOpacity>}
