@@ -82,3 +82,34 @@ FROM usage_events WHERE operation = 'story_preparation' AND metadata->>'stage' =
 
 SELECT operation, count(*) AS events
 FROM usage_events WHERE operation IN ('story_offer', 'story_surfaced') GROUP BY 1;
+
+-- A story may already be ready at first render. Count that case and record zero wait.
+WITH surface AS (
+  SELECT metadata->>'offerId' AS id, min(created_at) AS surfaced_at
+  FROM usage_events WHERE operation = 'story_surfaced' AND metadata->>'offerId' IS NOT NULL GROUP BY 1
+), ready AS (
+  SELECT metadata->>'offerId' AS id, metadata->>'sourceSha' AS sha,
+    min(created_at) FILTER (WHERE metadata->>'stage' = 'text_ready') AS text_at,
+    min(created_at) FILTER (WHERE metadata->>'stage' = 'audio_ready') AS audio_at
+  FROM usage_events WHERE operation = 'story_preparation' AND metadata->>'offerId' IS NOT NULL GROUP BY 1,2
+)
+SELECT sha, count(text_at) AS text_samples, count(audio_at) AS audio_samples,
+  count(*) FILTER (WHERE audio_at <= surfaced_at) AS already_audio_ready,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY greatest(0, extract(epoch FROM text_at - surfaced_at)))
+    FILTER (WHERE text_at IS NOT NULL) AS surfaced_to_text_p50_s,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY greatest(0, extract(epoch FROM audio_at - surfaced_at)))
+    FILTER (WHERE audio_at IS NOT NULL) AS surfaced_to_audio_p50_s
+FROM surface JOIN ready USING (id) GROUP BY 1;
+
+WITH reuse AS (
+  SELECT DISTINCT ON (metadata->>'momentId') metadata->>'momentId' AS id, metadata->>'reuseMode' AS mode
+  FROM usage_events WHERE operation = 'story_preparation' AND metadata->>'stage' = 'reused' AND metadata->>'reuseMode' IS NOT NULL
+  ORDER BY metadata->>'momentId', created_at
+)
+SELECT metadata->>'sourceSha' AS source_sha, metadata->>'clientSha' AS client_sha,
+  coalesce(reuse.mode, 'on_demand') AS preparation_mode, count(*) AS samples,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY (metadata->>'tellLatencyMs')::numeric) AS tell_to_playing_p50_ms
+FROM usage_events LEFT JOIN reuse ON metadata->>'momentId' = reuse.id
+WHERE operation = 'narrative_stage' AND metadata->>'stage' = 'playback' AND metadata->>'status' = 'playing'
+  AND metadata ? 'tellLatencyMs'
+GROUP BY 1,2,3;

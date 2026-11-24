@@ -63,6 +63,9 @@ export const DriveView = React.memo(function DriveView({
   }
   const { place, relation } = candidate;
   const category = driveCategory(place.targetType);
+  const relative = direction ? t(`drive.direction.${direction}`) : undefined;
+  const relationLabel = relation === 'ahead' && relative ? relative
+    : [t(`drive.relation.${relation}`), relative].filter(Boolean).join(' · ');
   const metadata = (
     <>
       {!compact && <Text accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.icon}>{categoryIcon[category]}</Text>}
@@ -77,7 +80,7 @@ export const DriveView = React.memo(function DriveView({
   );
   return (
     <View style={panelStyle}>
-      <Text style={styles.relation}>{t(`drive.relation.${relation}`)}{direction && ` · ${t(`drive.direction.${direction}`)}`}</Text>
+      <Text style={styles.relation}>{relationLabel}</Text>
       {onDetails ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`${t('walking.openPlace')}: ${place.title}, ${t(`drive.category.${category}`)}${distance ? `, ${distance}` : ''}`}
           onPress={() => onDetails(place)} style={styles.place}>{metadata}</Pressable>

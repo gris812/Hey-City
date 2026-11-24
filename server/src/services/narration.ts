@@ -42,6 +42,7 @@ export interface GenerateNarrationResult {
   transcriptText: string;
   estimatedDurationSec: number;
   cached: boolean;
+  audioFailureClass?: Extract<StoryFailureClass, 'tts' | 'audio_delivery' | 'transient'>;
 }
 
 export async function generateIdentification(text: string, voiceId: string, lang: string, userId?: string) {
@@ -160,7 +161,7 @@ export async function generateNarrationFromPlan(
   let audioCached = !!audioUrl;
 
   const ttsStarted = Date.now();
-  let failureClass: StoryFailureClass | undefined;
+  let failureClass: GenerateNarrationResult['audioFailureClass'];
   if (!audioUrl) {
     try {
       // Return after the first audio bytes, not after the entire MP3 has arrived.
@@ -190,6 +191,7 @@ export async function generateNarrationFromPlan(
     transcriptText: text,
     estimatedDurationSec: plan.targetDurationSec,
     cached: generated.cached && audioCached,
+    ...(failureClass ? { audioFailureClass: failureClass } : {}),
   };
 }
 

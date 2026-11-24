@@ -4,7 +4,8 @@ import { returningGreeting } from '../context/appIdentity';
 import { distanceMeters } from '../demo/guidedTour/distance';
 import { useMeasurements } from '../localization/useMeasurements';
 import React, { useState, useEffect, useMemo } from 'react';
-import { AppState,
+import {
+  AppState,
   Alert,
   View,
   Text,

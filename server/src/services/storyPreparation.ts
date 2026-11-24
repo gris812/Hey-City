@@ -31,6 +31,7 @@ type Pending = {
   ready?: 'audio_ready' | 'text_ready';
   audioUrl?: string;
   candidate: DiscoveryCandidate;
+  offerId?: string;
   consumed: boolean;
   waiters: number;
 };
@@ -52,10 +53,10 @@ function context(session: DriveSession) {
   return JSON.stringify([mode, voiceId, language, narrationStyle, themeTags]);
 }
 
-function record(job: Pending, candidate: DiscoveryCandidate, stage: Stage, details: { latencyMs?: number; artifactVersion?: string; cacheHit?: boolean; momentId?: string; reuseMode?: 'in_progress' | 'audio_ready' | 'text_ready' } = {}) {
+function record(job: Pending, candidate: DiscoveryCandidate, stage: Stage, details: { latencyMs?: number; artifactVersion?: string; cacheHit?: boolean; momentId?: string; failureClass?: GenerateNarrationResult['audioFailureClass']; reuseMode?: 'in_progress' | 'audio_ready' | 'text_ready' } = {}) {
   // Detached prefetch events contain neither account/session IDs nor exact location or content.
   return recordUsage({ anonymous: true, category: 'product', operation: 'story_preparation',
-    metadata: { preparationId: job.id, poiId: candidate.providerId, objectType: candidate.targetType, stage,
+    metadata: { preparationId: job.id, poiId: candidate.providerId, objectType: candidate.targetType, stage, offerId: job.offerId,
       sourceSha: process.env.GIT_SHA ?? 'unknown', ...details } }).catch(() => console.warn('story_preparation_telemetry_unavailable'));
 }
 
@@ -109,7 +110,7 @@ export async function preparedAudioHint(session: DriveSession, poiId: string) {
   const job = sessions.get(session)?.current;
   if (!job?.audioUrl || job.poiId !== poiId || job.context !== context(session) || job.controller.signal.aborted ||
       job.expiresAt <= Date.now() || !await resolveCompletedNarrationAudio(job.audioUrl) ||
-      sessions.get(session)?.current !== job) return undefined;
+      sessions.get(session)?.current !== job || job.context !== context(session)) return undefined;
   const ttlMs = job.expiresAt - Date.now();
   return ttlMs > 0 ? { poiId, ttlMs } : undefined;
 }
@@ -137,7 +138,8 @@ export function offerStoryPreparation(session: DriveSession, candidate: Discover
   }, storyPreparation.ttlMs);
   timer.unref();
   const job: Pending = { id, poiId: candidate.providerId, context: context(session),
-    expiresAt: Date.now() + storyPreparation.ttlMs, timer, controller, candidate, consumed: false, waiters: 0 };
+    expiresAt: Date.now() + storyPreparation.ttlMs, timer, controller, candidate, offerId: session.experienceOffer?.poiId === candidate.providerId ? session.experienceOffer.id : undefined,
+    consumed: false, waiters: 0 };
   state.current = job;
   running++;
   const run = async () => {
@@ -193,7 +195,7 @@ export function offerStoryPreparation(session: DriveSession, candidate: Discover
     if (shouldPrepareAudio) {
       const latencyMs = Date.now() - textReadyAt;
       if (result.audioUrl && !result.cached) audioMs = 0.75 * audioMs + 0.25 * latencyMs;
-      await record(job, candidate, result.audioUrl ? 'audio_ready' : 'failed', { latencyMs, cacheHit: result.cached });
+      await record(job, candidate, result.audioUrl ? 'audio_ready' : 'failed', { latencyMs, cacheHit: result.cached, failureClass: result.audioFailureClass });
     }
     job.ready = result.audioUrl ? 'audio_ready' : 'text_ready';
     job.audioUrl = result.audioUrl || undefined;

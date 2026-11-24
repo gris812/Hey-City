@@ -104,8 +104,12 @@ async function run() {
     const candidate = await seed(precomputed);
     assert(candidate); assert(candidate.isAhead);
     const discovered = performance.now();
+    precomputed.experienceOffer = { id: 'fixture-offer', poiId: candidate.providerId };
     offerStoryPreparation(precomputed, candidate, 100);
+    await waitFor('text_ready');
+    const discoveryToTextMs = performance.now() - discovered;
     await waitFor('audio_ready');
+    assert(events.some(item => item.stage === 'audio_ready' && item.offerId === 'fixture-offer'));
     const discoveryToAudioMs = performance.now() - discovered;
     assert.equal(precomputed.journeyState.getActiveMoment(), undefined, 'preparation cannot create playback ownership');
     const calls = { generated, tts };
@@ -144,6 +148,7 @@ async function run() {
     events.length = 0; failTts = true;
     offerStoryPreparation(failure, await seed(failure), 100);
     await waitFor('failed');
+    assert(events.some(item => item.stage === 'failed' && item.failureClass === 'tts'));
     const failedCalls = tts;
     const text = await selectStory(failure.id, user.id, 'cow', 'short', 'en', 'text-fallback');
     assert.equal(text.audioUrl, ''); assert(text.transcriptText);
@@ -198,7 +203,7 @@ async function run() {
     await updateUser(user.id, { historyEnabled: false });
     assert.equal(await rateHistoryStory(user.id, entry.id, 'liked'), false);
     console.log(JSON.stringify({ provider: 'fixture', baselineDeliveryMs: Math.round(baselineDeliveryMs),
-      preparedDeliveryMs: Math.round(preparedDeliveryMs), discoveryToAudioMs: Math.round(discoveryToAudioMs), scope: 'server audio URL delivery; not native audible start', generated, tts }));
+      preparedDeliveryMs: Math.round(preparedDeliveryMs), discoveryToTextMs: Math.round(discoveryToTextMs), discoveryToAudioMs: Math.round(discoveryToAudioMs), scope: 'server audio URL delivery; not native audible start', generated, tts }));
   } finally {
     for (const session of sessions) stopSession(session.id);
     Object.assign(db, { databaseEnabled: realDatabaseEnabled, query: originalQuery });
