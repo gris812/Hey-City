@@ -117,7 +117,7 @@ export async function pruneStoryExperience(): Promise<void> {
   await pool.query(`
     DELETE FROM usage_events WHERE id IN (
       SELECT id FROM usage_events WHERE created_at < now() - ($1 * interval '1 day')
-        AND operation IN ('story_preparation','story_offer','story_delivered')
+        AND operation IN ('story_preparation','story_offer','story_surfaced','narrative_stage','story_delivered','story_outcome')
       ORDER BY created_at LIMIT 5000
     )
   `, [privacy.usageRetentionDays]);

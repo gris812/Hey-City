@@ -15,7 +15,7 @@ async function run(): Promise<void> {
   };
   Pool.prototype.query = execute as never;
 
-  const { initializeDatabase, query } = await import('../src/services/database');
+  const { initializeDatabase, pruneStoryExperience, query } = await import('../src/services/database');
   const { recordJourneyHistory, wasPoiListenedRecently, getRecentJourneyHistory } = await import('../src/services/history');
   const { recordExperienceDecision } = await import('../src/services/usage');
   await initializeDatabase();
@@ -56,6 +56,14 @@ async function run(): Promise<void> {
   assert.equal((metadata.outcome as { listenedSeconds: number }).listenedSeconds, 86400);
   assert(!('rawGps' in metadata) && !('transcript' in metadata), 'unsafe unknown fields are excluded');
 
+  await query(`INSERT INTO usage_events (operation, category, created_at) VALUES
+    ('story_surfaced', 'product', now() - interval '60 days'),
+    ('narrative_stage', 'product', now() - interval '60 days'),
+    ('story_surfaced', 'product', now()),
+    ('openai_text', 'openai_text', now() - interval '60 days')`);
+  await pruneStoryExperience();
+  const telemetry = await query<{ operation: string }>("SELECT operation FROM usage_events ORDER BY operation");
+  assert.deepEqual(telemetry.map(row => row.operation), ['experience_decision', 'object_viewed', 'openai_text', 'story_surfaced']);
   await pg.close();
 }
 
