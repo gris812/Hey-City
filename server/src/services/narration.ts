@@ -1,11 +1,11 @@
 /**
  * Narration: LLM text by template + TTS. Cache text and audio. Place Details only when POI selected.
  */
-import type { NarrativePlan } from '@heycity/shared';
+import type { NarrativePlan, StoryFailureClass } from '@heycity/shared';
 import { cacheGet, cacheSet, ttsAudioCacheKey, placeDetailsCacheKey } from './cache';
 import { cacheTtl, discoveryConfig, media, openai } from '../config';
 import { createHash } from 'crypto';
-import { access, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
+import { access, mkdir, writeFile, rename, unlink, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { prepareNarrative } from './narrativePlan';
 import { StoryBrief } from './storyBrief';
@@ -18,6 +18,12 @@ import { getGuide, guideVersion } from './guides';
 import { ProgressiveAudio } from './progressiveAudio';
 import { OpenAISpeechProvider } from '../voice/speechProvider';
 import type { SpeechProvider } from '../voice/contracts';
+
+class MediaStorageError extends Error {}
+
+export function isStoryTimeout(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || /\b(timed out|timeout)\b/i.test(error.message));
+}
 
 export interface GenerateNarrationInput {
   poiId: string;
@@ -115,14 +121,15 @@ export async function generateNarration(input: GenerateNarrationInput): Promise<
 
 export async function resolveCompletedNarrationAudio(url: string): Promise<string | null> {
   const filename = url.split('/').pop();
-  return filename && /^[a-f0-9]{24}\.mp3$/.test(filename) && await access(join(media.directory, filename)).then(() => true, () => false)
-    ? `${media.publicApiUrl}/media/${filename}` : null;
+  if (!filename || !/^[a-f0-9]{24}\.mp3$/.test(filename)) return null;
+  const file = await stat(join(media.directory, filename)).catch(() => undefined);
+  return file?.isFile() && file.size > 0 ? `${media.publicApiUrl}/media/${filename}` : null;
 }
 
 export async function generateNarrationFromPlan(
   plan: NarrativePlan,
   input: { language: string; narrationStyle: string; userId?: string; signal?: AbortSignal; completeAudio?: boolean; textOnly?: boolean;
-    onTextReady?: (cached: boolean) => Promise<void>; preparedText?: string; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string} }
+    onTextReady?: (cached: boolean) => Promise<void>; preparedText?: string; brief: StoryBrief; policy: GuidePolicy; trace?: {sessionId:string;momentId:string;requestId?:string;objectType:string;poiId?:string} }
 ): Promise<GenerateNarrationResult> {
   const generationStarted = Date.now();
   const generated = input.preparedText ? { text: input.preparedText, cached: true } : await narrativeGenerator.generate({
@@ -134,7 +141,7 @@ export async function generateNarrationFromPlan(
     userId: input.userId,
     signal: input.signal,
   }).catch(async error => {
-    await recordNarrativeStage({ ...input.trace, stage: 'generation', status: input.signal?.aborted ? 'superseded' : 'failed', latencyMs: Date.now() - generationStarted }, input.userId);
+    await recordNarrativeStage({ ...input.trace, stage: 'generation', status: input.signal?.aborted ? 'superseded' : 'failed', failureClass: input.signal?.aborted ? undefined : isStoryTimeout(error) ? 'transient' : 'generation', latencyMs: Date.now() - generationStarted }, input.userId);
     throw error;
   });
   await recordNarrativeStage({...input.trace,stage:'generation',status:'ready',latencyMs:Date.now()-generationStarted},input.userId);
@@ -153,6 +160,7 @@ export async function generateNarrationFromPlan(
   let audioCached = !!audioUrl;
 
   const ttsStarted = Date.now();
+  let failureClass: StoryFailureClass | undefined;
   if (!audioUrl) {
     try {
       // Return after the first audio bytes, not after the entire MP3 has arrived.
@@ -168,14 +176,15 @@ export async function generateNarrationFromPlan(
       }
     } catch (error) {
       if(input.signal?.aborted)throw error;
-      console.warn(JSON.stringify({ event: 'story_tts_failed', fallback: 'text_only' }));
+      failureClass = error instanceof MediaStorageError ? 'audio_delivery' : isStoryTimeout(error) ? 'transient' : 'tts';
+      console.warn(JSON.stringify({ event: 'story_audio_failed', failureClass, fallback: 'text_only' }));
       audioUrl = '';
       audioCached = false;
     }
   }
 
   input.signal?.throwIfAborted();
-  await recordNarrativeStage({...input.trace,stage:'tts',status:audioUrl ? 'ready' : 'text_only',latencyMs:Date.now()-ttsStarted},input.userId);
+  await recordNarrativeStage({...input.trace,stage:'tts',status:audioUrl ? 'ready' : 'text_only',failureClass,latencyMs:Date.now()-ttsStarted},input.userId);
   return {
     audioUrl,
     transcriptText: text,
@@ -257,8 +266,7 @@ async function synthesizeSpeechOnce(
     headers: { Authorization: `Bearer ${openai.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: openai.ttsModel, voice, input: text.slice(0, 4096), instructions, response_format: 'mp3' }),
   });
-  if (!response.ok) throw new Error(`OpenAI TTS error: ${response.status} ${(await response.text()).slice(0, 300)}`);
-  await mkdir(media.directory, { recursive: true });
+  if (!response.ok) throw new Error(`OpenAI TTS error: ${response.status}`);
   if (!response.body) throw new Error('OpenAI TTS returned no stream');
   const chunks: Buffer[] = [];
   for await (const chunk of response.body) {
@@ -271,7 +279,13 @@ async function synthesizeSpeechOnce(
   const bytes = Buffer.concat(chunks);
   if (!bytes.length) throw new Error('OpenAI TTS returned empty audio');
   const tempPath = `${filePath}.${Date.now()}.tmp`;
-  try { await writeFile(tempPath, bytes); await rename(tempPath, filePath); }
+  try {
+    await mkdir(media.directory, { recursive: true });
+    await writeFile(tempPath, bytes);
+    await rename(tempPath, filePath);
+  } catch {
+    throw new MediaStorageError('Narration media could not be persisted');
+  }
   finally { await unlink(tempPath).catch(() => {}); }
   const inputTokens = Math.ceil(text.length / 4);
   const outputTokens = Math.ceil((text.length / 14) * 20);

@@ -118,6 +118,10 @@ export async function reportNarrativePlayback(sessionId:string,momentId:string,s
 }
 
 
+export async function reportNarrativeSurfaced(sessionId: string, poiId: string, clientSha: string): Promise<void> {
+  await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/narrative-events`, { method: 'POST', body: { poiId, status: 'surfaced', clientSha } });
+}
+
 export async function updateDriveGuide(sessionId: string, guideId: string, language: string, guestId?: string): Promise<void> {
   await apiFetch(`/sessions/${encodeURIComponent(sessionId)}/guide`, {
     method: 'PUT', headers: guestHeaders(guestId), body: { guideId, language },

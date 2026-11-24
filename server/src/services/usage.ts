@@ -354,20 +354,21 @@ export async function adminUsers(limit = 100): Promise<unknown[]> {
 }
 
 export interface NarrativeStageEvent {
-  sessionId?: string; momentId?: string; requestId?: string;
-  stage: 'request' | 'retrieval' | 'generation' | 'tts' | 'playback';
+  sessionId?: string; momentId?: string; requestId?: string; poiId?: string;
+  stage: 'request' | 'retrieval' | 'planning' | 'generation' | 'tts' | 'playback';
   status: 'started' | 'ready' | 'failed' | 'unavailable' | 'text_only' | 'playing' | 'paused' | 'completed' | 'skipped' | 'superseded';
-  latencyMs?: number; tellLatencyMs?: number; objectType?: string; clientSha?: string; failure?: string;
+  latencyMs?: number; tellLatencyMs?: number; objectType?: string; clientSha?: string; failure?: string; failureClass?: import('@heycity/shared').StoryFailureClass;
 }
 /** Whitelist only. No coordinates, URL, transcript, error messages or arbitrary client metadata. */
 export function narrativeStageMetadata(event: NarrativeStageEvent): Record<string, unknown> {
   const out: Record<string,unknown> = {stage:event.stage,status:event.status,sourceSha:/^[a-f0-9]{40}$/.test(process.env.GIT_SHA??'')?process.env.GIT_SHA:'unknown'};
-  for(const key of ['sessionId','momentId','requestId','objectType'] as const) if(typeof event[key]==='string')out[key]=event[key]!.slice(0,160);
+  for(const key of ['sessionId','momentId','requestId','objectType','poiId'] as const) if(typeof event[key]==='string')out[key]=event[key]!.slice(0,160);
   if(typeof event.latencyMs==='number' && Number.isFinite(event.latencyMs))out.latencyMs=Math.max(0,Math.min(600000,Math.round(event.latencyMs)));
   if (typeof event.tellLatencyMs === 'number' && Number.isFinite(event.tellLatencyMs))
     out.tellLatencyMs = Math.max(0, Math.min(600000, Math.round(event.tellLatencyMs)));
   if(/^[a-f0-9]{40}$/.test(event.clientSha??''))out.clientSha=event.clientSha;
   if (/^audio_(missing|url_invalid|load_failed|status_failed|ended_before_start|pause_failed|resume_failed|unload_failed)$/.test(event.failure ?? '')) out.failure = event.failure;
+  if (event.failureClass) out.failureClass = event.failureClass;
   return out;
 }
 export async function recordNarrativeStage(event: NarrativeStageEvent,userId?:string):Promise<void> {

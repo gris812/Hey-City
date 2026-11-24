@@ -5,7 +5,7 @@ import { explorePlaybackTarget, type StoryPlaybackIdentity } from '../src/presen
 import { selectionFailurePresentation, ExplicitStorySelection, type StoryChoice, type SelectionDependencies } from '../src/features/live/explicitStorySelection';
 import { readPreferences, persistPreferences } from '../src/context/preferenceStorage';
 import { createMeasurementFormatter } from '../src/localization/measurements';
-import { MapCameraController, nearestHeading, cameraReliability, markersInViewport } from '../src/presentation/mapCamera';
+import { MapCameraController, nearestHeading, cameraReliability, markersInViewport, relativePoiDirection } from '../src/presentation/mapCamera';
 import { ExplorationWakeLock, shouldKeepExplorationAwake } from '../src/features/live/explorationWakeLock';
 import type { SelectedStoryResult } from '@heycity/shared';
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
@@ -57,7 +57,19 @@ async function selections() {
     request: async () => { throw new Error('422'); },
     failed: (_selected, _error, stage) => assert.equal(stage, 'request'),
   });
-  assert.equal(controller.holdsAutomaticNarration, false, 'a failed request without media releases automatic narration');
+  assert.equal(controller.holdsAutomaticNarration, true, 'Pelham: city B cannot replace failed selected POI A');
+  const retryKeys: string[] = [];
+  const failureDeps = { ...deps,
+    request: async (_choice: StoryChoice, requestId: string) => { retryKeys.push(requestId); throw new Error('503'); },
+    newRequestForError: () => true,
+  };
+  await controller.select(choice('shore-park'), failureDeps);
+  await controller.select(choice('shore-park'), failureDeps);
+  assert.equal(new Set(retryKeys).size, 2, 'a manual retry after a terminal response creates a new attempt');
+  const interruptedDeps = { ...failureDeps, newRequestForError: () => false };
+  await controller.select(choice('connection-lost'), interruptedDeps);
+  await controller.select(choice('connection-lost'), interruptedDeps);
+  assert.equal(retryKeys[2], retryKeys[3], 'an ambiguous transport outcome keeps the request id');
   controller.cancel();
   assert.equal(controller.holdsAutomaticNarration, false);
 }
@@ -72,15 +84,36 @@ function availabilityCache() {
   assert.equal(cache.state('a', 'long', 1099), 'unknown');
   assert.equal(cache.state('a', 'short', 1100), 'unknown');
   assert(cache.expire(1100));
-  cache.record('a', 'short', 'ready');
+  cache.replacePreparedAudio({ poiId: 'a', ttlMs: 3000 });
   cache.record('a', 'long', 'unavailable');
   assert.equal(cache.state('a'), 'ready');
+  cache.record('shore-park', 'short', 'temporary_failure');
+  assert(cache.unavailableIds().includes('shore-park'));
+  cache.record('manhattan-fixture', 'short', 'text_only');
+  assert(cache.unavailableIds().includes('manhattan-fixture'));
+  cache.clearOutcome('shore-park', 'short');
+  assert.equal(cache.state('shore-park'), 'unknown', 'a successful retry clears temporary suppression');
   assert.equal(cache.state('a', 'long'), 'unavailable');
+  assert(cache.replacePreparedAudio());
+  assert.equal(cache.state('a'), 'unknown', 'an invalidated artifact cannot keep advertising prepared audio');
   assert(!cache.observeRevision('v1'));
   assert(cache.observeRevision('v2'));
   assert.equal(cache.state('a'), 'unknown');
 }
 availabilityCache();
+
+function relativeMapDirection() {
+  const origin = { latitude: 40.887, longitude: -73.787 };
+  const fix = { heading: 359, speedKmh: 35, timestampMs: 2000, accuracyMeters: 10 };
+  const north = { ...origin, latitude: origin.latitude + 0.003 };
+  assert.equal(relativePoiDirection(origin, north, fix, 2500), 'ahead');
+  assert.equal(relativePoiDirection(origin, { ...origin, longitude: origin.longitude + 0.003 }, fix, 2500), 'right');
+  assert.equal(relativePoiDirection(origin, { ...origin, longitude: origin.longitude - 0.003 }, fix, 2500), 'left');
+  assert.equal(relativePoiDirection(origin, { ...origin, latitude: origin.latitude - 0.003 }, fix, 2500), 'behind');
+  assert.equal(relativePoiDirection(origin, north, fix, 30_000), undefined);
+  assert.equal(relativePoiDirection(origin, north, { ...fix, speedKmh: 0 }, 2500), undefined);
+}
+relativeMapDirection();
 
 function exploreCardPlayback() {
   const playback = {
@@ -232,6 +265,8 @@ function drivePresentation() {
   assert.equal(drivePlaceAction('ready'), true);
   assert.equal(drivePlaceAction('checking'), false);
   assert.equal(drivePlaceAction('unavailable'), false);
+  assert.equal(drivePlaceAction('text_only'), false);
+  assert.equal(drivePlaceAction('temporary_failure'), true);
 
   const title = 'Национальный историко-культурный музей-заповедник промышленной истории';
   const playback: StoryPlaybackIdentity = {

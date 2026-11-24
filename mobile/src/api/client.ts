@@ -18,7 +18,7 @@ const session = new SessionCredentials({
 let authInvalidationHandler: (() => void) | null = null;
 
 export class ApiRequestError extends Error {
-  constructor(readonly status: number, message: string, readonly evidenceTtlMs?: number, readonly storyEvidenceRevision?: string) { super(message); this.name = 'ApiRequestError'; }
+  constructor(readonly status: number, message: string, readonly evidenceTtlMs?: number, readonly storyEvidenceRevision?: string, readonly allowNewStoryAttempt = false) { super(message); this.name = 'ApiRequestError'; }
 }
 
 export class AuthSessionExpiredError extends Error {
@@ -142,7 +142,8 @@ export async function apiFetch<T>(
     }
     throw new ApiRequestError(response.status, response.status === 401 ? GENERIC_REQUEST_ERROR_MESSAGE : toUserSafeRequestMessage(response.status, backendMessage),
       typeof err.evidenceTtlMs === 'number' ? err.evidenceTtlMs : undefined,
-      typeof err.storyEvidenceRevision === 'string' ? err.storyEvidenceRevision : undefined);
+      typeof err.storyEvidenceRevision === 'string' ? err.storyEvidenceRevision : undefined,
+      err.allowNewStoryAttempt === true);
   }
   return response.json() as Promise<T>;
 }

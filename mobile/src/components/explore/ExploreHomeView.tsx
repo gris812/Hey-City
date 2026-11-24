@@ -3,6 +3,7 @@ import { useMeasurements } from '../../localization/useMeasurements';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  Alert,
   AppState,
   PanResponder,
   Platform,
@@ -20,7 +21,8 @@ import MapView, { Marker, type LatLng, type Region } from 'react-native-maps';
 import { useAppTranslation } from '../../localization';
 import { colors, radius, shadows, spacing, typography } from '../../theme';
 import type { ExploreHomeViewModel } from '../../presentation/liveForeground';
-import { MapCameraController, markersInViewport, vehicleCameraTickMs, type VehicleCameraFix } from '../../presentation/mapCamera';
+import { MapCameraController, hasReliableMovementCourse, markersInViewport, relativePoiDirection, vehicleCameraTickMs, type VehicleCameraFix } from '../../presentation/mapCamera';
+import { DriveCompass } from './DriveCompass';
 import { DriveView } from './DriveView';
 import { canOpenDriveDetails, type drivePlace, type driveStory } from '../../presentation/driveView';
 import { exploreTopLayout } from '../../presentation/safeAreaLayout';
@@ -173,7 +175,8 @@ export function ExploreHomeView({
   }, [mapReady, sheetHeight, mapTarget, currentLocation, statusTop, height, vehicleMode]);
   const storyAvailability = activeTarget ? storyAvailabilityFor?.(activeTarget.id) : undefined;
   const selectionBusy = storyAvailability === 'checking';
-  const highlightedPlace = mapTarget ?? activeTarget;
+  const highlightedPlace = vehicleStory ? activeTarget ?? driveCandidate?.place : driveCandidate?.place ?? mapTarget ?? activeTarget;
+  const compassCourseKnown = camera.current.reliableCourse && hasReliableMovementCourse(gpsFix.current ?? motion, now);
   const viewportMarkers = markersInViewport(markers, viewport);
   const visibleMarkers = highlightedPlace
     ? [...viewportMarkers.filter(marker => marker.id !== highlightedPlace.id), { ...highlightedPlace, selected: true }]
@@ -232,7 +235,14 @@ export function ExploreHomeView({
           accessibilityRole="button"
           accessibilityLabel={t('walking.openMenu')}
           style={styles.roundButton}
-          onPress={onOpenMenu}
+          onPress={() => {
+            if (!onEndExploration) { onOpenMenu(); return; }
+            Alert.alert(t('walking.openMenu'), undefined, [
+              { text: t('settings.title'), onPress: onOpenMenu },
+              { text: t('walking.endSession'), onPress: onEndExploration, style: 'destructive' },
+              { text: t('tour.cancel'), style: 'cancel' },
+            ]);
+          }}
         >
           <View style={styles.menuIcon}>
             <View style={styles.menuLine} />
@@ -248,31 +258,27 @@ export function ExploreHomeView({
           </Text>
         </View>
 
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel={t('walking.openGuide')}
-          style={styles.avatarButton}
-          onPress={vehicleMode ? undefined : onOpenGuide}
-          disabled={vehicleMode}
-        >
-          <Image source={guideImage} style={styles.guideAvatar} resizeMode="contain" />
-        </TouchableOpacity>
+        {vehicleMode ? (
+          <View accessible accessibilityRole="image" accessibilityLabel={vehicleStory ? t(`guide.${vehicleStory.guideId}`) : viewModel.guideName} style={styles.avatarButton}>
+            <Image source={guideImage} style={styles.guideAvatar} resizeMode="contain" />
+          </View>
+        ) : (
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.openGuide')} style={styles.avatarButton} onPress={onOpenGuide}>
+            <Image source={guideImage} style={styles.guideAvatar} resizeMode="contain" />
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={[styles.cameraControls, { top: searchTop + (vehicleMode ? 0 : 68) }]}>
         <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
-          accessibilityLabel={t(camera.current.orientation === 'north-up' ? 'map.northUp' : camera.current.reliableCourse ? 'map.courseUp' : 'map.waitingCourse')}
+          accessibilityLabel={t(camera.current.orientation === 'north-up' ? 'map.northUp' : compassCourseKnown ? 'map.courseUp' : 'map.waitingCourse')}
           accessibilityHint={t(camera.current.orientation === 'north-up' ? 'map.courseUp' : 'map.northUp')}
           onPress={() => changeCamera(() => camera.current.toggleOrientation())}>
-          <Text style={{ color: colors.primary, fontWeight: '800', transform: [{ rotate: `${-camera.current.heading}deg` }] }}>N ↑</Text>
+          <DriveCompass heading={camera.current.heading} waiting={camera.current.orientation === 'course-up' && !compassCourseKnown} />
         </TouchableOpacity>
         {!camera.current.following && <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
           accessibilityLabel={t('map.follow')} onPress={() => changeCamera(() => camera.current.follow())}>
           <Text style={styles.audioBadgeIcon}>◎</Text>
-        </TouchableOpacity>}
-        {onEndExploration && <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
-          accessibilityLabel={t('walking.endSession')} onPress={onEndExploration}>
-          <Text style={styles.audioBadgeIcon}>■</Text>
         </TouchableOpacity>}
       </View>
 
@@ -354,6 +360,7 @@ export function ExploreHomeView({
             candidate={driveCandidate}
             availability={driveCandidatePlace ? storyAvailabilityFor?.(driveCandidatePlace.id) ?? 'unknown' : 'unknown'}
             distance={driveCandidatePlace && Number.isFinite(driveCandidatePlace.distanceMeters) ? measurements.distance(driveCandidatePlace.distanceMeters) : undefined}
+            direction={relativePoiDirection(currentLocation, driveCandidatePlace?.coordinate, gpsFix.current ?? motion, now)}
             story={vehicleStory}
             onDetails={driveCandidatePlace && driveDetailsAllowed ? onSelectPlace : undefined}
             onTellNow={driveCandidatePlace && onTellNow ? onTellNow : undefined}
@@ -430,14 +437,14 @@ export function ExploreHomeView({
           </View>
         )}
 
-        {activeTarget && storyAvailability === 'unavailable' && (
-          <Text accessibilityLiveRegion="polite" style={styles.placeMeta}>{t('walking.storyUnavailable')}</Text>
+        {activeTarget && (storyAvailability === 'unavailable' || storyAvailability === 'temporary_failure' || storyAvailability === 'text_only') && (
+          <Text accessibilityLiveRegion="polite" style={styles.placeMeta}>{t(`drive.availability.${storyAvailability}`)}</Text>
         )}
-        {activeTarget && onTellNow && storyAvailability !== 'unavailable' && (
+        {activeTarget && onTellNow && storyAvailability !== 'unavailable' && storyAvailability !== 'text_only' && (
           <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
             accessibilityState={{ disabled: selectionBusy }} disabled={selectionBusy}
             style={styles.guidedButton} onPress={() => onTellNow(activeTarget)}>
-            <Text style={styles.guidedButtonText}>{selectionBusy ? t('walking.storyChecking') : t('walking.tellNow')}</Text>
+            <Text style={styles.guidedButtonText}>{selectionBusy ? t('walking.storyChecking') : storyAvailability === 'temporary_failure' ? t('drive.retry') : t('walking.tellNow')}</Text>
           </TouchableOpacity>
         )}
 

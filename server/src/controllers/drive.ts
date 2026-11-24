@@ -1,4 +1,5 @@
 import { cachedStoryEvidenceHint, storyEvidenceRevision } from '../services/discoveryKnowledge';
+import { preparedAudioHint, storyPreparationEnabledFor } from '../services/storyPreparation';
 import { discoveryConfig } from '../config';
 import type { StoryFinishReason } from '@heycity/shared';
 import { Response } from 'express';
@@ -125,7 +126,9 @@ export async function pingSessionHandler(req: AuthRequest, res: Response): Promi
   const decision = result.aheadDiscovery?.decision;
   const storyEvidenceHint = decision?.type === 'target_selected'
     ? await cachedStoryEvidenceHint(decision.target).catch(() => undefined) : undefined;
-  res.json({ ...result, storyEvidenceRevision, storyEvidenceHint });
+  const preparedAudio = decision?.type === 'target_selected'
+    ? await preparedAudioHint(session, decision.target.providerId) : undefined;
+  res.json({ ...result, storyEvidenceRevision, storyEvidenceHint, preparedAudio, storyExperiencePilot: storyPreparationEnabledFor(session.userId) || undefined });
 }
 
 export async function forceAheadDiscoveryRefresh(req: AuthRequest, res: Response): Promise<void> {

@@ -70,3 +70,15 @@ LEFT JOIN reused r ON r.prep_id = u.metadata->>'storyCorrelationId'
 LEFT JOIN delivered d ON d.id = coalesce(r.moment_id, u.metadata->>'storyCorrelationId')
 LEFT JOIN played p ON p.id = d.id
 WHERE u.metadata ? 'storyCorrelationId' GROUP BY 1,2;
+
+-- Each phase retains its own class; request-level summaries can overlap phase-level rows.
+SELECT metadata->>'sourceSha' AS source_sha, metadata->>'stage' AS stage,
+  metadata->>'failureClass' AS failure_class, count(DISTINCT metadata->>'momentId') AS moments
+FROM usage_events WHERE operation = 'narrative_stage' AND metadata ? 'failureClass'
+GROUP BY 1,2,3 ORDER BY 1,2,3;
+
+SELECT metadata->>'sourceSha' AS source_sha, metadata->>'reuseMode' AS reuse_mode, count(*) AS reuses
+FROM usage_events WHERE operation = 'story_preparation' AND metadata->>'stage' = 'reused' GROUP BY 1,2;
+
+SELECT operation, count(*) AS events
+FROM usage_events WHERE operation IN ('story_offer', 'story_surfaced') GROUP BY 1;

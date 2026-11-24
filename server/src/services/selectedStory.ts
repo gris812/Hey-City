@@ -2,21 +2,27 @@ import { getSession, recordSessionStoryStarted, recordSessionSuperseded } from '
 import { resolveStoryDiscoveries } from './storyDiscoveries';
 import { aheadDiscovery as discoveryLimits } from '../config';
 import { sessionStoryDiscoveryCandidates, sessionDiscoveryCandidate } from './aheadDiscovery';
-import { retrieveDiscoveryKnowledge, unavailableEvidenceTtl } from './discoveryKnowledge';
+import { retrieveDiscoveryKnowledge, unavailableEvidenceTtl, type KnowledgeResult } from './discoveryKnowledge';
 import { selectedStoryPlan } from './selectedStoryPlan';
-import { invalidateStoryPreparation, reuseStoryPreparation } from './storyPreparation';
+import { invalidateStoryPreparation, reuseStoryPreparation, storyPreparationEnabledFor } from './storyPreparation';
 import { requestContext } from './requestContext';
 import { EvidenceBundle, publicAttribution, specificCallbackTopics, storyAvailability } from './evidence';
 import { canonicalGuideId } from './guidePolicy';
 import { isCircuitOpen } from './budget';
-import type { SelectedStoryResult, StoryAvailability } from '@heycity/shared';
-import { generateIdentification, generateNarrationFromPlan, resolveCompletedNarrationAudio } from './narration';
+import type { SelectedStoryResult, StoryAvailability, StoryFailureClass } from '@heycity/shared';
+import { generateIdentification, generateNarrationFromPlan, resolveCompletedNarrationAudio, isStoryTimeout } from './narration';
 import { recordNarrativeStage } from './usage';
 
 let selectedMomentSequence = 0;
 
 export class StorySelectionError extends Error {
-  constructor(public status: number, message: string, public evidenceTtlMs?: number) { super(message); }
+  constructor(public status: number, message: string, public evidenceTtlMs?: number, public failureClass?: StoryFailureClass, public retryableBeforeGeneration = false) { super(message); }
+}
+
+export function classifyKnowledgeRefusal(knowledge: KnowledgeResult): StoryFailureClass {
+  if (knowledge.attempts.some(attempt => attempt.status === 'error')) return 'transient';
+  if (knowledge.definitive) return 'insufficient_evidence';
+  return knowledge.entity ? 'transient' : 'entity_resolution';
 }
 
 const categories: Record<string, [string,string]> = {city:['город','city'],museum:['музей','museum'],park:['парк','park'],national_park:['национальный парк','national park'],historical_landmark:['историческое место','historic landmark'],cultural_landmark:['достопримечательность','landmark'],monument:['памятник','monument'],university:['университет','university'],region:['регион','region']};
@@ -37,7 +43,7 @@ export function selectStory(id: string, userId: string, poiId: string, level: st
   const result = prepareSelectedStory(id, userId, poiId, level, language, clientRequestId).catch(error => {
     // Only a deterministic pre-generation evidence refusal is safely retryable. Ambiguous
     // provider failures and delivered audio keep their request identity/result to avoid charges.
-    if (error instanceof StorySelectionError && error.status === 422 && requests.get(clientRequestId)?.result === result) requests.delete(clientRequestId);
+    if (error instanceof StorySelectionError && (error.status === 422 || error.retryableBeforeGeneration) && requests.get(clientRequestId)?.result === result) requests.delete(clientRequestId);
     throw error;
   });
   requests.set(clientRequestId, { key, result });
@@ -49,10 +55,10 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
   const session = getSession(id);
   if (!session || session.userId !== userId) throw new StorySelectionError(404,'Session not found');
   const candidate = sessionDiscoveryCandidate(id,poiId);
-  if (!candidate) throw new StorySelectionError(404,'Object is no longer available');
+  if (!candidate) throw new StorySelectionError(404,'Object is no longer available', undefined, 'entity_resolution');
   if (!['identify','short','long'].includes(level)) throw new StorySelectionError(400,'Invalid story level');
   if (language !== undefined && !['ru','en'].includes(language)) throw new StorySelectionError(400,'Invalid language');
-  if (isCircuitOpen(userId)) throw new StorySelectionError(429, 'Story budget temporarily unavailable');
+  if (isCircuitOpen(userId)) throw new StorySelectionError(429, 'Story budget temporarily unavailable', undefined, 'transient');
   invalidateStoryPreparation(session, level === 'short' ? poiId : undefined);
   session.selectionRevision = (session.selectionRevision ?? 0) + 1;
   // A new explicit choice invalidates any unfinished delivered moment before work begins.
@@ -74,8 +80,9 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
   let succeeded = false;
   let artifactId = momentId;
   const check = () => { request.signal.throwIfAborted(); if (getSession(id) !== session) throw new StorySelectionError(404,'Session not found'); };
-  const trace = {sessionId:id,momentId,requestId:clientRequestId,objectType:candidate.targetType};
+  const trace = {sessionId:id,momentId,requestId:clientRequestId,poiId,objectType:candidate.targetType};
   const requestedAt = Date.now();
+  let phase: 'retrieval' | 'planning' | 'generation' = 'generation';
   try {
     await recordNarrativeStage({...trace,stage:'request',status:'started'},userId);
     if (activeMoment) await recordSessionSuperseded(session, activeMoment.entityId, activeMoment.momentId);
@@ -90,22 +97,28 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
       result = await generateIdentification(text,params.voiceId,params.language,userId);
       // Availability is resolved separately so identifying a place never waits for knowledge lookup.
     } else {
+      phase = 'retrieval';
       const retrievalStarted = Date.now();
-      const knowledge = await retrieveDiscoveryKnowledge(candidate);
+      const knowledge = await retrieveDiscoveryKnowledge(candidate, level === 'short' && storyPreparationEnabledFor(userId));
       evidence = knowledge.evidence; check();
-      await recordNarrativeStage({...trace,stage:'retrieval',status:evidence && storyAvailability(evidence).short ? 'ready' : 'unavailable',latencyMs:Date.now()-retrievalStarted},userId);
       if (evidence) {
         const previous = matchingContinuation(session.storyContinuation, poiId, params.voiceId, params.language);
         availability = storyAvailability(evidence, previous?.guideId, previous?.selectedEvidenceRefs);
       }
-      if (!evidence || !(level === 'long' ? availability.long : availability.short)) {
-        // Public provider place coordinates only, never the listener's position.
-        console.info(JSON.stringify({ event: 'explicit_story_evidence_unavailable', poiId,
-          name: candidate.name, latitude: candidate.latitude, longitude: candidate.longitude,
-          targetType: candidate.targetType, buildSha: process.env.GIT_SHA }));
-        throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.', unavailableEvidenceTtl(knowledge) || undefined);
+      const enough = level === 'long' ? availability.long : availability.short;
+      const failureClass = enough ? undefined : classifyKnowledgeRefusal(knowledge);
+      await recordNarrativeStage({ ...trace, stage: 'retrieval', status: enough ? 'ready' : failureClass === 'insufficient_evidence' ? 'unavailable' : 'failed',
+        failureClass, latencyMs: Date.now() - retrievalStarted }, userId);
+      if (!evidence || !enough) {
+        if (failureClass === 'transient') throw new StorySelectionError(503, 'Story retrieval temporarily unavailable', undefined, failureClass, true);
+        throw new StorySelectionError(422, params.language === 'ru' ? 'Недостаточно проверенной информации об этом объекте.' : 'Not enough verified information about this place.',
+          failureClass === 'insufficient_evidence' ? unavailableEvidenceTtl(knowledge) || undefined : undefined, failureClass);
       }
+      phase = 'planning';
+      const planningStarted = Date.now();
       planned = selectedStoryPlan(session, params, candidate, evidence, level as 'short' | 'long', true);
+      await recordNarrativeStage({ ...trace, stage: 'planning', status: 'ready', latencyMs: Date.now() - planningStarted }, userId);
+      phase = 'generation';
       const prepared = level === 'short' ? await reuseStoryPreparation(session, candidate, planned,
         params.language, params.narrationStyle, request.signal, momentId) : undefined;
       if (prepared) artifactId = prepared.id;
@@ -158,8 +171,13 @@ async function prepareSelectedStory(id: string, userId: string, poiId: string, l
     return {...result,poiId,name:candidate.name,guideId:canonicalGuideId(params.voiceId),level:level as SelectedStoryResult['level'],language:params.language,momentId:level === 'identify' ? undefined : momentId,sourceUrl:attribution?.url,attribution,availability,
       storyDiscoveries: planned ? resolveStoryDiscoveries(planned.brief, result.transcriptText, candidate, sessionStoryDiscoveryCandidates(id), discoveryLimits.cityContextRadiusMeters) : undefined };
   } catch (error) {
-    await recordNarrativeStage({...trace,stage:'request',status:request.signal.aborted ? 'superseded' : error instanceof StorySelectionError && error.status === 422 ? 'unavailable' : 'failed',latencyMs:Date.now()-requestedAt},userId);
-    throw error;
+    const failureClass = error instanceof StorySelectionError ? error.failureClass
+      : isStoryTimeout(error) || phase === 'retrieval' ? 'transient' : phase;
+    await recordNarrativeStage({ ...trace, stage: 'request',
+      status: request.signal.aborted ? 'superseded' : failureClass === 'insufficient_evidence' ? 'unavailable' : 'failed',
+      failureClass: request.signal.aborted ? undefined : failureClass, latencyMs: Date.now() - requestedAt }, userId);
+    if (request.signal.aborted || error instanceof StorySelectionError) throw error;
+    throw new StorySelectionError(503, 'Story temporarily unavailable', undefined, failureClass, phase !== 'generation');
   } finally {
     if (session.storyRequest === request) {session.storyRequest = undefined; session.selectedRequestId = undefined; if (!succeeded) session.alreadyListening = false;}
   }

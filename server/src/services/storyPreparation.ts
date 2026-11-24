@@ -7,8 +7,9 @@ import { cachedDiscoveryKnowledge, unavailableEvidenceTtl, warmDiscoveryKnowledg
 import type { DriveSession } from './driveSession';
 import { storyAvailability } from './evidence';
 import { getGuide, guideVersion } from './guides';
-import { generateNarrationFromPlan, type GenerateNarrationResult } from './narration';
+import { generateNarrationFromPlan, resolveCompletedNarrationAudio, type GenerateNarrationResult } from './narration';
 import { narrativeFingerprint } from './narrativeGenerator';
+import { isCityNarrativeCategory } from '../policies/narrativeDepthPolicy';
 import { requestContext } from './requestContext';
 import { selectedStoryPlan } from './selectedStoryPlan';
 import { recordUsage } from './usage';
@@ -27,8 +28,11 @@ type Pending = {
   controller: AbortController;
   task?: Promise<Artifact | undefined>;
   fingerprint?: string;
+  ready?: 'audio_ready' | 'text_ready';
+  audioUrl?: string;
   candidate: DiscoveryCandidate;
   consumed: boolean;
+  waiters: number;
 };
 type SessionPreparation = { current?: Pending; admitted: number; probes: number; previousPoi?: string };
 const sessions = new WeakMap<DriveSession, SessionPreparation>();
@@ -48,7 +52,7 @@ function context(session: DriveSession) {
   return JSON.stringify([mode, voiceId, language, narrationStyle, themeTags]);
 }
 
-function record(job: Pending, candidate: DiscoveryCandidate, stage: Stage, details: { latencyMs?: number; artifactVersion?: string; cacheHit?: boolean; momentId?: string } = {}) {
+function record(job: Pending, candidate: DiscoveryCandidate, stage: Stage, details: { latencyMs?: number; artifactVersion?: string; cacheHit?: boolean; momentId?: string; reuseMode?: 'in_progress' | 'audio_ready' | 'text_ready' } = {}) {
   // Detached prefetch events contain neither account/session IDs nor exact location or content.
   return recordUsage({ anonymous: true, category: 'product', operation: 'story_preparation',
     metadata: { preparationId: job.id, poiId: candidate.providerId, objectType: candidate.targetType, stage,
@@ -96,11 +100,26 @@ async function reserve(audio: boolean) {
   return row?.granted ? row.audio ? 'audio' : 'text' : undefined;
 }
 
+export function storyPreparationEnabledFor(userId: string) {
+  return storyPreparation.enabled && Boolean(storyPreparation.pilotUserId) &&
+    !userId.startsWith('guest_') && userId === storyPreparation.pilotUserId;
+}
+
+export async function preparedAudioHint(session: DriveSession, poiId: string) {
+  const job = sessions.get(session)?.current;
+  if (!job?.audioUrl || job.poiId !== poiId || job.context !== context(session) || job.controller.signal.aborted ||
+      job.expiresAt <= Date.now() || !await resolveCompletedNarrationAudio(job.audioUrl) ||
+      sessions.get(session)?.current !== job) return undefined;
+  const ttlMs = job.expiresAt - Date.now();
+  return ttlMs > 0 ? { poiId, ttlMs } : undefined;
+}
+
 export function offerStoryPreparation(session: DriveSession, candidate: DiscoveryCandidate | undefined, speedKmh: number) {
-  if (!storyPreparation.enabled || !databaseEnabled()) return;
+  if (!storyPreparationEnabledFor(session.userId) || !databaseEnabled()) return;
   const state = sessions.get(session) ?? { admitted: 0, probes: 0 };
   sessions.set(session, state);
-  if (state.current?.poiId !== candidate?.providerId || state.current?.context !== context(session)) {
+  if (state.current && state.current.waiters === 0 &&
+      (state.current.poiId !== candidate?.providerId || state.current.context !== context(session))) {
     invalidateStoryPreparation(session);
   }
   if (!candidate || !candidate.isAhead || session.params.mode !== 'vehicle' || session.muted ||
@@ -118,7 +137,7 @@ export function offerStoryPreparation(session: DriveSession, candidate: Discover
   }, storyPreparation.ttlMs);
   timer.unref();
   const job: Pending = { id, poiId: candidate.providerId, context: context(session),
-    expiresAt: Date.now() + storyPreparation.ttlMs, timer, controller, candidate, consumed: false };
+    expiresAt: Date.now() + storyPreparation.ttlMs, timer, controller, candidate, consumed: false, waiters: 0 };
   state.current = job;
   running++;
   const run = async () => {
@@ -127,15 +146,13 @@ export function offerStoryPreparation(session: DriveSession, candidate: Discover
     const cached = await cachedDiscoveryKnowledge(candidate);
     if (controller.signal.aborted || session.storyRequest) return;
     let knowledge = cached;
-    if (!cached && state.probes < storyPreparation.sessionJobs) {
+    if (!cached && !isCityNarrativeCategory(candidate.targetType) && state.probes < storyPreparation.sessionJobs) {
       const now = Date.now();
       lookups = lookups.filter(time => now - time < 60_000);
       if (lookups.length < storyPreparation.freeLookupsPerMinute) {
         lookups.push(now);
         state.probes++;
-        const warmed = await warmDiscoveryKnowledge(candidate);
-        // An incomplete warm result must not shadow richer on-demand evidence or create a paid artifact that cannot match it.
-        knowledge = warmed.evidence && storyAvailability(warmed.evidence).long ? warmed : null;
+        knowledge = await warmDiscoveryKnowledge(candidate);
       }
     }
     if (controller.signal.aborted || session.storyRequest) return;
@@ -178,6 +195,8 @@ export function offerStoryPreparation(session: DriveSession, candidate: Discover
       if (result.audioUrl && !result.cached) audioMs = 0.75 * audioMs + 0.25 * latencyMs;
       await record(job, candidate, result.audioUrl ? 'audio_ready' : 'failed', { latencyMs, cacheHit: result.cached });
     }
+    job.ready = result.audioUrl ? 'audio_ready' : 'text_ready';
+    job.audioUrl = result.audioUrl || undefined;
     return { id, fingerprint, result, audioAttempted: shouldPrepareAudio };
   };
   job.task = run().catch(async () => {
@@ -197,14 +216,23 @@ export async function reuseStoryPreparation(session: DriveSession, candidate: Di
   const fingerprint = await preparationFingerprint(planned, language, narrationStyle);
   signal.throwIfAborted();
   if (fingerprint !== job.fingerprint || job.controller.signal.aborted) return undefined;
-  job.consumed = true;
-  const artifact = await new Promise<Artifact | undefined>((resolve, reject) => {
-    const abort = () => reject(signal.reason);
-    signal.addEventListener('abort', abort, { once: true });
-    job.task!.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
-  });
-  signal.throwIfAborted();
-  if (artifact) await record(job, candidate, 'reused', { momentId });
-  signal.throwIfAborted();
-  return artifact;
+  const reuseMode = job.ready ?? 'in_progress';
+  job.waiters++;
+  try {
+    const artifact = await new Promise<Artifact | undefined>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      job.task!.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    });
+    signal.throwIfAborted();
+    if (job.controller.signal.aborted || sessions.get(session)?.current !== job) return undefined;
+    if (artifact) {
+      job.consumed = true;
+      await record(job, candidate, 'reused', { momentId, reuseMode });
+    }
+    signal.throwIfAborted();
+    return artifact;
+  } finally {
+    job.waiters--;
+  }
 }
