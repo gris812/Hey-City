@@ -233,11 +233,11 @@ export function ExploreHomeView({
       <View style={[styles.topBar, { top: controlTop }]}>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel={t('walking.openMenu')}
+          accessibilityLabel={t(vehicleMode ? 'drive.openMenu' : 'walking.openMenu')}
           style={styles.roundButton}
           onPress={() => {
-            if (!onEndExploration) { onOpenMenu(); return; }
-            Alert.alert(t('walking.openMenu'), undefined, [
+            if (!vehicleMode || !onEndExploration) { onOpenMenu(); return; }
+            Alert.alert(t('drive.openMenu'), undefined, [
               { text: t('settings.title'), onPress: onOpenMenu },
               { text: t('walking.endSession'), onPress: onEndExploration, style: 'destructive' },
               { text: t('tour.cancel'), style: 'cancel' },
@@ -279,6 +279,10 @@ export function ExploreHomeView({
         {!camera.current.following && <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
           accessibilityLabel={t('map.follow')} onPress={() => changeCamera(() => camera.current.follow())}>
           <Text style={styles.audioBadgeIcon}>◎</Text>
+        </TouchableOpacity>}
+        {!vehicleMode && onEndExploration && <TouchableOpacity accessibilityRole="button" style={styles.roundButton}
+          accessibilityLabel={t('walking.endSession')} onPress={onEndExploration}>
+          <Text style={styles.audioBadgeIcon}>■</Text>
         </TouchableOpacity>}
       </View>
 
