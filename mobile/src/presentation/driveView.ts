@@ -36,7 +36,7 @@ export function driveStory(state: Pick<LivePresentationState, 'playback' | 'play
 }
 
 export function drivePlaceAction(availability: StoryAvailabilityState) {
-  return availability === 'ready' || availability === 'unknown';
+  return availability === 'ready' || availability === 'unknown' || availability === 'temporary_failure';
 }
 
 export function isDriveMapSelectionRelevant(id: string, detailId: string | undefined, nearby: readonly { id: string }[], aheadId?: string) {

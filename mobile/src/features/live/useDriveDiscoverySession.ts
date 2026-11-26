@@ -6,6 +6,7 @@ import { Audio } from 'expo-av';
 import {
   finishDriveStory,
   reportNarrativePlayback,
+  reportNarrativeSurfaced,
   forceAheadDiscoveryRefresh,
   pingDriveSession,
   startDriveSession,
@@ -350,6 +351,9 @@ export function useDriveDiscoverySession(input: {
           : 'The story text is available. Audio is unavailable.');
       } else reportPlaybackError(code);
       void report('failed', code);
+      const level = explicitSelectionRef.current.holdsAutomaticNarration ? checkingLevel.current : 'short';
+      storyAvailabilityCache.current.record(story.poiId, level, code === 'audio_missing' ? 'text_only' : 'temporary_failure', 120_000);
+      refreshStoryAvailability(count => count + 1);
       if (explicitSelectionRef.current.holdsAutomaticNarration) {
         explicitSelectionRef.current.retryAfterAudioFailure();
         return;
@@ -370,6 +374,10 @@ export function useDriveDiscoverySession(input: {
       },
       onState: (state, current, progress) => {
         if (activeSessionIdRef.current !== story.sessionId || activeMomentIdRef.current !== story.momentId) return;
+        if (state === 'playing' && !reported.has('playing')) {
+          storyAvailabilityCache.current.clearOutcome(story.poiId, explicitSelectionRef.current.holdsAutomaticNarration ? checkingLevel.current : 'short');
+          refreshStoryAvailability(count => count + 1);
+        }
         if (state === 'playing' || state === 'paused') void report(state);
         setPlayback(current);
         setLocalPlaybackState(state);
@@ -435,14 +443,16 @@ export function useDriveDiscoverySession(input: {
         if (!result.momentId || result.poiId !== selected.poiId) throw new Error('Invalid selection response');
         if (selected.level === 'short') {
           storyAvailabilityCache.current.resetContinuation(selected.poiId);
-          storyAvailabilityCache.current.record(selected.poiId, 'short', 'ready');
+          if (!result.audioUrl) storyAvailabilityCache.current.record(selected.poiId, 'short', 'text_only');
         }
-        if (result.availability.long) storyAvailabilityCache.current.record(selected.poiId, 'long', 'ready');
+        if (selected.level === 'long' && !result.audioUrl) storyAvailabilityCache.current.record(selected.poiId, 'long', 'text_only');
+        refreshStoryAvailability(count => count + 1);
         setSelectionAvailability({ poiId: result.poiId, availability: result.availability });
         await loadStoryPlayback({ sessionId: id, momentId: result.momentId, poiId: result.poiId,
           guideId: fromBackendGuideId(result.guideId), target: { id: result.poiId, name: result.name,
             latitude: selected.latitude, longitude: selected.longitude }, transcript: result.transcriptText, storyDiscoveries: result.storyDiscoveries }, result.audioUrl, tellStartedAt);
       },
+      newRequestForError: error => error instanceof ApiRequestError && error.allowNewStoryAttempt,
       failed: (choice, error, stage) => {
         if (activeSessionIdRef.current !== id) return;
         // No audio exists for an evidence/generation rejection. Clear the preparation owner
@@ -455,7 +465,10 @@ export function useDriveDiscoverySession(input: {
           Boolean(error.evidenceTtlMs && error.storyEvidenceRevision);
         const failure = selectionFailurePresentation(stage, definitiveEvidence ? 422 : undefined);
         setLocalPlaybackState(failure.playbackState);
-        setExplicitTarget(current => current?.id === choice.poiId ? undefined : current);
+        if (!definitiveEvidence) {
+          storyAvailabilityCache.current.record(choice.poiId, choice.level, 'temporary_failure', 120_000);
+          refreshStoryAvailability(count => count + 1);
+        }
         if (failure.kind === 'evidence' && error instanceof ApiRequestError &&
             error.evidenceTtlMs && error.storyEvidenceRevision) {
           const cache = storyAvailabilityCache.current;
@@ -542,13 +555,18 @@ export function useDriveDiscoverySession(input: {
         if (revision === requestRevisionRef.current) {
           const changed = availability.observeRevision(result.storyEvidenceRevision);
           const hint = result.storyEvidenceHint;
-          if (hint) availability.record(hint.poiId, 'short', hint.status, hint.ttlMs);
-          if (changed || hint) refreshStoryAvailability(count => count + 1);
+          if (hint?.status === 'unavailable' && availability.state(hint.poiId) !== 'text_only')
+            availability.record(hint.poiId, 'short', 'unavailable', hint.ttlMs);
+          const preparedChanged = availability.replacePreparedAudio(result.preparedAudio);
+          if (changed || hint || preparedChanged) refreshStoryAvailability(count => count + 1);
         }
         dismissDiscoveryNotice();
         if (result.mode) setMovementMode(result.mode);
-        if (result.nextAction === 'PLAY' && result.poi && result.momentId && (dismissed.has(result.poi.place_id) || availability.state(result.poi.place_id) === 'unavailable')) {
-          void finishDriveStory(sessionId, 'skipped', guestId, result.momentId).catch(() => console.warn('dismissed_story_release_failed'));
+        if (result.nextAction === 'PLAY' && result.poi && result.momentId &&
+            (revision !== requestRevisionRef.current || explicitSelectionRef.current.holdsAutomaticNarration ||
+              activeMomentIdRef.current || dismissed.has(result.poi.place_id) || availability.unavailableIds().includes(result.poi.place_id))) {
+          if (activeMomentIdRef.current !== result.momentId)
+            void finishDriveStory(sessionId, 'skipped', guestId, result.momentId).catch(() => console.warn('dismissed_story_release_failed'));
           setLastResult({ ...result, nextAction: 'NONE' });
           return;
         }
@@ -952,10 +970,15 @@ export function useDriveDiscoverySession(input: {
     return () => clearInterval(timer);
   }, [sessionId]);
 
+  const recordVisiblePlace = useCallback((id: string, poiId: string) => {
+    if (activeSessionIdRef.current === id)
+      void reportNarrativeSurfaced(id, poiId, config.buildSha).catch(() => console.warn('story_surfaced_telemetry_unavailable'));
+  }, []);
   const storyAvailabilityFor = (poiId: string, level: 'short' | 'long' = 'short') =>
     playback?.poiId === poiId && checkingLevel.current === level &&
     (localPlaybackState === 'preparing' || localPlaybackState === 'loading')
-      ? 'checking' as const : storyAvailabilityCache.current.state(poiId, level);
+      ? 'checking' as const : playback?.poiId === poiId && localPlaybackState === 'playing'
+        ? 'ready' as const : storyAvailabilityCache.current.state(poiId, level);
 
   const presentation = mapDriveSessionToPresentation(lastResult, {
     sessionActive: Boolean(sessionId),
@@ -998,6 +1021,7 @@ export function useDriveDiscoverySession(input: {
     tellPlaceNow,
     selectionAvailability,
     storyAvailabilityFor,
+    recordVisiblePlace,
     startSession,
     stopSession,
     toggleTheme,

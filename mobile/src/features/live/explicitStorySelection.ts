@@ -15,16 +15,18 @@ export type SelectionDependencies = {
   request(choice: StoryChoice, requestId: string, signal: AbortSignal): Promise<SelectedStoryResult>;
   preparing(choice: StoryChoice): void;
   selected(choice: StoryChoice, result: SelectedStoryResult): Promise<void>;
+  newRequestForError?(error: unknown): boolean;
   failed(choice: StoryChoice, error: unknown, stage?: 'stop' | 'request' | 'delivery'): void;
 };
 
 /** Local request supersession only. The session's server JourneyState owns narrative decisions. */
 export class ExplicitStorySelection {
   private sequence = 0;
-  private current?: { key: string; abort: AbortController; state: 'pending' | 'delivered' | 'error'; requestId: string; result?: SelectedStoryResult };
+  private current?: { key: string; abort: AbortController; state: 'pending' | 'delivered' | 'error'; requestId?: string; result?: SelectedStoryResult };
   get isPreparing(): boolean { return this.current?.state === 'pending'; }
   get holdsAutomaticNarration(): boolean {
-    return this.current?.state === 'pending' || Boolean(this.current?.result);
+    // A terminal failure still belongs to the explicitly chosen POI until dismissed or replaced.
+    return this.current !== undefined;
   }
 
   async select(choice: StoryChoice, deps: SelectionDependencies): Promise<void> {
@@ -55,6 +57,7 @@ export class ExplicitStorySelection {
       if (this.current !== current) return;
       this.current.state = 'error';
       this.current.result = undefined;
+      if (stage === 'request' && deps.newRequestForError?.(error)) this.current.requestId = undefined;
       deps.failed(choice, error, stage);
     }
   }

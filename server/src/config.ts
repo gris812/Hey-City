@@ -394,6 +394,7 @@ export type NarrationStyle = (typeof narrationStyles)[number];
 
 export const storyPreparation = {
   enabled: server.nodeEnv === 'staging' && process.env.STORY_PREPARATION_ENABLED === 'true',
+  pilotUserId: process.env.STORY_PREPARATION_PILOT_USER_ID?.trim() ?? '',
   concurrency: Math.max(1, Math.min(2, Math.trunc(num('STORY_PREPARATION_CONCURRENCY', 1)))),
   dailyJobs: Math.max(0, Math.min(100, Math.trunc(num('STORY_PREPARATION_DAILY_JOBS', 20)))),
   dailyEstimatedBudgetUsd: Math.max(0, num('STORY_PREPARATION_DAILY_ESTIMATED_USD', 0.50)),

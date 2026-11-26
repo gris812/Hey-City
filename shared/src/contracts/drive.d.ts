@@ -140,7 +140,9 @@ export interface MomentPlan {
 }
 export interface NarrativeBeat { kind: NarrativeBeatKind; objective: string }
 export interface StoryAvailability { short: boolean; long: boolean; evidenceStatus?: 'ready' | 'unknown' | 'unavailable' }
-export type StoryAvailabilityState = 'unknown' | 'checking' | 'ready' | 'unavailable';
+export type StoryAvailabilityState = 'unknown' | 'checking' | 'ready' | 'text_only' | 'unavailable' | 'temporary_failure';
+export type StoryFailureClass = 'insufficient_evidence' | 'entity_resolution' | 'planning' | 'generation' |
+  'tts' | 'audio_delivery' | 'playback' | 'transient';
 export interface StoryEvidenceHint { poiId: string; status: 'ready' | 'unavailable'; ttlMs: number }
 
 export interface NarrativePlan extends NarrativePlanInput {
@@ -190,6 +192,8 @@ export interface NarrativeAttribution {
 export type StoryDiscovery = Pick<DiscoveryCandidate, 'providerId' | 'name' | 'targetType' | 'latitude' | 'longitude'>;
 
 export interface DrivePingResult {
+  storyExperiencePilot?: true;
+  preparedAudio?: { poiId: string; ttlMs: number };
   storyEvidenceRevision?: string;
   storyEvidenceHint?: StoryEvidenceHint;
   storyDiscoveries?: StoryDiscovery[];

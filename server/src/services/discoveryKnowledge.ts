@@ -123,12 +123,15 @@ export async function warmDiscoveryKnowledge(candidate: DiscoveryCandidate) {
   const key = knowledgeKey(candidate);
   const cached = await cachedDiscoveryKnowledge(candidate);
   if (cached) return cached;
+  const warmKey = `${key}:warm-short`;
+  const warmCached = await cacheGet<KnowledgeResult>(warmKey);
+  if (warmCached) return warmCached;
   const inFlight = pending.get(key) ?? pendingWarm.get(key);
   if (inFlight) return inFlight;
   const task = (async () => {
     const result = await acquire(candidate, true);
-    if (result.evidence && storyAvailability(result.evidence).long) {
-      await cacheSet(key, result, aheadDiscovery.knowledgeCacheSeconds);
+    if (result.evidence && storyAvailability(result.evidence).short) {
+      await cacheSet(warmKey, result, Math.min(300, aheadDiscovery.knowledgeCacheSeconds));
     }
     return result;
   })();
@@ -137,14 +140,13 @@ export async function warmDiscoveryKnowledge(candidate: DiscoveryCandidate) {
   finally { pendingWarm.delete(key); }
 }
 
-export async function retrieveDiscoveryKnowledge(candidate: DiscoveryCandidate): Promise<KnowledgeResult> {
+export async function retrieveDiscoveryKnowledge(candidate: DiscoveryCandidate, allowWarmShort = false): Promise<KnowledgeResult> {
   const reviewed = reviewedPlaceEvidence(candidate);
   if (reviewed) return { evidence: reviewed, definitive: true, checkedAt: Date.now(), attempts: [{ level: 'L1', status: 'matched', latencyMs: 0 }] };
   const key = knowledgeKey(candidate);
-  await pendingWarm.get(key)?.catch(() => undefined);
   const cached = await cacheGet<KnowledgeResult>(key);
   if (cached)
-    return {
+    return cached.attempts.some(attempt => attempt.status === 'error') ? cached : {
       ...cached,
       attempts: [
         {
@@ -155,6 +157,16 @@ export async function retrieveDiscoveryKnowledge(candidate: DiscoveryCandidate):
       ],
     };
   if (pending.has(key)) return pending.get(key)!;
+  if (allowWarmShort && !isCityNarrativeCategory(candidate.targetType)) {
+    await pendingWarm.get(key)?.catch(() => undefined);
+    const warm = await cacheGet<KnowledgeResult>(`${key}:warm-short`);
+    // A full retrieval started concurrently still owns the canonical evidence result.
+    if (pending.has(key)) return pending.get(key)!;
+    const canonical = await cacheGet<KnowledgeResult>(key);
+    if (canonical) return canonical;
+    if (warm) return warm;
+    if (pending.has(key)) return pending.get(key)!;
+  }
   const task = acquire(candidate);
   pending.set(key, task);
   try {

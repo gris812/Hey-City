@@ -1,9 +1,11 @@
+import { isStoryAutoSuppressed } from '../features/live/storyAvailabilityCache';
 import { explorePlaybackTarget } from '../presentation/livePresentation';
 import { returningGreeting } from '../context/appIdentity';
 import { distanceMeters } from '../demo/guidedTour/distance';
 import { useMeasurements } from '../localization/useMeasurements';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  AppState,
   Alert,
   View,
   Text,
@@ -202,7 +204,7 @@ export function LiveScreen() {
     aheadRefreshStatus,
     presentation,
     tellPlaceNow,
-    selectionAvailability, storyAvailabilityFor,
+    selectionAvailability, storyAvailabilityFor, recordVisiblePlace,
     startSession,
     stopSession,
     toggleTheme,
@@ -292,7 +294,7 @@ export function LiveScreen() {
   const aheadDecision = lastResult?.aheadDiscovery?.decision;
   const automaticTarget = aheadDecision?.type === 'target_selected' ? aheadDecision.target : null;
   const aheadTarget = automaticTarget && !dismissedPoiIds.includes(automaticTarget.providerId) &&
-    storyAvailabilityFor(automaticTarget.providerId) !== 'unavailable' ? automaticTarget : null;
+    !isStoryAutoSuppressed(storyAvailabilityFor(automaticTarget.providerId)) ? automaticTarget : null;
   const liveDistance = (latitude: number, longitude: number, fallback: number) =>
     deviceLocation ? distanceMeters(deviceLocation, { latitude, longitude }) : fallback;
   const aheadCandidates = lastResult?.aheadDiscovery?.topCandidates ?? [];
@@ -371,10 +373,19 @@ export function LiveScreen() {
     pinned: forDrive(pinnedTarget),
     ahead: aheadTarget && exploreActiveTarget?.id === aheadTarget.providerId ? exploreActiveTarget : undefined,
     nearby: exploreNearbyPlaces.find(place => !dismissedPoiIds.includes(place.id) &&
-      storyAvailabilityFor(place.id) !== 'unavailable') ??
-      exploreNearbyPlaces.find(place => !dismissedPoiIds.includes(place.id)),
+      !isStoryAutoSuppressed(storyAvailabilityFor(place.id))),
   }) : undefined;
   const vehicleStory = driveView ? driveStory(presentation) : undefined;
+  const surfacedPoiId = focused && mode === 'city_explorer' && !driveDetailsOpen && !vehicleStory &&
+    lastResult?.storyExperiencePilot && vehicleCandidate?.place.id;
+  useEffect(() => {
+    if (!sessionId || !surfacedPoiId) return;
+    // Report only an actually rendered card that remained long enough to be visible.
+    const timer = setTimeout(() => {
+      if (AppState.currentState === 'active') recordVisiblePlace(sessionId, surfacedPoiId);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [recordVisiblePlace, sessionId, surfacedPoiId]);
   const showStoryNotice = storyNotice && vehicleStory?.phase !== 'error' && vehicleStory?.phase !== 'text_only';
   const backendWalkingStoryVisible = Boolean(
     mode === 'city_explorer' &&
@@ -762,7 +773,7 @@ export function LiveScreen() {
           markers={selectablePlaces}
           nearbyPlaces={selectablePlaces.filter(place => !dismissedPoiIds.includes(place.id))}
           greeting={greeting && !driveView && identity.status === 'authenticated' ? t(greeting) : undefined}
-          mapTarget={visibleMapTarget}
+          mapTarget={explicitTarget ? undefined : visibleMapTarget}
           vehicleCameraActive={focused && Boolean(sessionId)}
           currentLocation={deviceLocation ?? undefined}
           onStopTracking={place => {
@@ -785,6 +796,7 @@ export function LiveScreen() {
           onStopDriveStory={() => void finishStory('skipped')}
           onDriveTranscript={() => { if (canOpenDriveDetails(lastMotion, Date.now())) openTranscript(); }}
           onSelectPlace={place => {
+            if (explicitTarget?.id !== place.id) dismissExplicitTarget();
             dismissStoryNotice();
             setMapTarget(place);
             setSelectedExplorePlace(!driveView || canOpenDriveDetails(lastMotion, Date.now()) ? place : null);

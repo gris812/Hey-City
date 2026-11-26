@@ -28,7 +28,7 @@ import { evaluateDiscoveryDecision, getPingSkipReason } from './driveDecision';
 import { findLocalPoiCandidates, localCandidateToNearbyPlace } from './localPoi';
 import { prepareNarrative } from './narrativePlan';
 import { generateNarrationFromPlan } from './narration';
-import { invalidateStoryPreparation, offerStoryPreparation } from './storyPreparation';
+import { invalidateStoryPreparation, offerStoryPreparation, storyPreparationEnabledFor } from './storyPreparation';
 import { requestContext } from './requestContext';
 import {
   clearAheadDiscoverySession,
@@ -297,7 +297,7 @@ export async function pingSession(
     session.areaAnchor = undefined;
   }
   const target = aheadDiscovery.decision.type === 'target_selected' ? aheadDiscovery.decision.target : undefined;
-  if (storyPreparation.enabled && target && !forceAheadRefresh && !dismissedPoiIds.has(target.providerId) &&
+  if (storyPreparationEnabledFor(session.userId) && target && !forceAheadRefresh && !dismissedPoiIds.has(target.providerId) &&
       session.experienceOffer?.poiId !== target.providerId &&
       (session.experienceOffers ?? 0) < storyPreparation.sessionOffers) {
     const id = randomUUID();
@@ -470,7 +470,7 @@ export async function pingSession(
     narration = await requestContext.run({ userId, storyCorrelationId: momentId }, () => generateNarrationFromPlan(narrativePlan, {
       brief, policy, language: session.params.language,
       narrationStyle: session.params.narrationStyle, userId, signal: request.signal, completeAudio: true,
-      trace: { sessionId, momentId, objectType: selectedEvidence.category },
+      trace: { sessionId, momentId, poiId: decision.poiId, objectType: selectedEvidence.category },
     }));
     request.signal.throwIfAborted();
     if (sessions.get(sessionId) !== session || session.storyRequest !== request) throw new Error('Story request superseded');

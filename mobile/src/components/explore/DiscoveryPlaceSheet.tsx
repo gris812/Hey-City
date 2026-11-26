@@ -1,3 +1,4 @@
+import { drivePlaceAction } from '../../presentation/driveView';
 import type { StoryAvailabilityState } from '@heycity/shared';
 import { useMeasurements } from '../../localization/useMeasurements';
 import React from 'react';
@@ -125,14 +126,14 @@ export function DiscoveryPlaceSheet({
               <View style={styles.guideCopy}>
                 <Text style={styles.guideName}>{guideName}</Text>
                 <Text style={styles.guideStatus}>
-                  {storyAvailability === 'unavailable' ? t('walking.storyUnavailable') : hasActiveStory ? t('walking.readStory') : t('walking.tellNow')}
+                  {t(`drive.availability.${storyAvailability}`)}
                 </Text>
               </View>
             </View>
 
-            {storyAvailability !== 'unavailable' && <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('walking.tellNow')}
-              disabled={storyAvailability === 'checking'} accessibilityState={{ disabled: storyAvailability === 'checking' }} style={styles.primaryButton} onPress={onTellNow}>
-              <Text style={styles.primaryButtonText}>{storyAvailability === 'checking' ? t('walking.storyChecking') : t('walking.tellNow')}</Text>
+            {!hasActiveStory && drivePlaceAction(storyAvailability) && <TouchableOpacity accessibilityRole="button"
+              style={styles.primaryButton} onPress={onTellNow}>
+              <Text style={styles.primaryButtonText}>{t(storyAvailability === 'temporary_failure' ? 'drive.retry' : 'walking.tellNow')}</Text>
             </TouchableOpacity>}
             {onTellMore && !vehicleMode && <TouchableOpacity accessibilityRole="button" style={styles.secondaryButton} onPress={onTellMore}>
               <Text style={styles.secondaryButtonText}>{t('walking.tellMore')}</Text>

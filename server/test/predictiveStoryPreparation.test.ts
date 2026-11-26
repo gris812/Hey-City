@@ -7,10 +7,13 @@ import { media, openai, storyPreparation } from '../src/config';
 import * as db from '../src/services/database';
 import { evaluateAheadDiscovery, sessionDiscoveryCandidate } from '../src/services/aheadDiscovery';
 import { createSession, finishActiveStory, stopSession } from '../src/services/driveSession';
+import { recordNativeNarrativeEvent } from '../src/services/narrativeTelemetry';
 import { getHistory, rateHistoryStory } from '../src/services/history';
 import { narrativeGenerator } from '../src/services/narrativeGenerator';
-import { selectStory } from '../src/services/selectedStory';
-import { invalidateStoryPreparation, offerStoryPreparation, preparationWindow } from '../src/services/storyPreparation';
+import { classifyKnowledgeRefusal, selectStory } from '../src/services/selectedStory';
+import { invalidateStoryPreparation, offerStoryPreparation, preparationWindow, preparedAudioHint } from '../src/services/storyPreparation';
+import { cachedDiscoveryKnowledge, retrieveDiscoveryKnowledge } from '../src/services/discoveryKnowledge';
+import { storyAvailability } from '../src/services/evidence';
 import { getOrCreateUser, updateUser } from '../src/services/user';
 
 async function run() {
@@ -28,14 +31,15 @@ async function run() {
   const claims = 'The Mower County Fairgrounds is home to an unusually large fiberglass cow.';
   const makeSession = () => createSession(user.id, { mode: 'vehicle', themeTags: ['mixed'], narrationStyle: 'documentary',
     lengthSec: 30, leadTimeMin: 2, voiceId: 'dana', language: 'en', autoplay: true });
-  const seed = async (session: ReturnType<typeof makeSession>) => {
+  const seed = async (session: ReturnType<typeof makeSession>, sparse = false) => {
+    const providerId = sparse ? 'short-only' : 'cow';
     await evaluateAheadDiscovery({
       sessionId: session.id,
       movement: { latitude: 43.632, longitude: -92.989917, headingDegrees: 0, speedMps: 28, accuracyMeters: 10, timestamp: new Date().toISOString() },
-      provider: { name: 'google', searchAhead: async () => [{ provider: 'google', providerId: 'cow',
-        name: 'Buffy the Cow', latitude: 43.662268, longitude: -92.989917, targetType: 'cultural_landmark', providerTypes: ['tourist_attraction'] }] },
+      provider: { name: 'google', searchAhead: async () => [{ provider: 'google', providerId,
+        name: sparse ? 'Sparrow County Museum' : 'Buffy the Cow', latitude: 43.662268, longitude: -92.989917, targetType: 'cultural_landmark', providerTypes: ['tourist_attraction'] }] },
     });
-    return sessionDiscoveryCandidate(session.id, 'cow')!;
+    return sessionDiscoveryCandidate(session.id, providerId)!;
   };
   const waitFor = async (stage: string) => {
     for (let i = 0; i < 150; i++) {
@@ -50,7 +54,7 @@ async function run() {
     if (sql.includes('INSERT INTO usage_events')) events.push(JSON.parse(String(params[7])));
     return [];
   } });
-  Object.assign(storyPreparation, { enabled: true, dailyJobs: 5, dailyAudioJobs: 5 });
+  Object.assign(storyPreparation, { enabled: true, pilotUserId: user.id, dailyJobs: 8, dailyAudioJobs: 8 });
   media.directory = dir;
   openai.apiKey = 'test-only';
   narrativeGenerator.generate = async ({ plan }) => {
@@ -59,7 +63,15 @@ async function run() {
     await gate;
     return { text: `${claims} ${plan.guideId} specimen ${id}.`, cached: false, providerId: 'fixture' };
   };
+  const wikiRequests: string[] = [];
   globalThis.fetch = async url => {
+    const address = new URL(String(url));
+    if (address.hostname === 'en.wikipedia.org') {
+      wikiRequests.push(address.searchParams.get('titles') ?? 'additional lookup');
+      return Response.json({ query: { pages: { '42': { pageid: 42, title: 'Sparrow County Museum',
+        coordinates: [{ lat: 43.662268, lon: -92.989917 }],
+        extract: 'Sparrow County Museum opened in 1921 in the restored county railway depot to conserve photographs, maps, passenger records and tools donated by former railway workers and their families.' } } } });
+    }
     if (String(url).includes('/audio/speech')) {
       tts++;
       await delay(25);
@@ -70,9 +82,20 @@ async function run() {
   assert.equal(preparationWindow(120, 12000, 8000, 150), 'audio');
   assert.equal(preparationWindow(15, 12000, 8000, 150), 'text');
   assert.equal(preparationWindow(12, 15000, 8000, 150), 'none');
+  assert.equal(classifyKnowledgeRefusal({ evidence: null, definitive: true, attempts: [] }), 'insufficient_evidence');
+  assert.equal(classifyKnowledgeRefusal({ evidence: null, attempts: [{ level: 'L2', status: 'no_match', latencyMs: 22 }] }), 'entity_resolution');
+  assert.equal(classifyKnowledgeRefusal({ evidence: null, attempts: [{ level: 'L2', status: 'error', latencyMs: 500 }] }), 'transient');
   const sessions = [];
   try {
-    const baseline = makeSession(); sessions.push(baseline); await seed(baseline);
+    const baseline = makeSession(); sessions.push(baseline);
+    const baselineCandidate = await seed(baseline);
+    storyPreparation.pilotUserId = '';
+    offerStoryPreparation(baseline, baselineCandidate, 100);
+    assert.equal(events.length, 0, 'no account configured means no preparation or recording');
+    storyPreparation.pilotUserId = 'different-user';
+    offerStoryPreparation(baseline, baselineCandidate, 100);
+    assert.equal(events.length, 0, 'an unlisted authenticated account stays in the disabled arm');
+    storyPreparation.pilotUserId = user.id;
     let started = performance.now();
     await selectStory(baseline.id, user.id, 'cow', 'short', 'en', 'baseline');
     const baselineDeliveryMs = performance.now() - started;
@@ -80,8 +103,15 @@ async function run() {
     const precomputed = makeSession(); sessions.push(precomputed);
     const candidate = await seed(precomputed);
     assert(candidate); assert(candidate.isAhead);
+    const discovered = performance.now();
+    precomputed.experienceOffer = { id: 'fixture-offer', poiId: candidate.providerId };
     offerStoryPreparation(precomputed, candidate, 100);
+    await waitFor('text_ready');
+    assert(events.some(item => item.stage === 'evidence_ready' && item.offerId === 'fixture-offer'));
+    const discoveryToTextMs = performance.now() - discovered;
     await waitFor('audio_ready');
+    assert(events.some(item => item.stage === 'audio_ready' && item.offerId === 'fixture-offer'));
+    const discoveryToAudioMs = performance.now() - discovered;
     assert.equal(precomputed.journeyState.getActiveMoment(), undefined, 'preparation cannot create playback ownership');
     const calls = { generated, tts };
     started = performance.now();
@@ -103,7 +133,7 @@ async function run() {
     await during;
     gate = undefined;
     assert(generated <= before + 1, 'the selection waits for the in-flight preparation');
-    assert(events.some(item => item.stage === 'reused'));
+    assert(events.some(item => item.stage === 'reused' && item.reuseMode === 'in_progress'));
 
     const changing = makeSession(); sessions.push(changing);
     events.length = 0;
@@ -119,6 +149,7 @@ async function run() {
     events.length = 0; failTts = true;
     offerStoryPreparation(failure, await seed(failure), 100);
     await waitFor('failed');
+    assert(events.some(item => item.stage === 'failed' && item.failureClass === 'tts'));
     const failedCalls = tts;
     const text = await selectStory(failure.id, user.id, 'cow', 'short', 'en', 'text-fallback');
     assert.equal(text.audioUrl, ''); assert(text.transcriptText);
@@ -137,6 +168,25 @@ async function run() {
     await seed(fresh);
     assert((await selectStory(fresh.id, user.id, 'cow', 'short', 'en', 'after-restart')).audioUrl);
 
+    const shortOnly = makeSession(); sessions.push(shortOnly);
+    events.length = 0;
+    const sparse = await seed(shortOnly, true);
+    offerStoryPreparation(shortOnly, sparse, 100);
+    await waitFor('audio_ready');
+    assert.equal(await cachedDiscoveryKnowledge(sparse), null, 'a warm lookup cannot shadow full retrieval');
+    const warmed = (await retrieveDiscoveryKnowledge(sparse, true)).evidence!;
+    assert.deepEqual(storyAvailability(warmed), { short: true, long: false });
+    await delay(5);
+    assert.equal((await preparedAudioHint(shortOnly, sparse.providerId))?.poiId, sparse.providerId);
+    assert.equal(await preparedAudioHint(shortOnly, 'other-museum'), undefined);
+    assert.equal(await recordNativeNarrativeEvent(shortOnly.id, user.id, { status: 'surfaced', poiId: sparse.providerId }), 'recorded');
+    assert.equal(await recordNativeNarrativeEvent(shortOnly.id, user.id, { status: 'surfaced', poiId: sparse.providerId }), 'duplicate');
+    assert(events.some(event => event.poiId === sparse.providerId && !event.sessionId && !event.momentId));
+    const sparseCalls = { generated, tts };
+    assert((await selectStory(shortOnly.id, user.id, sparse.providerId, 'short', 'en', 'short-only')).audioUrl);
+    assert.deepEqual({ generated, tts }, sparseCalls, 'Tell Now reuses the prepared short-only artifact');
+    assert.deepEqual(wikiRequests, ['Sparrow County Museum'], 'short preparation and selection share one free title lookup');
+
     Object.assign(db, { databaseEnabled: realDatabaseEnabled, query: originalQuery });
     assert.equal((await finishActiveStory(inFlight.id, 'skipped', inFlight.journeyState.getActiveMoment()?.momentId))?.ok, true);
     assert.equal((await finishActiveStory(precomputed.id, 'ended', prepared.momentId))?.ok, true);
@@ -154,7 +204,7 @@ async function run() {
     await updateUser(user.id, { historyEnabled: false });
     assert.equal(await rateHistoryStory(user.id, entry.id, 'liked'), false);
     console.log(JSON.stringify({ provider: 'fixture', baselineDeliveryMs: Math.round(baselineDeliveryMs),
-      preparedDeliveryMs: Math.round(preparedDeliveryMs), scope: 'server audio URL delivery; not native audible start', generated, tts }));
+      preparedDeliveryMs: Math.round(preparedDeliveryMs), discoveryToTextMs: Math.round(discoveryToTextMs), discoveryToAudioMs: Math.round(discoveryToAudioMs), scope: 'server audio URL delivery; not native audible start', generated, tts }));
   } finally {
     for (const session of sessions) stopSession(session.id);
     Object.assign(db, { databaseEnabled: realDatabaseEnabled, query: originalQuery });

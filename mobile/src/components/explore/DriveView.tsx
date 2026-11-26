@@ -10,6 +10,7 @@ type DriveViewProps = {
   candidate?: NonNullable<ReturnType<typeof drivePlace<ExploreNearbyPlace>>>;
   availability: StoryAvailabilityState;
   distance?: string;
+  direction?: 'ahead' | 'left' | 'right' | 'behind';
   story?: ReturnType<typeof driveStory>;
   onDetails?: (place: ExploreNearbyPlace) => void;
   onTellNow?: (place: ExploreNearbyPlace) => void;
@@ -26,7 +27,7 @@ const categoryIcon = {
 };
 
 export const DriveView = React.memo(function DriveView({
-  candidate, availability, distance, story, onDetails, onTellNow, onClear, onPause, onResume, onStop, onTranscript,
+  candidate, availability, distance, direction, story, onDetails, onTellNow, onClear, onPause, onResume, onStop, onTranscript,
 }: DriveViewProps) {
   const { t } = useAppTranslation();
   const { width, fontScale } = useWindowDimensions();
@@ -62,6 +63,9 @@ export const DriveView = React.memo(function DriveView({
   }
   const { place, relation } = candidate;
   const category = driveCategory(place.targetType);
+  const relative = direction ? t(`drive.direction.${direction}`) : undefined;
+  const relationLabel = relation === 'ahead' && relative ? relative
+    : [t(`drive.relation.${relation}`), relative].filter(Boolean).join(' · ');
   const metadata = (
     <>
       {!compact && <Text accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.icon}>{categoryIcon[category]}</Text>}
@@ -76,7 +80,7 @@ export const DriveView = React.memo(function DriveView({
   );
   return (
     <View style={panelStyle}>
-      <Text style={styles.relation}>{t(`drive.relation.${relation}`)}</Text>
+      <Text style={styles.relation}>{relationLabel}</Text>
       {onDetails ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`${t('walking.openPlace')}: ${place.title}, ${t(`drive.category.${category}`)}${distance ? `, ${distance}` : ''}`}
           onPress={() => onDetails(place)} style={styles.place}>{metadata}</Pressable>
@@ -84,7 +88,7 @@ export const DriveView = React.memo(function DriveView({
       <Text accessibilityLiveRegion="polite" style={styles.meta}>{t(`drive.availability.${availability}`)}</Text>
       {(onTellNow && drivePlaceAction(availability) || onClear) && (
         <View style={styles.actions}>
-          {onTellNow && drivePlaceAction(availability) && <DriveAction compact={compact} label={t('drive.tellNow')} onPress={() => onTellNow(place)} primary />}
+          {onTellNow && drivePlaceAction(availability) && <DriveAction compact={compact} label={t(availability === 'temporary_failure' ? 'drive.retry' : 'drive.tellNow')} onPress={() => onTellNow(place)} primary />}
           {onClear && <DriveAction compact={compact} label={t('drive.clear')} onPress={() => onClear(place)} />}
         </View>
       )}

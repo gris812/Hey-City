@@ -8,7 +8,29 @@ export function nearestHeading(previous: number, next: number): number {
   return previous + ((next - previous + 540) % 360 + 360) % 360 - 180;
 }
 
+export function hasReliableMovementCourse(motion: CameraMotion | null | undefined, now: number): motion is CameraMotion & { heading: number } {
+  return !!motion && now >= motion.timestampMs && now - motion.timestampMs <= cameraReliability.maxCourseAgeMs &&
+    (motion.accuracyMeters === undefined || (motion.accuracyMeters >= 0 && motion.accuracyMeters <= cameraReliability.maxCourseAccuracyMeters)) &&
+    motion.speedKmh !== null && Number.isFinite(motion.speedKmh) && motion.speedKmh >= cameraReliability.minCourseSpeedKmh &&
+    motion.heading !== null && motion.heading >= 0 && motion.heading < 360;
+}
+
 type Coordinate = { latitude: number; longitude: number };
+export function relativePoiDirection(origin: Coordinate | undefined, target: Coordinate | undefined, motion: CameraMotion | null, now: number) {
+  if (!origin || !target || !hasReliableMovementCourse(motion, now)) return undefined;
+  if (distanceMeters(origin, target) <= Math.max(25, motion.accuracyMeters ?? 0)) return undefined;
+  const radians = Math.PI / 180;
+  const latitude = origin.latitude * radians;
+  const targetLatitude = target.latitude * radians;
+  const deltaLongitude = (target.longitude - origin.longitude) * radians;
+  const bearing = Math.atan2(Math.sin(deltaLongitude) * Math.cos(targetLatitude),
+    Math.cos(latitude) * Math.sin(targetLatitude) - Math.sin(latitude) * Math.cos(targetLatitude) * Math.cos(deltaLongitude)) / radians;
+  const delta = nearestHeading(motion.heading, bearing) - motion.heading;
+  if (Math.abs(delta) <= 45) return 'ahead';
+  if (Math.abs(delta) >= 135) return 'behind';
+  return delta > 0 ? 'right' : 'left';
+}
+
 export type VehicleCameraFix = CameraMotion & Coordinate;
 const vehicleCamera = { tickMs: 500, maxFixAgeMs: 6000, maxFixAccuracyMeters: 50, maxBlendMs: 1800, turnDegreesPerTick: 24 } as const;
 export const vehicleCameraTickMs = vehicleCamera.tickMs;
@@ -97,12 +119,7 @@ export class MapCameraController {
   toggleOrientation(): void { this.orientationChanged = true; this.orientation = this.orientation === 'north-up' ? 'course-up' : 'north-up'; }
 
   update(coordinate: { latitude: number; longitude: number }, motion: CameraMotion | null, now: number) {
-    const age = motion ? now - motion.timestampMs : Infinity;
-    if (motion && age >= 0 && age <= cameraReliability.maxCourseAgeMs &&
-        (motion.accuracyMeters === undefined || (Number.isFinite(motion.accuracyMeters) && motion.accuracyMeters >= 0 && motion.accuracyMeters <= cameraReliability.maxCourseAccuracyMeters)) &&
-        motion.speedKmh !== null && motion.speedKmh >= cameraReliability.minCourseSpeedKmh &&
-        (!this.validCourse || motion.timestampMs >= this.validCourse.timestampMs) &&
-        motion.heading !== null && Number.isFinite(motion.heading) && motion.heading >= 0 && motion.heading < 360) {
+    if (hasReliableMovementCourse(motion, now) && (!this.validCourse || motion.timestampMs >= this.validCourse.timestampMs)) {
       this.validCourse = { heading: motion.heading, timestampMs: motion.timestampMs };
     }
     this.reliableCourse = Boolean(this.validCourse && now - this.validCourse.timestampMs <= cameraReliability.maxCourseAgeMs);
