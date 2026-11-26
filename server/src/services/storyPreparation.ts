@@ -15,7 +15,7 @@ import { selectedStoryPlan } from './selectedStoryPlan';
 import { recordUsage } from './usage';
 
 type Planned = ReturnType<typeof selectedStoryPlan>;
-type Stage = 'discovered' | 'evidence_checking' | 'insufficient_evidence' | 'eligible' |
+type Stage = 'discovered' | 'evidence_checking' | 'evidence_ready' | 'insufficient_evidence' | 'eligible' |
   'text_preparing' | 'text_ready' | 'audio_preparing' | 'audio_ready' |
   'failed' | 'expired' | 'reused' | 'unknown_evidence' | 'deferred';
 type Artifact = { id: string; fingerprint: string; result: GenerateNarrationResult; audioAttempted: boolean };
@@ -163,6 +163,7 @@ export function offerStoryPreparation(session: DriveSession, candidate: Discover
       state.previousPoi = candidate.providerId;
       return;
     }
+    await record(job, candidate, 'evidence_ready');
     const params = { ...session.params };
     const planned = selectedStoryPlan(session, params, candidate, knowledge.evidence, 'short', false);
     const fingerprint = await preparationFingerprint(planned, params.language, params.narrationStyle);

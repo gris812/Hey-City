@@ -107,6 +107,7 @@ async function run() {
     precomputed.experienceOffer = { id: 'fixture-offer', poiId: candidate.providerId };
     offerStoryPreparation(precomputed, candidate, 100);
     await waitFor('text_ready');
+    assert(events.some(item => item.stage === 'evidence_ready' && item.offerId === 'fixture-offer'));
     const discoveryToTextMs = performance.now() - discovered;
     await waitFor('audio_ready');
     assert(events.some(item => item.stage === 'audio_ready' && item.offerId === 'fixture-offer'));

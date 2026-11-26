@@ -2,8 +2,9 @@
 -- Provider ledger rates are estimates. Text token counts may be provider-reported;
 -- TTS token counts are estimates. Unreturned provider usage stays unknown.
 WITH prep AS (
-  SELECT metadata->>'preparationId' AS id,
+  SELECT metadata->>'preparationId' AS id, metadata->>'sourceSha' AS source_sha,
     min(created_at) FILTER (WHERE metadata->>'stage' = 'discovered') AS discovered_at,
+    min(created_at) FILTER (WHERE metadata->>'stage' = 'evidence_ready') AS evidence_at,
     min(created_at) FILTER (WHERE metadata->>'stage' = 'eligible') AS eligible_at,
     min(created_at) FILTER (WHERE metadata->>'stage' = 'text_ready') AS text_at,
     min(created_at) FILTER (WHERE metadata->>'stage' = 'audio_preparing') AS audio_started,
@@ -14,17 +15,21 @@ WITH prep AS (
     bool_or(metadata->>'stage' = 'expired') AS expired,
     bool_or(metadata->>'cacheHit' = 'true') AS cache_hit
   FROM usage_events WHERE operation = 'story_preparation'
-  GROUP BY metadata->>'preparationId'
+  GROUP BY 1,2
 )
-SELECT count(*) AS discovered, count(eligible_at) AS eligible,
+SELECT source_sha, count(*) AS discovered, count(evidence_at) AS evidence_ready, count(eligible_at) AS eligible,
   count(text_at) AS text_ready, count(audio_started) AS audio_attempted, count(audio_at) AS audio_ready,
   count(*) FILTER (WHERE insufficient) AS evidence_refused,
   count(*) FILTER (WHERE evidence_unknown) AS evidence_unknown,
   count(*) FILTER (WHERE reused) AS reused, count(*) FILTER (WHERE cache_hit) AS cache_hits,
   count(*) FILTER (WHERE expired AND NOT reused AND text_at IS NOT NULL) AS unused_ready,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM evidence_at - discovered_at)) AS discovery_to_evidence_p50_s,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM evidence_at - discovered_at)) AS discovery_to_evidence_p95_s,
   percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM text_at - discovered_at)) AS discovery_to_text_p50_s,
-  percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM audio_at - discovered_at)) AS discovery_to_audio_p50_s
-FROM prep;
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM text_at - discovered_at)) AS discovery_to_text_p95_s,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM audio_at - discovered_at)) AS discovery_to_audio_p50_s,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM audio_at - discovered_at)) AS discovery_to_audio_p95_s
+FROM prep GROUP BY source_sha;
 
 WITH unique_playback AS (
   SELECT DISTINCT ON (metadata->>'momentId') metadata, created_at
@@ -105,11 +110,16 @@ WITH reuse AS (
   SELECT DISTINCT ON (metadata->>'momentId') metadata->>'momentId' AS id, metadata->>'reuseMode' AS mode
   FROM usage_events WHERE operation = 'story_preparation' AND metadata->>'stage' = 'reused' AND metadata->>'reuseMode' IS NOT NULL
   ORDER BY metadata->>'momentId', created_at
+), first_playback AS (
+  SELECT DISTINCT ON (metadata->>'momentId') metadata
+  FROM usage_events WHERE operation = 'narrative_stage' AND metadata->>'stage' = 'playback'
+    AND metadata->>'status' = 'playing' AND metadata ? 'momentId'
+  ORDER BY metadata->>'momentId', created_at
 )
 SELECT metadata->>'sourceSha' AS source_sha, metadata->>'clientSha' AS client_sha,
-  coalesce(reuse.mode, 'on_demand') AS preparation_mode, count(*) AS samples,
-  percentile_cont(0.5) WITHIN GROUP (ORDER BY (metadata->>'tellLatencyMs')::numeric) AS tell_to_playing_p50_ms
-FROM usage_events LEFT JOIN reuse ON metadata->>'momentId' = reuse.id
-WHERE operation = 'narrative_stage' AND metadata->>'stage' = 'playback' AND metadata->>'status' = 'playing'
-  AND metadata ? 'tellLatencyMs'
+  coalesce(reuse.mode, 'no_prepared_artifact') AS preparation_mode, count(*) AS samples,
+  percentile_cont(0.5) WITHIN GROUP (ORDER BY (metadata->>'tellLatencyMs')::numeric) AS tell_to_playing_p50_ms,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY (metadata->>'tellLatencyMs')::numeric) AS tell_to_playing_p95_ms
+FROM first_playback LEFT JOIN reuse ON metadata->>'momentId' = reuse.id
+WHERE metadata ? 'tellLatencyMs'
 GROUP BY 1,2,3;
